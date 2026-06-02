@@ -247,13 +247,26 @@ fi
 # ---------------------------------------------------------------------------
 # 3. unread via uv tool
 # ---------------------------------------------------------------------------
+# Pin the tool venv to a uv-managed Python rather than the system one.
+# A plain `uv tool install` builds the venv against /usr/bin/pythonX.Y;
+# an OS upgrade that removes that interpreter (e.g. Ubuntu 3.11 -> 3.12)
+# leaves the venv's python symlink dangling and every `unread` run dies
+# with "cannot execute: required file not found". uv-managed Pythons
+# live under ~/.local/share/uv/python and apt never touches them, so
+# the install survives distro upgrades.
+UNREAD_PY="3.12"
+step "Installing Python $UNREAD_PY (uv-managed, survives OS upgrades)"
+uv python install "$UNREAD_PY"
+
 step "Installing unread via 'uv tool'"
 if uv tool list 2>/dev/null | grep -qE '^unread\s'; then
-  warn "unread already installed via uv — upgrading"
-  uv tool upgrade unread
+  warn "unread already installed via uv — reinstalling on managed Python $UNREAD_PY"
+  # --reinstall (not upgrade) so an existing venv built on the old
+  # system Python gets rebuilt on the managed interpreter.
+  uv tool install --force --reinstall --python "$UNREAD_PY" unread
 else
   # --force lets us re-run after a partial earlier install.
-  uv tool install --force unread
+  uv tool install --force --python "$UNREAD_PY" unread
 fi
 # uv tool puts the entry point in ~/.local/bin which we already added
 # to PATH above. Re-export defensively in case the shell missed it.
@@ -360,12 +373,21 @@ cat > "$UNIT_FILE" <<EOF
 Description=unread Telegram bot
 After=network-online.target
 Wants=network-online.target
+# Circuit breaker: if the bot fails to start 5 times within 5 minutes
+# (e.g. a broken interpreter or an incompatible dependency after an
+# upgrade), stop retrying and park the unit in `failed` state instead
+# of looping forever. Without this, a startup-time crash silently
+# burns CPU on a tight 5s restart cycle (one prod incident hit 70k+
+# restarts). `systemctl --user status unread-bot` then shows the
+# failure loudly; clear it with `systemctl --user reset-failed`.
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Service]
 Type=simple
 ExecStart=$UNREAD_BIN bot run
 Restart=on-failure
-RestartSec=5
+RestartSec=10
 # Keep stdout/stderr in the journal (journalctl --user -u unread-bot -f).
 StandardOutput=journal
 StandardError=journal

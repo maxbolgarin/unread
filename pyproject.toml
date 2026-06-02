@@ -37,12 +37,18 @@ classifiers = [
     "Topic :: Utilities",
 ]
 dependencies = [
-    "typer>=0.12",
-    # Click 9 changed `Context._protected_args` from a private attribute
-    # to a property; `_PreferSubcommandsGroup` in cli.py still writes
-    # to the underscore name. Pin <9 until that interaction is updated
-    # and validated end-to-end.
-    "click<9",
+    # Upper-bounded on purpose. `_PreferSubcommandsGroup.parse_args`
+    # in cli.py reaches into Click internals (`self.chain`,
+    # `ctx._protected_args`). typer >=0.25 vendors its own Click fork
+    # under `typer._click` whose `Group` no longer exposes `.chain`,
+    # which crashed the whole CLI with
+    #   AttributeError: '_UnreadRootGroup' object has no attribute 'chain'
+    # `uv tool install` / `pip install .` ignore uv.lock and resolve
+    # these ranges fresh, so without an upper bound a new typer release
+    # silently breaks every prod install. Re-validate end-to-end before
+    # widening either bound.
+    "typer>=0.24,<0.25",
+    "click>=8.1,<8.4",
     "telethon>=1.36",
     "openai>=1.50",
     "pydantic>=2.7",

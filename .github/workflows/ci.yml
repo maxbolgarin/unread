@@ -77,6 +77,47 @@ jobs:
         # run too so the synced venv survives.
         run: uv run --python ${{ matrix.python-version }} pytest -q
 
+  # Install smoke test. The `test` job runs against uv.lock-pinned deps,
+  # but end users get `uv tool install unread` / `pip install unread`,
+  # which IGNORE the lock and resolve dependencies fresh from the
+  # pyproject ranges. A new release of a loosely-pinned dep (this is how
+  # the typer "_UnreadRootGroup has no attribute 'chain'" prod outage
+  # happened) only shows up under that fresh resolution. This job
+  # reproduces the end-user install in a clean venv and exercises the
+  # exact code path that broke: root help + subcommand argument parsing.
+  install-smoke:
+    name: Install smoke test (clean env, resolved deps)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install unread into a clean venv (deps resolved from pyproject, not uv.lock)
+        run: |
+          uv venv --python 3.12 /tmp/smoke
+          # `uv pip install .` (no --frozen / no sync) resolves the
+          # dependency ranges fresh, exactly like the end-user install.
+          uv pip install --python /tmp/smoke/bin/python .
+
+      - name: Show resolved typer / click versions
+        run: uv pip show --python /tmp/smoke/bin/python typer click | grep -E "^(Name|Version):"
+
+      - name: Smoke — root + subcommand parsing must not crash
+        run: |
+          set -e
+          # `--help` exits 0; both paths run _PreferSubcommandsGroup
+          # .parse_args (the `self.chain` line). A dependency-drift
+          # regression turns these into a non-zero AttributeError exit.
+          /tmp/smoke/bin/unread --help
+          /tmp/smoke/bin/unread tg --help
+
   # Provider-matrix smoke tests. Pre-prod hardening: the alternative AI
   # adapters (Anthropic, Google) only ran their "dispatch" assertion
   # under the main `test` job; the new provider-specific tests under

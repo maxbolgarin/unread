@@ -1905,7 +1905,7 @@ wheels = [
 
 [[package]]
 name = "unread"
-version = "0.2.0"
+version = "1.0.1"
 source = { editable = "." }
 dependencies = [
     { name = "aiosqlite" },
@@ -1949,7 +1949,7 @@ requires-dist = [
     { name = "aiosqlite", specifier = ">=0.20" },
     { name = "anthropic", specifier = ">=0.40" },
     { name = "beautifulsoup4", specifier = ">=4.12" },
-    { name = "click", specifier = "<9" },
+    { name = "click", specifier = ">=8.1,<8.4" },
     { name = "cryptography", specifier = ">=42" },
     { name = "google-genai", specifier = ">=0.5" },
     { name = "httpx", specifier = ">=0.27" },
@@ -1973,7 +1973,7 @@ requires-dist = [
     { name = "tenacity", specifier = ">=8.5" },
     { name = "tiktoken", specifier = ">=0.7" },
     { name = "trafilatura", specifier = ">=1.12" },
-    { name = "typer", specifier = ">=0.12" },
+    { name = "typer", specifier = ">=0.24,<0.25" },
     { name = "weasyprint", specifier = ">=62" },
     { name = "yt-dlp", specifier = ">=2024.7" },
 ]

@@ -96,7 +96,13 @@ class _PreferSubcommandsGroup(TyperGroup):
         # Click 8.3 made `Context.protected_args` a read-only property;
         # the canonical setter is the underscored attribute Click's own
         # `Group.parse_args` writes to.
-        if self.chain:
+        #
+        # `getattr(..., False)`: `.chain` is a Click `Group` attribute,
+        # but a future Click/Typer that drops or renames it must not
+        # take the entire CLI down with an AttributeError on every
+        # invocation. Absent the attribute we assume non-chained mode
+        # (the only mode unread uses), which is the safe default.
+        if getattr(self, "chain", False):
             ctx._protected_args = [sub_name, *post]
             ctx.args = []
         else:
