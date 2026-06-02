@@ -248,7 +248,7 @@ unread bot run
 
 **2. Fresh Linux VM** — one line, blank disk to running systemd service:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/maxbolgarin/unread/main/scripts/install-bot.sh | bash
+UNREAD_EXECUTABLE="install-unread-bot.sh" && curl -fsSL https://raw.githubusercontent.com/maxbolgarin/unread/main/scripts/install-bot.sh > $UNREAD_EXECUTABLE && chmod +x $UNREAD_EXECUTABLE && ./$UNREAD_EXECUTABLE && rm ./$UNREAD_EXECUTABLE
 ```
 Installs uv + ffmpeg + libpango, runs `unread init`, asks for the
 `@BotFather` token, drops a `systemd --user` unit that auto-restarts
