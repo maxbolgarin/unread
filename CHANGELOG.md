@@ -1,3 +1,17 @@
+## [1.1.0](https://github.com/maxbolgarin/unread/compare/v1.0.1...v1.1.0) (2026-06-02)
+
+### 🚀 Features
+
+* **site:** add hosted waitlist component and integrate into landing page ([0bbfde4](https://github.com/maxbolgarin/unread/commit/0bbfde438a6dadde2df4a6cf02caeed943c021e4))
+
+### 🐛 Bug Fixes
+
+* **deps:** cap typer/click to prevent prod CLI crash on dependency drift ([e9c421f](https://github.com/maxbolgarin/unread/commit/e9c421f8b75a2a6cfb166607a4dd9a103aea5bc2))
+
+### 📚 Documentation
+
+* **readme:** update install command to download and execute script locally ([e157b92](https://github.com/maxbolgarin/unread/commit/e157b927d2a04591747702a6a18a1271250ce64d))
+
 ## [1.0.1](https://github.com/maxbolgarin/unread/compare/v1.0.0...v1.0.1) (2026-05-25)
 
 ### 📚 Documentation
