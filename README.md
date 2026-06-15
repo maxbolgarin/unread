@@ -43,6 +43,9 @@ recorded meetings, podcasts, PDFs, and stdin. Or run it as a
 self-hosted Telegram bot and forward anything weird at it — see
 [Self-hosted Telegram bot](#self-hosted-telegram-bot) below.
 
+
+See [a real report](.github/examples/summary.md) from `@thehackernews` — 99 messages over two weeks, four chunks, $0.016, every bullet linked back to its source.
+
 ![unread analyzing a Telegram channel into a Markdown report](https://raw.githubusercontent.com/maxbolgarin/unread/main/.github/examples/analyze-example.gif)
 
 ## What it does
@@ -100,8 +103,6 @@ What you get back, for a Russian chat with `--report-language en`:
 ```
 
 Every citation is a `t.me` link. Click → Telegram opens that message.
-
-See [a real report](.github/examples/summary.md) from `@thehackernews` — 99 messages over two weeks, four chunks, $0.016, every bullet linked back to its source.
 
 `unread` handles forums (topics), channel comments, voice notes
 (transcribed), photos (described), forwarded media (deduped — Whisper
