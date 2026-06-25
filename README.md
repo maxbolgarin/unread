@@ -30,6 +30,7 @@ You have 47 unread Telegram groups. You will never read them.
 You will now.
 
 ```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
 uv tool install unread && unread init
 ```
 ```bash
