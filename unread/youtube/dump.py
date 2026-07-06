@@ -122,6 +122,8 @@ async def _do_transcript_mode(
     dump_dir: Path,
     settings,
     cached_row: dict | None,
+    transcript_lang: str | None = None,
+    yes: bool = False,
 ) -> None:
     if cached_row and cached_row.get("transcript"):
         tres = TranscriptResult(
@@ -133,12 +135,39 @@ async def _do_transcript_mode(
             timed_cues=None,
         )
     else:
+        from unread.youtube.commands import (
+            WHISPER_LANG_SENTINEL,
+            _dedup_display_tracks,
+            _interactive_pick_caption_lang,
+            _is_interactive,
+            _require_audio_ffmpeg,
+        )
+        from unread.youtube.transcript import _preferred_caption_langs
+
+        effective_source: TranscriptSource = youtube_source
+        effective_transcript_lang: str | None = transcript_lang
+        if transcript_lang is None and not yes and _is_interactive() and effective_source != "audio":
+            tracks = _dedup_display_tracks(meta)
+            if len(tracks) > 1:
+                picked_lang = await _interactive_pick_caption_lang(
+                    meta, preselect=_preferred_caption_langs(settings)
+                )
+                if picked_lang is None:
+                    console.print("[yellow]Cancelled.[/]")
+                    raise typer.Exit(0)
+                if picked_lang == WHISPER_LANG_SENTINEL:
+                    effective_source = "audio"
+                    _require_audio_ffmpeg()
+                else:
+                    effective_transcript_lang = picked_lang
+
         try:
             tres = await get_transcript(
                 meta,
-                source=youtube_source,
+                source=effective_source,
                 settings=settings,
                 repo=repo,
+                transcript_lang=effective_transcript_lang,
             )
         except NoTranscriptAvailable as e:
             raise typer.BadParameter(str(e)) from e
@@ -147,6 +176,7 @@ async def _do_transcript_mode(
             console.print(f"[grey70]{_t('youtube_fetch_failed_hint')}[/]")
             raise typer.Exit(1) from e
 
+        transcript_lang_kind = None if tres.is_auto is None else ("auto" if tres.is_auto else "manual")
         await repo.put_youtube_video(
             video_id=meta.video_id,
             url=meta.url,
@@ -166,6 +196,7 @@ async def _do_transcript_mode(
             transcript_model=(settings.openai.audio_model_default if tres.source == "audio" else None),
             transcript_cost_usd=tres.cost_usd,
             transcript_timed=tres.timed_cues,
+            transcript_lang_kind=transcript_lang_kind,
         )
 
     if not (tres.text or "").strip():
@@ -219,6 +250,7 @@ async def cmd_dump_youtube(
     report_language: str,
     source_language: str,
     yes: bool,
+    transcript_lang: str | None = None,
 ) -> None:
     """Dump a YouTube video. Mode picks the artifact (transcript / audio / video)."""
     settings = get_settings()
@@ -250,6 +282,8 @@ async def cmd_dump_youtube(
                 dump_dir=dump_dir,
                 settings=settings,
                 cached_row=cached_row,
+                transcript_lang=transcript_lang,
+                yes=yes,
             )
         elif mode == "audio":
             await _do_audio_mode(meta=meta, dump_dir=dump_dir)

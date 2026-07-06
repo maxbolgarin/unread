@@ -243,6 +243,33 @@ async def test_video_mode_preflight_requires_ffmpeg(tmp_path) -> None:
         )
 
 
+async def test_transcript_mode_forwards_transcript_lang_to_get_transcript(tmp_path) -> None:
+    """An explicit `transcript_lang` must reach `get_transcript` unchanged —
+    this is the Task-3 CLI flag's landing point."""
+    meta = _meta("vid-8explic0")
+    out = tmp_path / "out"
+    get_transcript_mock = AsyncMock(return_value=_trans_with_cues())
+
+    with (
+        patch("unread.youtube.dump.fetch_metadata", new=AsyncMock(return_value=meta)),
+        patch("unread.youtube.dump.get_transcript", new=get_transcript_mock),
+    ):
+        await cmd_dump_youtube(
+            url=meta.url,
+            mode="transcript",
+            youtube_source="auto",
+            output=out,
+            console_out=False,
+            language="en",
+            report_language="en",
+            source_language="",
+            yes=True,
+            transcript_lang="fr",
+        )
+    get_transcript_mock.assert_called_once()
+    assert get_transcript_mock.call_args.kwargs["transcript_lang"] == "fr"
+
+
 async def test_transcript_mode_uses_repo_cache(tmp_path) -> None:
     """A populated `youtube_videos` row must skip get_transcript entirely."""
     out = tmp_path / "out"

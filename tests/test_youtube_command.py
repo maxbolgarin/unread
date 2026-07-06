@@ -10,6 +10,7 @@ options_payload contract for the cache key).
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -22,9 +23,11 @@ from unread.youtube.commands import (
     _parse_upload_date,
     _restore_metadata_from_row,
     _segment_transcript,
+    cmd_analyze_youtube,
 )
 from unread.youtube.metadata import YoutubeMetadata
 from unread.youtube.paths import youtube_report_path
+from unread.youtube.transcript import TranscriptResult
 
 
 def _meta(**overrides) -> YoutubeMetadata:
@@ -496,3 +499,42 @@ def test_valid_youtube_sources(source: str) -> None:
     # Type-only; runtime check at the cmd_analyze branch.
     assert source in ("auto", "captions", "audio")
     _ = TranscriptSource  # referenced for import smoke
+
+
+# --- cmd_analyze_youtube: transcript_lang forwarding ------------------------
+
+
+async def test_analyze_youtube_forwards_transcript_lang_to_get_transcript() -> None:
+    """An explicit `transcript_lang` (the future --transcript-lang flag's
+    landing point) must reach `get_transcript` unchanged. `dry_run=True`
+    lets this test skip the full run_analysis/OpenAI pipeline — it still
+    exercises the real fresh-fetch branch up through the transcript call."""
+    meta = _meta(video_id="lang-fwd-01", url="https://www.youtube.com/watch?v=lang-fwd-01")
+    tres = TranscriptResult(
+        text="hello world. " * 20,
+        source="captions",
+        language="fr",
+        duration_sec=900,
+        cost_usd=0.0,
+        timed_cues=[(0, "hello"), (5, "world")],
+        is_auto=False,
+    )
+    get_transcript_mock = AsyncMock(return_value=tres)
+    with (
+        patch("unread.youtube.commands.fetch_metadata", new=AsyncMock(return_value=meta)),
+        patch("unread.youtube.commands.get_transcript", new=get_transcript_mock),
+    ):
+        await cmd_analyze_youtube(
+            url=meta.url,
+            preset=None,
+            prompt_file=None,
+            model=None,
+            filter_model=None,
+            output=None,
+            console_out=True,
+            dry_run=True,
+            yes=True,
+            transcript_lang="fr",
+        )
+    get_transcript_mock.assert_called_once()
+    assert get_transcript_mock.call_args.kwargs["transcript_lang"] == "fr"

@@ -2534,6 +2534,23 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "YouTube video {video_id} has no audio track.",
         "ru": "У видео YouTube {video_id} нет звуковой дорожки.",
     },
+    # ---- YouTube caption-language picker -------------------------------
+    "youtube_lang_pick_title": {
+        "en": "Pick the caption language to use:",
+        "ru": "Выберите язык субтитров:",
+    },
+    "youtube_lang_pick_auto_suffix": {
+        "en": " — auto-generated",
+        "ru": " — автоматические",
+    },
+    "youtube_lang_pick_manual_suffix": {
+        "en": " — manual",
+        "ru": " — загружены вручную",
+    },
+    "youtube_lang_pick_whisper_row": {
+        "en": "None of these — transcribe audio with Whisper",
+        "ru": "Ни один из них — транскрибировать аудио через Whisper",
+    },
     # ---- Generic CLI error / status prefixes ---------------------------
     "cli_error_prefix": {"en": "Error:", "ru": "Ошибка:"},
     "cli_warning_prefix": {"en": "Warning:", "ru": "Предупреждение:"},

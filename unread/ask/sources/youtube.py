@@ -48,6 +48,7 @@ async def cmd_ask_youtube(
     limit: int = 200,
     show_retrieved: bool = False,
     youtube_source: str = "auto",
+    transcript_lang: str | None = None,
 ) -> None:
     """Fetch a YouTube transcript and ask a question over it.
 
@@ -61,9 +62,13 @@ async def cmd_ask_youtube(
     from unread.db.repo import open_repo
     from unread.util.pricing import audio_cost
     from unread.youtube.commands import (
+        WHISPER_LANG_SENTINEL,
+        _dedup_display_tracks,
+        _interactive_pick_caption_lang,
         _interactive_pick_source,
         _is_interactive,
         _render_metadata_panel,
+        _require_audio_ffmpeg,
         _restore_metadata_from_row,
     )
     from unread.youtube.metadata import fetch_metadata
@@ -71,6 +76,7 @@ async def cmd_ask_youtube(
         NoTranscriptAvailable,
         TranscriptSource,
         YoutubeFetchError,
+        _preferred_caption_langs,
         get_transcript,
     )
     from unread.youtube.urls import extract_video_id
@@ -84,9 +90,7 @@ async def cmd_ask_youtube(
     # Forced-Whisper path needs ffmpeg up front; bail with a friendly
     # message instead of dying mid-pipeline. Mirrors analyze.
     if youtube_source == "audio":
-        from unread.util.preflight import require_ffmpeg
-
-        require_ffmpeg("download and transcribe YouTube audio")
+        _require_audio_ffmpeg()
 
     async with open_repo(settings.storage.data_path) as repo:
         cached = await repo.get_youtube_video(video_id)
@@ -133,8 +137,32 @@ async def cmd_ask_youtube(
                     raise typer.Exit(0)
                 effective_source = picked
 
+            # Caption-language picker — identical skip guards / wiring as
+            # `cmd_analyze_youtube`'s fresh-fetch branch.
+            effective_transcript_lang: str | None = transcript_lang
+            if transcript_lang is None and not yes and _is_interactive() and effective_source != "audio":
+                tracks = _dedup_display_tracks(meta)
+                if len(tracks) > 1:
+                    picked_lang = await _interactive_pick_caption_lang(
+                        meta, preselect=_preferred_caption_langs(settings)
+                    )
+                    if picked_lang is None:
+                        console.print("[yellow]Cancelled.[/]")
+                        raise typer.Exit(0)
+                    if picked_lang == WHISPER_LANG_SENTINEL:
+                        effective_source = "audio"
+                        _require_audio_ffmpeg()
+                    else:
+                        effective_transcript_lang = picked_lang
+
             try:
-                tres = await get_transcript(meta, source=effective_source, settings=settings, repo=repo)
+                tres = await get_transcript(
+                    meta,
+                    source=effective_source,
+                    settings=settings,
+                    repo=repo,
+                    transcript_lang=effective_transcript_lang,
+                )
             except NoTranscriptAvailable as e:
                 raise typer.BadParameter(str(e)) from e
             except YoutubeFetchError as e:
