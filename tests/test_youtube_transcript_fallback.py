@@ -16,10 +16,12 @@ import pytest
 from unread.youtube.metadata import YoutubeMetadata
 from unread.youtube.transcript import (
     _RETRY_HTTP_PATTERNS,
+    NoTranscriptAvailable,
     YoutubeFetchError,
     _subtitle_candidates,
     _try_single_caption_track,
     _yt_dlp_run,
+    get_transcript,
 )
 
 # ---------- _subtitle_candidates: ordered fallback list ------------------
@@ -39,27 +41,25 @@ def _meta(
 
 
 def test_subtitle_candidates_preferred_lang_manual_then_auto() -> None:
-    """Preferred lang's manual track wins, then its auto track, then fallback."""
+    """Preferred lang's manual track wins, then its auto track. Nothing outside
+    the preferred languages is ever included — no "es" tail."""
     meta = _meta(
         subtitles={"ru": [{}], "en": [{}]},
         automatic_captions={"ru": [{}], "en": [{}], "es": [{}]},
     )
     cands = _subtitle_candidates(meta, ["ru", "en"])
-    # ru manual, ru auto, en manual, en auto, then any remaining (es auto)
-    assert cands[:2] == [("ru", False), ("ru", True)]
-    assert cands[2:4] == [("en", False), ("en", True)]
-    assert ("es", True) in cands
+    assert cands == [("ru", False), ("ru", True), ("en", False), ("en", True)]
+    assert ("es", True) not in cands
 
 
-def test_subtitle_candidates_falls_back_to_any_available() -> None:
-    """When no preferred lang is present, return remaining tracks alphabetically."""
+def test_subtitle_candidates_no_preferred_match_returns_empty() -> None:
+    """When no preferred lang is present (exact or base-prefix), return []."""
     meta = _meta(
         subtitles={"de": [{}]},
         automatic_captions={"fr": [{}]},
     )
     cands = _subtitle_candidates(meta, ["ru", "en"])
-    # No ru/en at all; surface what's there
-    assert cands == [("de", False), ("fr", True)]
+    assert cands == []
 
 
 def test_subtitle_candidates_auto_only_preferred() -> None:
@@ -84,6 +84,59 @@ def test_subtitle_candidates_dedups_repeated_preferred() -> None:
     meta = _meta(subtitles={"ru": [{}]})
     cands = _subtitle_candidates(meta, ["ru", "ru"])
     assert cands == [("ru", False)]
+
+
+def test_subtitle_candidates_base_prefix_match() -> None:
+    """`en` matches `en-US`/`en-orig` by base code; manual first, exact before prefix.
+
+    Regional/variant tags (`en-US`, `en-orig`) don't exact-match the
+    preferred code `en` but share its base — without this matching, a
+    video whose only English track is `en-US` would fall through to
+    Whisper even though the preferred language *is* available.
+    """
+    meta = _meta(
+        subtitles={"en": [{}], "en-US": [{}]},
+        automatic_captions={"en-orig": [{}]},
+    )
+    cands = _subtitle_candidates(meta, ["en"])
+    # exact manual "en" first, then prefix-match manual "en-US",
+    # then prefix-match auto "en-orig" (no exact auto "en" present).
+    assert cands == [("en", False), ("en-US", False), ("en-orig", True)]
+
+
+@pytest.mark.asyncio
+async def test_get_transcript_explicit_lang_miss_raises_with_available_codes() -> None:
+    """`transcript_lang` set and not found (exact or base-prefix) → raise,
+    listing the video's actually-available base codes + actionable hints.
+
+    No silent fallback to another language: `preferred_langs` / settings
+    are ignored once `transcript_lang` is given.
+    """
+    meta = _meta(
+        subtitles={"en": [{}], "ru": [{}]},
+        automatic_captions={"de": [{}]},
+    )
+
+    class _Settings:
+        pass
+
+    class _Repo:
+        pass
+
+    with pytest.raises(NoTranscriptAvailable) as exc_info:
+        await get_transcript(
+            meta,
+            source="captions",
+            transcript_lang="xx",
+            settings=_Settings(),
+            repo=_Repo(),
+        )
+    msg = str(exc_info.value)
+    assert "en" in msg
+    assert "ru" in msg
+    assert "de" in msg
+    assert "--transcript-lang" in msg
+    assert "--youtube-source audio" in msg
 
 
 # ---------- _yt_dlp_run: retry on 429/5xx --------------------------------
