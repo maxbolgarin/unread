@@ -37,13 +37,23 @@ Greek, Arabic, Hebrew, Latin Extended) so searching for `биохакинг` or
    transcript source — captions (free), audio + Whisper (paid, with a
    cost estimate), or cancel. Skipped when stdin isn't a TTY, when
    `--yes` is passed, or when an explicit `--youtube-source` flag was set.
-3. Captions are fetched as VTT (or audio is downloaded → Whisper), and
+3. When the video has more than one caption language, a second prompt
+   asks which track to use (or to fall back to Whisper). Skipped when
+   stdin isn't a TTY, when `--yes` is passed, when `--transcript-lang`
+   was set explicitly, when there's only one caption language, or when
+   the source resolved to audio. `--transcript-lang` takes an ISO code
+   or an English name (normalized); an explicit choice never silently
+   falls back to another language — captions mode errors if it's
+   missing, auto mode transcribes with Whisper instead.
+4. Captions are fetched as VTT (or audio is downloaded → Whisper), and
    each cue's start-second becomes that segment's `msg_id`.
-4. The bundled `video` preset runs over the time-stamped synthetic
+5. The bundled `video` preset runs over the time-stamped synthetic
    messages. Citations land as `[#754](https://www.youtube.com/watch?v=ID&t=754s)`
    — every citation in the report is a clickable jump to that moment.
-5. Re-runs hit the `youtube_videos` cache (metadata + transcript +
+6. Re-runs hit the `youtube_videos` cache (metadata + transcript +
    timed cues) — no yt-dlp, no Whisper, no LLM-side re-spend if cached.
+   A `--transcript-lang` that disagrees with the cached track's language
+   bypasses the cache and re-fetches in the requested language.
 
 ```bash
 # Interactive default: shows metadata + asks for source.
@@ -54,6 +64,9 @@ unread "https://youtu.be/dQw4w9WgXcQ" --yes
 
 # Force Whisper (slower; ~$0.003/min):
 unread "https://youtu.be/dQw4w9WgXcQ" --youtube-source audio
+
+# Pick the caption language up front (skips the picker):
+unread "https://youtu.be/dQw4w9WgXcQ" --transcript-lang french
 
 # Different preset; see `unread --help` for the full list.
 unread "https://www.youtube.com/watch?v=..." --preset summary --console
