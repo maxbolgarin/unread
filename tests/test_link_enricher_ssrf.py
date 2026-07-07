@@ -92,7 +92,7 @@ async def test_safe_get_rejects_initial_private_url():
 async def test_link_enricher_fetch_returns_none_for_blocked():
     # _fetch swallows BlockedURLError and logs at info level. We assert
     # it returns None rather than reaching out to httpx.
-    with patch("unread.util.safe_fetch.safe_get") as mock_get:
+    with patch("unread.util.safe_fetch.safe_get_capped") as mock_get:
         # Simulate the blocked-URL path
         async def boom(*args, **kwargs):
             raise BlockedURLError("nope")

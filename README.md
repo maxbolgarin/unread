@@ -130,6 +130,16 @@ unread https://www.youtube.com/watch?v=Pmd6knanPKw
 unread https://www.youtube.com/watch?v=SBEtiXnLtpw --report-language de
 ```
 
+#### Pick which caption language to summarize:
+
+On a multi-language video, `unread` asks which caption track to use (or
+to transcribe the audio with Whisper). Skip the prompt with
+`--transcript-lang` — pass an ISO code or an English name:
+
+```bash
+unread https://www.youtube.com/watch?v=SBEtiXnLtpw --transcript-lang english
+```
+
 #### Ask a question about the video:
 
 > from what timecode should i start watching if i want to know about RAG?

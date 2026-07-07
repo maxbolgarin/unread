@@ -15,6 +15,7 @@ from __future__ import annotations
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import typer
 from rich.console import Console
@@ -344,6 +345,88 @@ def _load_preset_for_commands(
         return None
 
 
+async def enforce_max_cost_gate(
+    *,
+    n_messages: int,
+    preset: Preset,
+    settings: Any,
+    max_cost: float | None,
+    yes: bool,
+    preset_label: str | None = None,
+) -> None:
+    """Estimate a run's cost, print the band, and enforce `--max-cost`.
+
+    Shared by the per-chat path (`_run_single`) and `_cmd_run_flat` (the
+    `tg chats run --flat` merged run) so `--max-cost` behaves identically
+    everywhere it's accepted (B3). Two responsibilities, one estimate:
+
+      1. Always print a rough $-band for the run before hitting the LLM
+         (or a "pricing missing" note) — no opt-in needed.
+      2. When `max_cost` is set, hard-gate: raise `typer.Exit(2)` when the
+         upper bound exceeds the budget and the user doesn't confirm (or
+         `--yes` is set, since `--yes` can't drive an interactive
+         confirm); raise `typer.Exit(0)` when the user declines the
+         confirm; and fail closed (`typer.Exit(2)`) when pricing is
+         missing for either model unless `--yes` overrides. The previous
+         behaviour silently skipped the guard on missing pricing, which
+         let users incur unbounded cost while believing they were
+         capped.
+
+    `preset_label` is the string interpolated into the "exceeded"
+    message; defaults to `preset.name`, which is identical to the CLI's
+    `--preset` string for every non-custom preset. A `--prompt-file`
+    (`--preset custom`) run may declare a different `name:` in its
+    frontmatter than the literal `"custom"` the user typed, so callers
+    that need the message to match the CLI string exactly should pass
+    it here explicitly.
+    """
+    from unread.analyzer.pipeline import estimate_cost as _estimate_cost
+
+    lo, hi = _estimate_cost(n_messages=n_messages, preset=preset, settings=settings)
+
+    # 1. Always show the band (or pricing-missing note).
+    if hi is not None:
+        console.print("[bold]" + _t("cost_estimate_banner").format(lo=lo, hi=hi) + "[/]")
+    else:
+        console.print(f"[yellow]{_t('cost_estimate_unavailable')}[/]")
+
+    if max_cost is None:
+        return
+
+    label = preset_label if preset_label is not None else preset.name
+
+    # 2. Hard gate when --max-cost is set.
+    if hi is not None and hi > max_cost:
+        console.print(
+            "[bold yellow]"
+            + _tf(
+                "max_cost_exceeded",
+                lo=lo,
+                hi=hi,
+                max=max_cost,
+                n=n_messages,
+                preset=label,
+            )
+            + "[/]"
+        )
+        if yes:
+            console.print(f"[red]{_t('aborting_yes_set')}[/]")
+            raise typer.Exit(2)
+        from unread.util.prompt import confirm as _confirm
+
+        if not _confirm(_t("run_anyway_q"), default=False):
+            console.print(f"[yellow]{_t('aborted')}[/]")
+            raise typer.Exit(0)
+    elif hi is None:
+        # Pricing missing for the run's models. Fail closed unless --yes
+        # overrides.
+        if yes:
+            console.print(f"[yellow]{_t('max_cost_pricing_missing_yes_override')}[/]")
+        else:
+            console.print(f"[red]{_t('max_cost_pricing_missing_abort')}[/]")
+            raise typer.Exit(2)
+
+
 def build_enrich_opts(
     *,
     cli_enrich: str | None,
@@ -487,6 +570,7 @@ async def cmd_analyze(
     source_language: str | None = None,
     youtube_source: str = "auto",
     disable_truncation_retry: bool = False,
+    transcript_lang: str | None = None,
 ) -> None:
     # The CLI surface exposes `--no-save` as the explicit "skip file"
     # flag; the legacy `--console`/`-c` and `--save`/`-s` map onto the
@@ -776,6 +860,7 @@ async def cmd_analyze(
             source_language=effective_source_language,
             youtube_source=youtube_source,  # type: ignore[arg-type]
             yes=yes,
+            transcript_lang=transcript_lang,
         )
         return
 
@@ -1462,7 +1547,8 @@ async def _run_single(
             console.print(f"  [yellow]{_t('estimate_unavailable')}[/]")
         return
 
-    # Cost-banner + budget guard. Two responsibilities, one estimate:
+    # Cost-banner + budget guard (B3: shared with `_cmd_run_flat` via
+    # `enforce_max_cost_gate`). Two responsibilities, one estimate:
     #   1. Show every user a rough $-band for the run *before* we hit
     #      the LLM (no opt-in needed). This is the headline production
     #      fix — analyzing a busy chat used to surprise users with the
@@ -1474,52 +1560,14 @@ async def _run_single(
     if prepared.messages:
         loaded_preset = _load_preset_for_commands(preset, prompt_file, language=report_language)
         if loaded_preset is not None:
-            from unread.analyzer.pipeline import estimate_cost as _estimate_cost
-
-            lo, hi = _estimate_cost(
+            await enforce_max_cost_gate(
                 n_messages=len(prepared.messages),
                 preset=loaded_preset,
                 settings=get_settings(),
+                max_cost=max_cost,
+                yes=yes,
+                preset_label=preset,
             )
-            # 1. Always show the band (or pricing-missing note).
-            if hi is not None:
-                console.print("[bold]" + _t("cost_estimate_banner").format(lo=lo, hi=hi) + "[/]")
-            else:
-                console.print(f"[yellow]{_t('cost_estimate_unavailable')}[/]")
-
-            # 2. Hard gate when --max-cost is set.
-            if max_cost is not None:
-                if hi is not None and hi > max_cost:
-                    console.print(
-                        "[bold yellow]"
-                        + _tf(
-                            "max_cost_exceeded",
-                            lo=lo,
-                            hi=hi,
-                            max=max_cost,
-                            n=len(prepared.messages),
-                            preset=preset,
-                        )
-                        + "[/]"
-                    )
-                    if yes:
-                        console.print(f"[red]{_t('aborting_yes_set')}[/]")
-                        raise typer.Exit(2)
-                    from unread.util.prompt import confirm as _confirm
-
-                    if not _confirm(_t("run_anyway_q"), default=False):
-                        console.print(f"[yellow]{_t('aborted')}[/]")
-                        raise typer.Exit(0)
-                elif hi is None:
-                    # Pricing missing for the run's models. The previous
-                    # behaviour silently skipped the guard, which let
-                    # users incur unbounded cost while believing they
-                    # were capped. Fail closed unless --yes overrides.
-                    if yes:
-                        console.print(f"[yellow]{_t('max_cost_pricing_missing_yes_override')}[/]")
-                    else:
-                        console.print(f"[red]{_t('max_cost_pricing_missing_abort')}[/]")
-                        raise typer.Exit(2)
 
     _status(f"[grey70]{_t('running_analysis')}[/]")
     sender_id_arg = int(by) if by and by.lstrip("-").isdigit() else None

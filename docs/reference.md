@@ -311,7 +311,7 @@ interactive picker choose on a TTY):
 |---|---|---|
 | Website  | `text` | `article.md` — readable text only. |
 | Website  | `full` | `article.md` + `_files/img-N.<ext>` — text plus every inlined image. Cap with `--max-images N` (default 50). |
-| YouTube  | `transcript` | `metadata.json` + `transcript.md` (cue-tagged when captions are available). Honors `--youtube-source auto\|captions\|audio`. |
+| YouTube  | `transcript` | `metadata.json` + `transcript.md` (cue-tagged when captions are available). Honors `--youtube-source auto\|captions\|audio` and `--transcript-lang <iso-or-name>` (skips the caption-language picker; on a TTY, a multi-language video prompts for the track otherwise). |
 | YouTube  | `audio` | `metadata.json` + `audio.mp3`. Needs ffmpeg. |
 | YouTube  | `video` | `metadata.json` + `video.mp4` (or `.mkv`/`.webm` fallback). Needs ffmpeg. |
 

@@ -232,3 +232,30 @@ def test_cli_validate_rejects_garbage_ui_language():
 
     with pytest.raises(typer.BadParameter, match="--language"):
         _validate_lang_flags("klingon", None, None)
+
+
+# ---------------------------------------------------------------------------
+# --transcript-lang (Task 3)
+# ---------------------------------------------------------------------------
+
+
+def test_validate_transcript_lang_passthrough_empty():
+    from unread.cli import _validate_transcript_lang
+
+    assert _validate_transcript_lang(None) is None
+    assert _validate_transcript_lang("") is None
+
+
+def test_validate_transcript_lang_normalizes():
+    from unread.cli import _validate_transcript_lang
+
+    assert _validate_transcript_lang("FR") == "fr"
+    assert _validate_transcript_lang("French") == "fr"
+    assert _validate_transcript_lang("pt-BR") == "pt"
+
+
+def test_validate_transcript_lang_rejects_garbage():
+    from unread.cli import _validate_transcript_lang
+
+    with pytest.raises(typer.BadParameter, match="--transcript-lang"):
+        _validate_transcript_lang("klingon")

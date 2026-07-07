@@ -147,21 +147,84 @@ def _parse_vtt(text: str) -> str:
     return "\n".join(t for _, t in _parse_vtt_timed(text))
 
 
+def _lang_base(code: str) -> str:
+    """Base language code: strip locale/variant suffix, lowercase.
+
+    ``en-US`` / ``en-orig`` / ``zh_Hans`` -> ``en`` / ``en`` / ``zh``.
+    Mirrors the head-extraction in
+    `unread.util.languages.normalize_language_code` but doesn't require
+    ISO-639-1 membership — YouTube's caption/auto-translation codes
+    include values ISO doesn't recognize (dialect / variant tags).
+    """
+    s = (code or "").strip().lower()
+    for sep in ("-", "_", "."):
+        if sep in s:
+            return s.split(sep, 1)[0]
+    return s
+
+
+@dataclass(slots=True, frozen=True)
+class CaptionTrack:
+    """One caption track YouTube advertises for a video (no network — pure data)."""
+
+    lang: str
+    base: str
+    is_auto: bool
+
+
+def list_caption_tracks(metadata: YoutubeMetadata) -> list[CaptionTrack]:
+    """Full caption-track inventory from already-fetched metadata.
+
+    No network call — reads `metadata.subtitles` / `.automatic_captions`
+    (populated by `fetch_metadata`). Manual tracks first, then auto,
+    both alphabetical by language code; deduped by `(lang, is_auto)`.
+    Used to build the interactive language picker (later task) and to
+    list available codes in `NoTranscriptAvailable`'s hint.
+    """
+    manual = metadata.subtitles or {}
+    auto = metadata.automatic_captions or {}
+    out: list[CaptionTrack] = []
+    seen: set[tuple[str, bool]] = set()
+
+    def _add(lang: str, is_auto: bool) -> None:
+        key = (lang, is_auto)
+        if key in seen:
+            return
+        seen.add(key)
+        out.append(CaptionTrack(lang=lang, base=_lang_base(lang), is_auto=is_auto))
+
+    for lang in sorted(manual):
+        _add(lang, False)
+    for lang in sorted(auto):
+        _add(lang, True)
+    return out
+
+
 def _subtitle_candidates(
     metadata: YoutubeMetadata,
     preferred: list[str],
 ) -> list[tuple[str, bool]]:
     """Ordered list of `(lang_code, is_auto)` candidates to try.
 
-    Order:
-      1. For each preferred language: manual track first, then auto.
-      2. Any remaining manual tracks (alphabetical, deterministic).
-      3. Any remaining auto tracks (alphabetical, deterministic).
+    Candidates come ONLY from `preferred` languages — nothing outside
+    that list is ever fetched. This is the fix for the 429-storm: the
+    previous implementation appended every remaining manual/auto track
+    after the preferred ones, and YouTube's `automatic_captions` alone
+    can list 100+ auto-translation languages.
+
+    Order, for each preferred language in turn:
+      1. exact-key manual track
+      2. exact-key auto track
+      3. any other manual track whose base code matches (`en` matches
+         `en-US`, `en-orig`, …), alphabetical
+      4. any other auto track whose base code matches, alphabetical
 
     Preserving the "preferred-language wins over manual-vs-auto"
     invariant: an auto Russian track in an install configured for
     Russian source content beats English manual subs that happen to
-    be present.
+    be present. Deduped so a repeated preferred language, or one whose
+    base overlaps a previous preferred language, doesn't double-emit
+    a track.
     The list lets callers fall back when one entry 429s or returns
     empty — previously a single 429 on the user's preferred lang
     sent the whole flow to Whisper.
@@ -179,14 +242,17 @@ def _subtitle_candidates(
         out.append(key)
 
     for lang in preferred:
+        base = _lang_base(lang)
         if lang in manual:
             _add(lang, False)
         if lang in auto:
             _add(lang, True)
-    for lang in sorted(manual):
-        _add(lang, False)
-    for lang in sorted(auto):
-        _add(lang, True)
+        for other in sorted(manual):
+            if other != lang and _lang_base(other) == base:
+                _add(other, False)
+        for other in sorted(auto):
+            if other != lang and _lang_base(other) == base:
+                _add(other, True)
     return out
 
 
@@ -550,7 +616,28 @@ async def _transcribe_audio(
     return transcript, audio_model, cost, duration
 
 
-def _preferred_caption_langs(settings: Settings) -> list[str]:
+def _no_transcript_message(metadata: YoutubeMetadata) -> str:
+    """Build the `NoTranscriptAvailable` text: available codes + actionable hints."""
+    bases: list[str] = []
+    for track in list_caption_tracks(metadata):
+        if track.base not in bases:
+            bases.append(track.base)
+    codes = ", ".join(bases[:15])
+    available = f" Available caption languages: {codes}." if codes else " No captions are available at all."
+    return (
+        f"video {metadata.video_id} has no captions in the requested language.{available} "
+        "Re-run with --transcript-lang <code> to pick one of these, or "
+        "--youtube-source audio to use Whisper instead."
+    )
+
+
+def _preferred_caption_langs(
+    settings: Settings,
+    *,
+    content_language: str | None = None,
+    report_language: str | None = None,
+    ui_language: str | None = None,
+) -> list[str]:
     """Caption language preference.
 
     Order:
@@ -562,11 +649,24 @@ def _preferred_caption_langs(settings: Settings) -> list[str]:
       3. ``locale.language`` — UI language fallback.
       4. ``en``, ``ru`` — final default fallbacks so the picker still
          finds something if none of the above is set.
+
+    `content_language` / `report_language` / `ui_language`, when
+    non-empty, override the corresponding `settings.locale.*` read —
+    this is how CLI `--content-language` / `--report-language` /
+    `--language` overrides reach the caption-language preference list
+    without threading `settings` mutation through the call sites.
     """
     locale = getattr(settings, "locale", None)
+    overrides = {
+        "content_language": content_language,
+        "report_language": report_language,
+        "language": ui_language,
+    }
     out: list[str] = []
     for attr in ("content_language", "report_language", "language"):
-        val = (getattr(locale, attr, "") or "").lower()
+        override = overrides[attr]
+        raw = override if override else (getattr(locale, attr, "") or "")
+        val = raw.lower()
         if val and val not in out:
             out.append(val)
     for fallback in ("en", "ru"):
@@ -581,14 +681,30 @@ async def get_transcript(
     source: TranscriptSource = "auto",
     settings: Settings,
     repo: Repo,
+    transcript_lang: str | None = None,
+    preferred_langs: list[str] | None = None,
 ) -> TranscriptResult:
     """Resolve a transcript per the requested source.
 
     `source='captions'`: raises `NoTranscriptAvailable` if YouTube has none.
     `source='audio'`: always Whisper. Skips the captions probe.
     `source='auto'`: captions first, Whisper fallback.
+
+    `transcript_lang`, when set, is an explicit single-language choice:
+    candidates come from that language ONLY (exact key first, then
+    base-prefix matches) and there is no silent fallback to another
+    language — a miss raises `NoTranscriptAvailable` (`source="captions"`)
+    or goes straight to Whisper (`source="auto"`). `preferred_langs`,
+    used only when `transcript_lang` is unset, overrides
+    `_preferred_caption_langs(settings)` as the preference order. Both
+    default to `None` so existing call sites are unaffected.
     """
-    preferred = _preferred_caption_langs(settings)
+    if transcript_lang:
+        preferred = [transcript_lang]
+    elif preferred_langs:
+        preferred = preferred_langs
+    else:
+        preferred = _preferred_caption_langs(settings)
 
     if source in ("captions", "auto"):
         captions = await _fetch_captions(metadata, preferred_langs=preferred)
@@ -605,10 +721,7 @@ async def get_transcript(
                 is_auto=is_auto,
             )
         if source == "captions":
-            raise NoTranscriptAvailable(
-                f"video {metadata.video_id} has no captions; re-run with "
-                "--youtube-source=audio to use Whisper instead."
-            )
+            raise NoTranscriptAvailable(_no_transcript_message(metadata))
 
     text, _model, cost, duration = await _transcribe_audio(metadata, settings=settings, repo=repo)
     return TranscriptResult(

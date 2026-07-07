@@ -232,6 +232,25 @@ def extract_text_from_bytes(data: bytes, label: str = "stdin") -> ExtractResult:
 # ---- async extractors (Whisper / vision) -------------------------------
 
 
+def _cleanup_transcode_parts(parts: list[Path], path: Path) -> None:
+    """Delete every `transcode_for_openai` output except the caller's input.
+
+    `transcode_for_openai`'s contract guarantees each path in `parts` is
+    either `path` itself (voice pass-through — nothing was produced) or a
+    fresh file under `settings.media.tmp_dir` (a `.ogg` copy, a `_prep.mp3`
+    re-encode, `_chunk_*.mp3` segments, ...). On the local-file analysis
+    path `path` is the USER'S OWN file, so `p != path` is the one check
+    standing between "clean up our scratch files" and "delete something
+    the user didn't ask us to touch" — never skip it.
+    """
+    import contextlib
+
+    for part in parts:
+        if part != path:
+            with contextlib.suppress(FileNotFoundError):
+                part.unlink()
+
+
 async def extract_audio(path: Path) -> ExtractResult:
     """Transcribe an audio file via the audio slot's resolved provider.
 
@@ -240,6 +259,11 @@ async def extract_audio(path: Path) -> ExtractResult:
     conversion stay consistent with the Telegram voice path). Raises
     `RuntimeError` with a friendly message when the resolved provider
     has no key configured.
+
+    Cleans up every tmp file `transcode_for_openai` produced (the `.ogg`
+    copy / re-encode / chunk segments) once transcription finishes —
+    including on failure — but never touches `path` itself, which may be
+    the user's own file on the local-file analysis path.
     """
     from unread.ai.providers import (
         ProviderUnavailableError as _ProviderUnavailableError,
@@ -269,10 +293,13 @@ async def extract_audio(path: Path) -> ExtractResult:
     ensure_private_dir(tmp_dir)
     parts = await transcode_for_openai(path, "voice", tmp_dir)
     audio_lang = settings.openai.audio_language or None
-    pieces: list[str] = []
-    for part in parts:
-        text = await _transcribe_file(oai, part, audio_model, audio_lang)
-        pieces.append(text.strip())
+    try:
+        pieces: list[str] = []
+        for part in parts:
+            text = await _transcribe_file(oai, part, audio_model, audio_lang)
+            pieces.append(text.strip())
+    finally:
+        _cleanup_transcode_parts(parts, path)
     text = "\n".join(p for p in pieces if p)
     if not text:
         raise ValueError(_t("error_audio_silent"))
@@ -289,6 +316,11 @@ async def extract_video(path: Path) -> ExtractResult:
     extract-audio step when given media_type="video". Result shape
     matches :func:`extract_audio` so the caller can treat them
     interchangeably.
+
+    Cleans up every tmp file `transcode_for_openai` produced (the
+    extracted `_prep.mp3` / chunk segments) once transcription finishes —
+    including on failure — but never touches `path` itself, which may be
+    the user's own file on the local-file analysis path.
     """
     from unread.ai.providers import (
         ProviderUnavailableError as _ProviderUnavailableError,
@@ -318,10 +350,13 @@ async def extract_video(path: Path) -> ExtractResult:
     ensure_private_dir(tmp_dir)
     parts = await transcode_for_openai(path, "video", tmp_dir)
     audio_lang = settings.openai.audio_language or None
-    pieces: list[str] = []
-    for part in parts:
-        text = await _transcribe_file(oai, part, audio_model, audio_lang)
-        pieces.append(text.strip())
+    try:
+        pieces: list[str] = []
+        for part in parts:
+            text = await _transcribe_file(oai, part, audio_model, audio_lang)
+            pieces.append(text.strip())
+    finally:
+        _cleanup_transcode_parts(parts, path)
     text = "\n".join(p for p in pieces if p)
     if not text:
         raise ValueError(_t("error_video_silent"))

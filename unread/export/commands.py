@@ -140,6 +140,7 @@ async def _dispatch_dump_youtube(
     source_language: str,
     yes: bool,
     telegram_only_flags: dict[str, object],
+    transcript_lang: str | None = None,
 ) -> None:
     _check_telegram_only_flags("YouTube", telegram_only_flags)
     if youtube_source not in ("auto", "captions", "audio"):
@@ -159,6 +160,7 @@ async def _dispatch_dump_youtube(
         report_language=report_language,
         source_language=source_language,
         yes=yes,
+        transcript_lang=transcript_lang,
     )
 
 
@@ -232,6 +234,7 @@ async def cmd_dump(
     mode: str | None = None,
     youtube_source: str = "auto",
     max_images: int = 50,
+    transcript_lang: str | None = None,
 ) -> None:
     """Pull chat history end-to-end and write it to a file. No OpenAI chat analysis.
 
@@ -366,6 +369,7 @@ async def cmd_dump(
             report_language=eff_rlang_pre,
             source_language=eff_slang_pre,
             yes=yes,
+            transcript_lang=transcript_lang,
             telegram_only_flags={
                 "--folder": folder,
                 "--thread": thread is not None,

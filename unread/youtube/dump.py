@@ -122,7 +122,37 @@ async def _do_transcript_mode(
     dump_dir: Path,
     settings,
     cached_row: dict | None,
+    transcript_lang: str | None = None,
+    language: str = "en",
+    report_language: str = "en",
+    source_language: str = "",
+    yes: bool = False,
 ) -> None:
+    from unread.youtube.commands import _require_audio_ffmpeg
+    from unread.youtube.transcript import _lang_base
+
+    # `meta` came from `_restore_metadata_from_row` iff `cmd_dump_youtube`
+    # found a cache row (that helper hard-nulls the caption inventory — the
+    # DB row doesn't store `subtitles` / `automatic_captions`). Remember it
+    # so the fresh-fetch branch below can repopulate the inventory before it
+    # runs the picker / `get_transcript`.
+    meta_from_cache = cached_row is not None
+
+    # Explicit `--transcript-lang X` that disagrees with the cached row's
+    # language bypasses the cache entirely — mirrors `cmd_analyze_youtube`'s
+    # bypass so the same flag has the same effect across analyze/ask/dump.
+    if cached_row and transcript_lang:
+        cached_base = _lang_base(cached_row.get("language") or "")
+        if cached_base != _lang_base(transcript_lang):
+            cached_row = None
+
+    # `--youtube-source audio` needs ffmpeg up front — mirrors
+    # `cmd_analyze_youtube`'s early preflight so a missing binary surfaces
+    # a friendly banner before any network work starts instead of failing
+    # deep inside `get_transcript`.
+    if youtube_source == "audio":
+        _require_audio_ffmpeg()
+
     if cached_row and cached_row.get("transcript"):
         tres = TranscriptResult(
             text=cached_row["transcript"] or "",
@@ -133,12 +163,64 @@ async def _do_transcript_mode(
             timed_cues=None,
         )
     else:
+        from unread.youtube.commands import (
+            WHISPER_LANG_SENTINEL,
+            _dedup_display_tracks,
+            _interactive_pick_caption_lang,
+            _is_interactive,
+        )
+        from unread.youtube.transcript import _preferred_caption_langs
+
+        # A cache-restored `meta` has no caption inventory. We're about to
+        # fetch a fresh transcript (either the bypass nulled `cached_row`, or
+        # the row had no transcript) so re-fetch metadata to repopulate
+        # `subtitles` / `automatic_captions` — otherwise the picker sees zero
+        # tracks and `get_transcript` finds no candidates: under `auto` it
+        # silently downloads audio and bills Whisper (ignoring the requested
+        # caption language); under `captions` it falsely raises "no captions".
+        # Must happen before both the picker and `get_transcript` below.
+        if meta_from_cache and not (meta.subtitles or meta.automatic_captions):
+            try:
+                meta = await fetch_metadata(meta.video_id)
+            except YoutubeFetchError as e:
+                console.print(f"[red]{_t('youtube_fetch_failed').format(err=str(e)[:300])}[/]")
+                console.print(f"[grey70]{_t('youtube_fetch_failed_hint')}[/]")
+                raise typer.Exit(1) from e
+
+        # Caption language preference list: CLI overrides win over the
+        # saved `[locale]` settings. Feeds both the picker's preselect
+        # AND `get_transcript`'s fallback order — fixes the previously
+        # dead `report_language` / `source_language` params.
+        preselect = _preferred_caption_langs(
+            settings,
+            content_language=source_language or None,
+            report_language=report_language or None,
+            ui_language=language or None,
+        )
+
+        effective_source: TranscriptSource = youtube_source
+        effective_transcript_lang: str | None = transcript_lang
+        if transcript_lang is None and not yes and _is_interactive() and effective_source != "audio":
+            tracks = _dedup_display_tracks(meta)
+            if len(tracks) > 1:
+                picked_lang = await _interactive_pick_caption_lang(meta, preselect=preselect)
+                if picked_lang is None:
+                    console.print("[yellow]Cancelled.[/]")
+                    raise typer.Exit(0)
+                if picked_lang == WHISPER_LANG_SENTINEL:
+                    effective_source = "audio"
+                    _require_audio_ffmpeg()
+                else:
+                    effective_transcript_lang = picked_lang
+
         try:
             tres = await get_transcript(
                 meta,
-                source=youtube_source,
+                source=effective_source,
                 settings=settings,
                 repo=repo,
+                transcript_lang=effective_transcript_lang,
+                preferred_langs=preselect,
             )
         except NoTranscriptAvailable as e:
             raise typer.BadParameter(str(e)) from e
@@ -147,6 +229,7 @@ async def _do_transcript_mode(
             console.print(f"[grey70]{_t('youtube_fetch_failed_hint')}[/]")
             raise typer.Exit(1) from e
 
+        transcript_lang_kind = None if tres.is_auto is None else ("auto" if tres.is_auto else "manual")
         await repo.put_youtube_video(
             video_id=meta.video_id,
             url=meta.url,
@@ -166,6 +249,7 @@ async def _do_transcript_mode(
             transcript_model=(settings.openai.audio_model_default if tres.source == "audio" else None),
             transcript_cost_usd=tres.cost_usd,
             transcript_timed=tres.timed_cues,
+            transcript_lang_kind=transcript_lang_kind,
         )
 
     if not (tres.text or "").strip():
@@ -219,6 +303,7 @@ async def cmd_dump_youtube(
     report_language: str,
     source_language: str,
     yes: bool,
+    transcript_lang: str | None = None,
 ) -> None:
     """Dump a YouTube video. Mode picks the artifact (transcript / audio / video)."""
     settings = get_settings()
@@ -250,6 +335,11 @@ async def cmd_dump_youtube(
                 dump_dir=dump_dir,
                 settings=settings,
                 cached_row=cached_row,
+                transcript_lang=transcript_lang,
+                language=language,
+                report_language=report_language,
+                source_language=source_language,
+                yes=yes,
             )
         elif mode == "audio":
             await _do_audio_mode(meta=meta, dump_dir=dump_dir)

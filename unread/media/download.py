@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import hashlib
+import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -193,6 +194,18 @@ async def transcode_for_openai(
       - split into ≤600 s segments if file > 25 MB.
 
     Returns a list of 1+ files; the caller transcribes each segment in order.
+
+    Contract (callers rely on this): every returned path is EITHER ``src``
+    itself (the voice pass-through branch — nothing needed producing) OR a
+    fresh file inside ``tmp_dir``. This function never renames, moves, or
+    otherwise mutates ``src`` in place, so callers that don't own ``src``
+    (e.g. a user's own file on the local-file analysis path) can safely
+    unlink every returned path where ``p != src`` once they're done with
+    it, with no risk of touching the caller's original file. Any
+    intermediate re-encode this function creates for its own purposes (a
+    voice opus→mp3 conversion, the pre-chunk mp3 fed to the segmenter, …)
+    is unlinked internally as soon as it's superseded — callers never see
+    those paths and don't need to guess at internal naming.
     """
     settings = get_settings()
     ffmpeg = settings.media.ffmpeg_path
@@ -210,11 +223,16 @@ async def transcode_for_openai(
         # Normalize to `.ogg` unconditionally: OpenAI's Whisper detects
         # format from filename and rejects extensionless uploads with
         # a 400 `Unsupported file format`.
+        #
+        # Copy (never rename/move) into `tmp_dir` — `src` may be a user's
+        # own file on the local-file analysis path (`unread ./note.oga`).
+        # Renaming it in place would (a) mutate a file the user never
+        # asked us to touch, and (b) silently overwrite a preexisting
+        # `<name>.ogg` sitting right next to it (POSIX rename semantics).
         suffix = src.suffix.lower()
         if suffix in {"", ".oga"}:
-            renamed = src.with_suffix(".ogg")
-            src.rename(renamed)
-            prepared = renamed
+            prepared = tmp_dir / f"{src.stem or 'voice'}.ogg"
+            shutil.copy2(src, prepared)
         else:
             prepared = src
         # `gpt-4o-mini-transcribe` (the default since the model swap)
@@ -250,6 +268,13 @@ async def transcode_for_openai(
             rc, _, err = await _run(cmd)
             if rc != 0:
                 raise _ffmpeg_fail(cmd, err, "voice opus→mp3")
+            # `prepared` (the tmp .ogg copy made above, if any) is
+            # superseded by `mp3_path` — drop it now instead of leaking
+            # it. Skipped when `prepared is src` (opus pass-through with
+            # no copy made — nothing of ours to clean up).
+            if prepared != src:
+                with contextlib.suppress(FileNotFoundError):
+                    prepared.unlink()
             prepared = mp3_path
     else:
         if not await _ffmpeg_present(ffmpeg):
@@ -283,7 +308,6 @@ async def transcode_for_openai(
         return [prepared]
 
     # Need to chunk. Re-encode voice to mp3 first if we didn't already.
-    intermediate: Path | None = None
     if media_type == "voice":
         if not await _ffmpeg_present(ffmpeg):
             raise FfmpegMissing(f"ffmpeg required for chunking voice >{MAX_OPENAI_MB} MB.")
@@ -305,8 +329,21 @@ async def transcode_for_openai(
         rc, _, err = await _run(cmd)
         if rc != 0:
             raise _ffmpeg_fail(cmd, err, "voice→mp3")
-        intermediate = normalized
+        # `prepared` (the tmp .ogg copy or the prefer_mp3 mp3, whichever we
+        # entered this branch with) is superseded by `normalized` — unless
+        # it *is* `src` (opus pass-through, nothing of ours to clean up).
+        if prepared not in (src, normalized):
+            with contextlib.suppress(FileNotFoundError):
+                prepared.unlink()
         prepared = normalized
+
+    # `prepared` is now the single file fed to the segmenter below — for
+    # voice that's `normalized` from just above; for video/videonote it's
+    # the `_prep.mp3` produced earlier. Either way it's superseded by the
+    # chunk files once they exist, so clean it up once segmenting succeeds
+    # (this is the one internal intermediate the old code never unlinked —
+    # `_prep.mp3` used to leak forever whenever a video needed chunking).
+    pre_segment = prepared
 
     seg_pattern = tmp_dir / f"{src.stem}_chunk_%03d.mp3"
     cmd = [
@@ -331,11 +368,13 @@ async def transcode_for_openai(
     chunks = sorted(tmp_dir.glob(f"{src.stem}_chunk_*.mp3"))
     if not chunks:
         raise RuntimeError("ffmpeg produced no chunks")
-    # Intermediate re-encode (only created for voice) served only as input to the
-    # segmenter — no longer needed.
-    if intermediate is not None and intermediate not in chunks:
+    # `pre_segment` served only as input to the segmenter above — no
+    # longer needed now that the chunk files exist. Never `src` itself
+    # (video's `_prep.mp3` and voice's `normalized` both live in `tmp_dir`,
+    # but the guard is kept as defense-in-depth against future refactors).
+    if pre_segment != src and pre_segment not in chunks:
         with contextlib.suppress(FileNotFoundError):
-            intermediate.unlink()
+            pre_segment.unlink()
     return chunks
 
 

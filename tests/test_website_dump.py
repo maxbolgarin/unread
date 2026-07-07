@@ -133,10 +133,10 @@ async def test_full_mode_downloads_images_and_writes_section(tmp_path) -> None:
             self.content = content
             self.status_code = 200
 
-    async def _safe_get(url: str, **_kw):
+    async def _safe_get_capped(url: str, **_kw):
         if url.endswith(".png"):
-            return _Resp("image/png", b"\x89PNG\r\n\x1a\nfake")
-        return _Resp("image/jpeg", b"\xff\xd8\xff\xe0fake")
+            return _Resp("image/png", b"\x89PNG\r\n\x1a\nfake"), False
+        return _Resp("image/jpeg", b"\xff\xd8\xff\xe0fake"), False
 
     with (
         patch(
@@ -147,7 +147,7 @@ async def test_full_mode_downloads_images_and_writes_section(tmp_path) -> None:
             "unread.website.dump.extract_markdown_body",
             return_value="# Hello World\n\nhi",
         ),
-        patch("unread.website.images.safe_get", new=_safe_get),
+        patch("unread.website.images.safe_get_capped", new=_safe_get_capped),
     ):
         await cmd_dump_website(
             url=page.metadata.url,
@@ -183,8 +183,8 @@ async def test_full_mode_respects_max_images(tmp_path) -> None:
             self.content = b"\x89PNG\r\n\x1a\nfake"
             self.status_code = 200
 
-    async def _safe_get(url, **_kw):
-        return _Resp()
+    async def _safe_get_capped(url, **_kw):
+        return _Resp(), False
 
     with (
         patch(
@@ -192,7 +192,7 @@ async def test_full_mode_respects_max_images(tmp_path) -> None:
             new=_fetch_with_html_factory(page, html=raw_html),
         ),
         patch("unread.website.dump.extract_markdown_body", return_value="hi"),
-        patch("unread.website.images.safe_get", new=_safe_get),
+        patch("unread.website.images.safe_get_capped", new=_safe_get_capped),
     ):
         await cmd_dump_website(
             url=page.metadata.url,
@@ -265,16 +265,51 @@ async def test_download_skips_unsupported_content_type(tmp_path) -> None:
             self.content = b"not an image"
             self.status_code = 200
 
-    async def _safe_get(url, **_kw):
-        return _Resp()
+    async def _safe_get_capped(url, **_kw):
+        return _Resp(), False
 
-    with patch("unread.website.images.safe_get", new=_safe_get):
+    with patch("unread.website.images.safe_get_capped", new=_safe_get_capped):
         saved = await download_inlined_images(
             [(1, "https://x.test/a.png", "")],
             tmp_path / "_files",
             settings=settings,
         )
     assert saved == []
+
+
+async def test_download_skips_truncated_over_cap_image(tmp_path) -> None:
+    """An image body cut by the byte cap is corrupt → skipped, not saved.
+
+    `download_inlined_images` fetches via `safe_get_capped(...,
+    max_bytes=cfg.max_html_bytes)`. `truncated=True` means the cap fired;
+    a partial image file is useless, so it's skipped exactly like the old
+    post-hoc over-size check. Under-cap images are kept unchanged.
+    """
+    settings = get_settings()
+
+    class _Resp:
+        def __init__(self, content: bytes) -> None:
+            self.headers = {"content-type": "image/png"}
+            self.content = content
+            self.status_code = 200
+
+    async def _safe_get_capped(url, *, max_bytes=None, **_kw):
+        assert max_bytes == settings.website.max_html_bytes
+        if "huge" in url:
+            # Cap fired: body arrives sliced to the cap, flagged truncated.
+            return _Resp(b"\x89PNG" + b"x" * 100), True
+        return _Resp(b"\x89PNG\r\n\x1a\nfake"), False
+
+    with patch("unread.website.images.safe_get_capped", new=_safe_get_capped):
+        saved = await download_inlined_images(
+            [(1, "https://x.test/huge.png", ""), (2, "https://x.test/small.png", "")],
+            tmp_path / "_files",
+            settings=settings,
+        )
+
+    assert [(idx, p.name) for idx, p, _alt in saved] == [(2, "img-2.png")]
+    assert not (tmp_path / "_files" / "img-1.png").exists()
+    assert (tmp_path / "_files" / "img-2.png").read_bytes() == b"\x89PNG\r\n\x1a\nfake"
 
 
 def test_render_image_section_empty() -> None:

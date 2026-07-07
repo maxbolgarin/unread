@@ -32,10 +32,14 @@ from unread.util.pricing import audio_cost
 from unread.youtube.metadata import YoutubeMetadata, fetch_metadata
 from unread.youtube.paths import youtube_report_path
 from unread.youtube.transcript import (
+    CaptionTrack,
     NoTranscriptAvailable,
     TranscriptSource,
     YoutubeFetchError,
+    _lang_base,
+    _preferred_caption_langs,
     get_transcript,
+    list_caption_tracks,
 )
 from unread.youtube.urls import extract_video_id
 
@@ -304,6 +308,101 @@ async def _interactive_pick_source(
     return answer
 
 
+# Sentinel returned by `_interactive_pick_caption_lang` for the "None of
+# these — transcribe audio with Whisper" row. Shared across the analyze /
+# ask / dump wiring so callers all recognize the same value.
+WHISPER_LANG_SENTINEL = "__whisper__"
+
+
+def _dedup_display_tracks(meta: YoutubeMetadata) -> list[CaptionTrack]:
+    """One row per base language for the picker; manual wins over auto.
+
+    `list_caption_tracks` emits SEPARATE rows for a manual and an auto
+    track of the same base language (e.g. manual `en` + auto `en-US`
+    both have base `en`) — useful for the full inventory, but the
+    picker should show exactly one row per base language. The winner
+    is decided independently of iteration/candidate order: a manual
+    track for a base never loses to an auto track for that base, even
+    if (per `_subtitle_candidates`' ordering elsewhere) an exact auto
+    track would sort before a prefix-matching manual track.
+    """
+    by_base: dict[str, CaptionTrack] = {}
+    for track in list_caption_tracks(meta):
+        existing = by_base.get(track.base)
+        if existing is None or (existing.is_auto and not track.is_auto):
+            by_base[track.base] = track
+    return [by_base[base] for base in sorted(by_base)]
+
+
+def _require_audio_ffmpeg() -> None:
+    """ffmpeg preflight for the Whisper/audio transcript path.
+
+    Shared by the explicit `--youtube-source audio` branch and the
+    caption-language picker's "transcribe with Whisper" row so both
+    surface the same friendly missing-ffmpeg banner before any
+    network work starts.
+    """
+    from unread.util.preflight import require_ffmpeg
+
+    require_ffmpeg("download and transcribe YouTube audio")
+
+
+async def _interactive_pick_caption_lang(
+    meta: YoutubeMetadata,
+    *,
+    preselect: list[str],
+) -> str | None:
+    """Prompt the user to pick which caption-language track to use.
+
+    Returns the chosen track's `lang` code (forward as
+    `get_transcript(transcript_lang=...)`), the sentinel
+    :data:`WHISPER_LANG_SENTINEL` when the user picks "transcribe
+    audio with Whisper" instead, or `None` on cancel.
+
+    `preselect` is an ordered language preference (e.g.
+    `_preferred_caption_langs(settings)`); the first entry whose base
+    language has an available track pre-highlights that row.
+    """
+    from unread.util.languages import language_display_name
+    from unread.util.prompt import Choice
+    from unread.util.prompt import select as _select
+    from unread.util.prompt import separator as _sep
+
+    tracks = _dedup_display_tracks(meta)
+    suffix = {
+        True: _t("youtube_lang_pick_auto_suffix"),
+        False: _t("youtube_lang_pick_manual_suffix"),
+    }
+    choices: list = [
+        Choice(
+            value=track.lang,
+            label=f"{language_display_name(track.base)}{suffix[track.is_auto]}",
+        )
+        for track in tracks
+    ]
+
+    default_value: str | None = None
+    for lang in preselect:
+        base = _lang_base(lang)
+        match = next((t for t in tracks if t.base == base), None)
+        if match is not None:
+            default_value = match.lang
+            break
+
+    choices.append(_sep())
+    choices.append(Choice(value=WHISPER_LANG_SENTINEL, label=_t("youtube_lang_pick_whisper_row")))
+    choices.append(Choice(value="__cancel__", label=_t("wiz_cancel_choice")))
+
+    answer = _select(
+        _t("youtube_lang_pick_title"),
+        choices=choices,
+        default_value=default_value,
+    )
+    if answer is None or answer == "__cancel__":
+        return None
+    return answer
+
+
 def _restore_metadata_from_row(row: dict) -> YoutubeMetadata:
     """Rebuild YoutubeMetadata from a `youtube_videos` cache row."""
     import json
@@ -354,6 +453,7 @@ async def cmd_analyze_youtube(
     source_language: str = "",
     youtube_source: TranscriptSource = "auto",
     yes: bool = False,
+    transcript_lang: str | None = None,
 ) -> None:
     """Analyze one YouTube video. Captions-first, Whisper fallback."""
     from unread.analyzer.commands import (
@@ -376,9 +476,7 @@ async def cmd_analyze_youtube(
     # naturally with the existing transcript-side error so a captions-
     # only run on a machine without ffmpeg still works.)
     if youtube_source == "audio":
-        from unread.util.preflight import require_ffmpeg
-
-        require_ffmpeg("download and transcribe YouTube audio")
+        _require_audio_ffmpeg()
 
     # YouTube videos default to the `video` preset (system prompt tuned
     # for transcripts, time-stamped citations, no chat semantics). User
@@ -387,15 +485,29 @@ async def cmd_analyze_youtube(
 
     async with open_repo(settings.storage.data_path) as repo:
         cached = None if no_cache else await repo.get_youtube_video(video_id)
+        # Explicit `--transcript-lang X` that disagrees with the cached
+        # row's language bypasses the cache entirely — the row was
+        # fetched under a different language preference and would
+        # silently return stale text. `put_youtube_video` below
+        # overwrites the row once the re-fetch completes.
+        if cached and transcript_lang:
+            cached_base = _lang_base(cached.get("language") or "")
+            if cached_base != _lang_base(transcript_lang):
+                cached = None
         timed_cues: list[tuple[int, str]] | None = None
         transcript_lang_kind: str | None = None
+        # Language of the transcript we actually end up with (the fetched
+        # caption track / Whisper detection). Kept distinct from the
+        # `transcript_lang` PARAMETER, which carries the user's requested
+        # `--transcript-lang` and must never be overwritten mid-run.
+        fetched_lang: str | None = None
         if cached and cached.get("transcript"):
             console.print(f"[grey70]Using cached YouTube metadata + transcript ({video_id})[/]")
             metadata = _restore_metadata_from_row(cached)
             transcript_text = cached["transcript"] or ""
             transcript_source: str = cached.get("transcript_source") or "captions"
             transcript_cost = float(cached.get("transcript_cost_usd") or 0.0)
-            transcript_lang = cached.get("language")
+            fetched_lang = cached.get("language")
             transcript_lang_kind = cached.get("transcript_lang_kind")
             timed_raw = cached.get("transcript_timed_json")
             if timed_raw:
@@ -441,12 +553,48 @@ async def cmd_analyze_youtube(
                     raise typer.Exit(0)
                 effective_source = picked
 
+            # Caption language preference list: CLI overrides (already
+            # resolved to their effective values by `cmd_analyze`) win
+            # over the saved `[locale]` settings. Feeds both the picker's
+            # preselect AND `get_transcript`'s fallback order, so a
+            # `--report-language` / `--content-language` override affects
+            # non-interactive runs too (previously a dead param here).
+            preselect = _preferred_caption_langs(
+                settings,
+                content_language=source_language or None,
+                report_language=report_language or None,
+                ui_language=language or None,
+            )
+
+            # Caption-language picker: runs AFTER the source picker so a
+            # user who picked "audio" (or was given --youtube-source
+            # audio) never sees a language menu for a path that isn't
+            # going to use captions. Skipped when: non-interactive, --yes,
+            # an explicit --transcript-lang was already given, there's
+            # ≤1 distinct caption language to choose from, or the
+            # effective source is "audio".
+            effective_transcript_lang: str | None = transcript_lang
+            if transcript_lang is None and not yes and _is_interactive() and effective_source != "audio":
+                tracks = _dedup_display_tracks(metadata)
+                if len(tracks) > 1:
+                    picked_lang = await _interactive_pick_caption_lang(metadata, preselect=preselect)
+                    if picked_lang is None:
+                        console.print("[yellow]Cancelled.[/]")
+                        raise typer.Exit(0)
+                    if picked_lang == WHISPER_LANG_SENTINEL:
+                        effective_source = "audio"
+                        _require_audio_ffmpeg()
+                    else:
+                        effective_transcript_lang = picked_lang
+
             try:
                 tres = await get_transcript(
                     metadata,
                     source=effective_source,
                     settings=settings,
                     repo=repo,
+                    transcript_lang=effective_transcript_lang,
+                    preferred_langs=preselect,
                 )
             except NoTranscriptAvailable as e:
                 raise typer.BadParameter(str(e)) from e
@@ -457,7 +605,7 @@ async def cmd_analyze_youtube(
             transcript_text = tres.text
             transcript_source = tres.source
             transcript_cost = tres.cost_usd
-            transcript_lang = tres.language
+            fetched_lang = tres.language
             timed_cues = tres.timed_cues
             transcript_lang_kind = None if tres.is_auto is None else ("auto" if tres.is_auto else "manual")
 
@@ -479,7 +627,7 @@ async def cmd_analyze_youtube(
                 view_count=metadata.view_count,
                 like_count=metadata.like_count,
                 tags=metadata.tags,
-                language=transcript_lang,
+                language=fetched_lang,
                 transcript=transcript_text,
                 transcript_source=transcript_source,
                 transcript_model=(
@@ -588,8 +736,8 @@ async def cmd_analyze_youtube(
 
         # Surface which captions track the analysis is based on so the user
         # can spot a Russian-channel-with-English-manual-subs mismatch.
-        if transcript_lang:
-            result.transcript_lang = transcript_lang
+        if fetched_lang:
+            result.transcript_lang = fetched_lang
         if transcript_source == "audio":
             result.transcript_lang_kind = "audio"
         elif transcript_lang_kind:

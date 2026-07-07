@@ -258,3 +258,61 @@ def test_youtube_url_invalid_youtube_source_errors() -> None:
     assert "youtube-source" in result.output
     yt_mock.assert_not_called()
     tg_mock.assert_not_called()
+
+
+def test_youtube_url_transcript_lang_flag_reaches_cmd_dump_youtube() -> None:
+    """`unread dump <yt-url> --transcript-lang FR` reaches `cmd_dump_youtube`
+    with the validated + normalized code."""
+    from unread.cli import app
+
+    with (
+        patch(
+            "unread.youtube.dump.cmd_dump_youtube",
+            new_callable=AsyncMock,
+        ) as yt_mock,
+        patch("unread.export.commands.tg_client") as tg_mock,
+    ):
+        result = _runner().invoke(
+            app,
+            [
+                "dump",
+                "https://youtu.be/dQw4w9WgXcQ",
+                "--mode",
+                "transcript",
+                "--transcript-lang",
+                "FR",
+            ],
+        )
+
+    assert result.exit_code == 0, result.output
+    yt_mock.assert_called_once()
+    assert yt_mock.call_args.kwargs["transcript_lang"] == "fr"
+    tg_mock.assert_not_called()
+
+
+def test_youtube_url_invalid_transcript_lang_errors() -> None:
+    from unread.cli import app
+
+    with (
+        patch(
+            "unread.youtube.dump.cmd_dump_youtube",
+            new_callable=AsyncMock,
+        ) as yt_mock,
+        patch("unread.export.commands.tg_client") as tg_mock,
+    ):
+        result = _runner().invoke(
+            app,
+            [
+                "dump",
+                "https://youtu.be/abc",
+                "--mode",
+                "transcript",
+                "--transcript-lang",
+                "klingon",
+            ],
+        )
+
+    assert result.exit_code != 0
+    assert "transcript-lang" in result.output.lower()
+    yt_mock.assert_not_called()
+    tg_mock.assert_not_called()

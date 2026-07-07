@@ -361,14 +361,16 @@ async def _http_get(
     down to an ISO 639-1 code, or None when the server didn't send it
     (which is most servers — `<html lang>` is more commonly used).
     """
-    from unread.util.safe_fetch import BlockedURLError, safe_get
+    from unread.util.safe_fetch import BlockedURLError, safe_get_capped
 
     try:
         # SSRF guard: validate the initial URL and every redirect hop
         # so a malicious page can't bounce us to AWS metadata, local
         # admin panels, or LAN hosts. The fetched body is fed to the
         # LLM and into the user's report; a leak there exfiltrates.
-        resp = await safe_get(
+        # The body is streamed under `max_bytes` so an unbounded response
+        # can't OOM us — the cap is applied inside the fetch, not post-hoc.
+        resp, truncated = await safe_get_capped(
             url,
             timeout_sec=timeout_sec,
             headers={
@@ -377,6 +379,7 @@ async def _http_get(
                 "Accept-Language": "en-US,en;q=0.7,ru;q=0.3",
             },
             max_redirects=10,
+            max_bytes=max_bytes,
         )
     except BlockedURLError as e:
         raise WebsiteFetchError(f"Refused to fetch {url!r}: {e}") from e
@@ -391,12 +394,10 @@ async def _http_get(
 
     header_lang = _content_language_from_header(resp.headers.get("content-language"))
 
-    raw_size = len(resp.content)
     text = resp.text
-    if raw_size > max_bytes:
-        log.warning("website.fetch.truncated", url=url, raw_size=raw_size, cap=max_bytes)
-        text = text[:max_bytes]
-        raw_size = max_bytes
+    raw_size = len(resp.content)
+    if truncated:
+        log.warning("website.fetch.truncated", url=url, cap=max_bytes)
     return text, raw_size, header_lang
 
 
