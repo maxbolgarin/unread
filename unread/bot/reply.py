@@ -33,8 +33,9 @@ log = structlog.get_logger(__name__)
 # Phase tags that count toward a single analyze-from-the-bot request.
 # Mirrors the tags written by `analyzer/openai_client.py` and the
 # enrich orchestrators. We don't separate by source kind here — every
-# request pays for one map+reduce pass plus its own enrichment fan-out,
-# so summing across both gives the user the real-money figure.
+# request pays for either a single-pass `analyze` call or a map+reduce
+# pass (`analyze_map` + `analyze_reduce`), plus its own enrichment
+# fan-out, so summing across all of them gives the real-money figure.
 _ANALYZE_PHASES: tuple[str, ...] = (
     "analyze",
     "analyze_map",

@@ -143,7 +143,7 @@ async def test_audio_enrich_log_usage_context_carries_phase(monkeypatch, tmp_pat
     from unread.enrich import audio as audio_mod
 
     settings = get_settings()
-    settings.media.tmp_dir = tmp_path
+    monkeypatch.setattr(settings.media, "tmp_dir", tmp_path)
 
     downloaded = tmp_path / "downloaded.ogg"
     downloaded.write_bytes(b"fake audio bytes")

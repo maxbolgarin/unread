@@ -496,13 +496,18 @@ async def cmd_analyze_youtube(
                 cached = None
         timed_cues: list[tuple[int, str]] | None = None
         transcript_lang_kind: str | None = None
+        # Language of the transcript we actually end up with (the fetched
+        # caption track / Whisper detection). Kept distinct from the
+        # `transcript_lang` PARAMETER, which carries the user's requested
+        # `--transcript-lang` and must never be overwritten mid-run.
+        fetched_lang: str | None = None
         if cached and cached.get("transcript"):
             console.print(f"[grey70]Using cached YouTube metadata + transcript ({video_id})[/]")
             metadata = _restore_metadata_from_row(cached)
             transcript_text = cached["transcript"] or ""
             transcript_source: str = cached.get("transcript_source") or "captions"
             transcript_cost = float(cached.get("transcript_cost_usd") or 0.0)
-            transcript_lang = cached.get("language")
+            fetched_lang = cached.get("language")
             transcript_lang_kind = cached.get("transcript_lang_kind")
             timed_raw = cached.get("transcript_timed_json")
             if timed_raw:
@@ -600,7 +605,7 @@ async def cmd_analyze_youtube(
             transcript_text = tres.text
             transcript_source = tres.source
             transcript_cost = tres.cost_usd
-            transcript_lang = tres.language
+            fetched_lang = tres.language
             timed_cues = tres.timed_cues
             transcript_lang_kind = None if tres.is_auto is None else ("auto" if tres.is_auto else "manual")
 
@@ -622,7 +627,7 @@ async def cmd_analyze_youtube(
                 view_count=metadata.view_count,
                 like_count=metadata.like_count,
                 tags=metadata.tags,
-                language=transcript_lang,
+                language=fetched_lang,
                 transcript=transcript_text,
                 transcript_source=transcript_source,
                 transcript_model=(
@@ -731,8 +736,8 @@ async def cmd_analyze_youtube(
 
         # Surface which captions track the analysis is based on so the user
         # can spot a Russian-channel-with-English-manual-subs mismatch.
-        if transcript_lang:
-            result.transcript_lang = transcript_lang
+        if fetched_lang:
+            result.transcript_lang = fetched_lang
         if transcript_source == "audio":
             result.transcript_lang_kind = "audio"
         elif transcript_lang_kind:

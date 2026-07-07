@@ -131,6 +131,13 @@ async def _do_transcript_mode(
     from unread.youtube.commands import _require_audio_ffmpeg
     from unread.youtube.transcript import _lang_base
 
+    # `meta` came from `_restore_metadata_from_row` iff `cmd_dump_youtube`
+    # found a cache row (that helper hard-nulls the caption inventory — the
+    # DB row doesn't store `subtitles` / `automatic_captions`). Remember it
+    # so the fresh-fetch branch below can repopulate the inventory before it
+    # runs the picker / `get_transcript`.
+    meta_from_cache = cached_row is not None
+
     # Explicit `--transcript-lang X` that disagrees with the cached row's
     # language bypasses the cache entirely — mirrors `cmd_analyze_youtube`'s
     # bypass so the same flag has the same effect across analyze/ask/dump.
@@ -163,6 +170,22 @@ async def _do_transcript_mode(
             _is_interactive,
         )
         from unread.youtube.transcript import _preferred_caption_langs
+
+        # A cache-restored `meta` has no caption inventory. We're about to
+        # fetch a fresh transcript (either the bypass nulled `cached_row`, or
+        # the row had no transcript) so re-fetch metadata to repopulate
+        # `subtitles` / `automatic_captions` — otherwise the picker sees zero
+        # tracks and `get_transcript` finds no candidates: under `auto` it
+        # silently downloads audio and bills Whisper (ignoring the requested
+        # caption language); under `captions` it falsely raises "no captions".
+        # Must happen before both the picker and `get_transcript` below.
+        if meta_from_cache and not (meta.subtitles or meta.automatic_captions):
+            try:
+                meta = await fetch_metadata(meta.video_id)
+            except YoutubeFetchError as e:
+                console.print(f"[red]{_t('youtube_fetch_failed').format(err=str(e)[:300])}[/]")
+                console.print(f"[grey70]{_t('youtube_fetch_failed_hint')}[/]")
+                raise typer.Exit(1) from e
 
         # Caption language preference list: CLI overrides win over the
         # saved `[locale]` settings. Feeds both the picker's preselect

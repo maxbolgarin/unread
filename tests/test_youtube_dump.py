@@ -398,6 +398,75 @@ async def test_transcript_mode_cache_bypassed_on_transcript_lang_mismatch(tmp_pa
     assert "cached english transcript" not in md
 
 
+async def test_transcript_mode_cache_bypass_refetches_metadata_inventory(tmp_path) -> None:
+    """When the cache is bypassed on a `--transcript-lang` mismatch, the
+    `meta` restored from the DB row has NO caption inventory (the row never
+    stored `subtitles` / `automatic_captions`). `_do_transcript_mode` must
+    re-fetch metadata via `fetch_metadata` BEFORE the picker / get_transcript
+    so the real caption tracks are visible — otherwise `auto` silently bills
+    Whisper and `captions` falsely errors "no captions available".
+
+    Mirrors the analyze-path assertion in
+    `tests/test_youtube_command.py::test_analyze_youtube_cached_row_bypassed_on_transcript_lang_mismatch`.
+    """
+    out = tmp_path / "out"
+    meta = _meta("vid-refetch1")
+    await _put_cached_row(meta, language="en", transcript="cached english transcript")
+
+    # A fresh fetch carries the caption inventory the DB row can't hold.
+    fr_inventory = {"fr": [{"url": "https://x/fr.vtt", "ext": "vtt"}]}
+    fresh_meta = YoutubeMetadata(
+        video_id=meta.video_id,
+        url=meta.url,
+        title=meta.title,
+        channel_id=meta.channel_id,
+        channel_title=meta.channel_title,
+        channel_url=meta.channel_url,
+        description=meta.description,
+        upload_date=meta.upload_date,
+        duration_sec=meta.duration_sec,
+        view_count=meta.view_count,
+        like_count=meta.like_count,
+        subtitles=fr_inventory,
+        automatic_captions={},
+    )
+    fetch_metadata_mock = AsyncMock(return_value=fresh_meta)
+    tres = TranscriptResult(
+        text="texte francais",
+        source="captions",
+        language="fr",
+        duration_sec=120,
+        cost_usd=0.0,
+        timed_cues=[(0, "bonjour")],
+    )
+    get_transcript_mock = AsyncMock(return_value=tres)
+    with (
+        patch("unread.youtube.dump.fetch_metadata", new=fetch_metadata_mock),
+        patch("unread.youtube.dump.get_transcript", new=get_transcript_mock),
+    ):
+        await cmd_dump_youtube(
+            url=meta.url,
+            mode="transcript",
+            youtube_source="auto",
+            output=out,
+            console_out=False,
+            language="en",
+            report_language="en",
+            source_language="",
+            yes=True,
+            transcript_lang="fr",
+        )
+    # cmd_dump_youtube took the cache path (found a row), so the ONLY
+    # fetch_metadata call is the re-fetch inside _do_transcript_mode.
+    fetch_metadata_mock.assert_called_once()
+    assert fetch_metadata_mock.call_args.args[0] == meta.video_id
+    # The re-fetched inventory reaches get_transcript (first positional arg).
+    get_transcript_mock.assert_called_once()
+    passed_meta = get_transcript_mock.call_args.args[0]
+    assert passed_meta.subtitles == fr_inventory
+    assert get_transcript_mock.call_args.kwargs["transcript_lang"] == "fr"
+
+
 async def test_transcript_mode_cache_reused_when_lang_matches(tmp_path) -> None:
     """Same cached row, but `--transcript-lang en` matches the cached
     language (base-prefix aware) — cache must still be used, get_transcript

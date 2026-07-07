@@ -153,17 +153,22 @@ _FakeAPIStatusError.__name__ = "APIStatusError"
 def _patch_openai_errors(monkeypatch):
     """Register a fake `openai` module so `retry_on_429`'s lazy
     `from openai import ...` import resolves to our fakes instead of
-    requiring the real SDK / real exception hierarchy in tests."""
+    requiring the real SDK / real exception hierarchy in tests.
+
+    Everything is patched via `monkeypatch` so the real `openai` module's
+    attributes (or the synthetic fallback module) are restored per-test —
+    no permanent mutation of the global module leaks into other tests.
+    """
     import sys
     import types
 
     mod = sys.modules.get("openai")
     if mod is None:
         mod = types.ModuleType("openai")
-        sys.modules["openai"] = mod
-    mod.RateLimitError = _FakeRateLimitError
-    mod.APITimeoutError = _FakeAPITimeoutError
-    mod.APIStatusError = _FakeAPIStatusError
+        monkeypatch.setitem(sys.modules, "openai", mod)
+    monkeypatch.setattr(mod, "RateLimitError", _FakeRateLimitError, raising=False)
+    monkeypatch.setattr(mod, "APITimeoutError", _FakeAPITimeoutError, raising=False)
+    monkeypatch.setattr(mod, "APIStatusError", _FakeAPIStatusError, raising=False)
     yield
 
 
