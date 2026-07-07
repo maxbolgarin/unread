@@ -454,9 +454,10 @@ async def _cmd_run_flat(
     from datetime import UTC as _UTC
     from datetime import datetime as _dt
 
+    from unread.analyzer.commands import enforce_max_cost_gate
     from unread.analyzer.formatter import build_link_template
-    from unread.analyzer.pipeline import AnalysisOptions, run_analysis
-    from unread.analyzer.prompts import PRESETS
+    from unread.analyzer.pipeline import AnalysisOptions, _resolve_report_lang, run_analysis
+    from unread.analyzer.prompts import PRESETS, get_presets
     from unread.config import get_settings as _get_settings
     from unread.core.paths import derive_internal_id
     from unread.core.pipeline import prepare_chat_run
@@ -658,6 +659,23 @@ async def _cmd_run_flat(
         if not all_messages:
             console.print(f"[yellow]{_t('run_no_msgs_across_subs')}[/]")
             return
+
+        # B3: --max-cost was accepted but never enforced here — the
+        # per-chat path (`_run_single` in analyzer/commands.py) enforced
+        # it via `estimate_cost`, this one didn't. Load the same Preset
+        # `run_analysis` will load internally (via `_load_preset`, keyed
+        # on the resolved report language) and run the shared gate on
+        # the final merged message count, before the one expensive call.
+        loaded_preset = get_presets(_resolve_report_lang(settings)).get(preset_name)
+        if loaded_preset is not None:
+            await enforce_max_cost_gate(
+                n_messages=len(all_messages),
+                preset=loaded_preset,
+                settings=settings,
+                max_cost=max_cost,
+                yes=yes,
+                preset_label=preset_name,
+            )
 
         # One merged analysis.
         opts = AnalysisOptions(
