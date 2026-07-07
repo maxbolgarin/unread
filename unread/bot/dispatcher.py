@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import re
 from typing import Any
+from urllib.parse import urlparse
 
 from telethon import events
 from telethon.tl.types import (
@@ -32,13 +33,17 @@ from telethon.tl.types import (
 # only so a stray "google.com" in prose doesn't trigger website analysis.
 _URL_RE = re.compile(r"https?://\S+", re.IGNORECASE)
 
-# t.me link variants we recognize as "fetch this TG message/thread/chat".
-# Public ("t.me/<username>/<msg_id>") and private ("t.me/c/<id>/<msg>")
-# forms. The "@username" bare form is treated as TG-handler input too.
-_TME_RE = re.compile(
-    r"^https?://(?:t\.me|telegram\.me)/(?:c/\d+/\d+|[A-Za-z0-9_]+(?:/\d+)?)/?$",
-    re.IGNORECASE,
-)
+# Hosts that mean "this is a Telegram link" — matched against
+# `urlparse(url).hostname`, not the raw string, so query params
+# (`?single`, `?comment=123`), forum-topic 3-segment paths
+# (`t.me/c/<id>/<topic>/<msg>`), and invite links (`t.me/+abc`) all route
+# to the TG handler. A prior anchored regex only matched a narrow set of
+# path shapes and silently fell through to the website analyzer for
+# everything else (summarizing t.me's login shell). Invite links now also
+# route here — the resolver gives a polite error, which beats website-
+# analyzing t.me. The "@username" bare form is treated as TG-handler
+# input too (see `_BARE_USERNAME_RE` below).
+_TME_HOSTS = {"t.me", "telegram.me"}
 _BARE_USERNAME_RE = re.compile(r"^@[A-Za-z0-9_]{5,32}$")
 
 
@@ -301,7 +306,11 @@ def _kind_for_mime(mime: str, name: str) -> str:
 
 
 def _is_tme_url(url: str) -> bool:
-    return bool(_TME_RE.match(url))
+    try:
+        hostname = urlparse(url).hostname
+    except ValueError:
+        return False
+    return (hostname or "").lower() in _TME_HOSTS
 
 
 def _is_youtube_url(url: str) -> bool:

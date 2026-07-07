@@ -94,8 +94,18 @@ async def handle_uploaded_file(event: events.NewMessage.Event, *, app: BotApp) -
 
     # Stage into a tempfile so a half-downloaded blob can't clobber the
     # currently-active session if something goes wrong mid-transfer.
+    #
+    # Name it `candidate.session` (NOT `.sqlite`): Telethon's `SQLiteSession`
+    # appends `.session` to any session name that doesn't already end in it
+    # (see `telethon/sessions/sqlite.py`). If we staged this as
+    # `candidate.sqlite`, `_probe_candidate_owner_id` below would hand
+    # Telethon that name, which it silently mangles into
+    # `candidate.sqlite.session` — a brand-new, empty session file — so
+    # `is_user_authorized()` is always False and every valid upload gets
+    # rejected. Staging with the suffix already present means Telethon
+    # opens exactly the file we just downloaded.
     tmp_dir = Path(tempfile.mkdtemp(prefix="unread-bot-session-"))
-    staged = tmp_dir / "candidate.sqlite"
+    staged = tmp_dir / "candidate.session"
     try:
         assert app.bot_client is not None
         downloaded = await app.bot_client.download_media(event.message, file=str(staged))
@@ -121,7 +131,13 @@ async def handle_uploaded_file(event: events.NewMessage.Event, *, app: BotApp) -
             return
 
         target.parent.mkdir(parents=True, exist_ok=True)
-        os.replace(str(downloaded), str(target))
+        # `shutil.move`, not `os.replace`: the staged file lives in a
+        # tempdir that may be on a different filesystem than the install
+        # target (e.g. Docker tmpfs → a mounted named volume), and
+        # `os.replace`/`os.rename` raise `OSError: EXDEV` across
+        # filesystems. `shutil.move` falls back to copy+remove in that
+        # case.
+        shutil.move(str(downloaded), str(target))
         with contextlib.suppress(OSError):
             os.chmod(target, 0o600)
         app.user_session_ready = True

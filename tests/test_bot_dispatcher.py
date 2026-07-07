@@ -176,6 +176,56 @@ def test_classify_tme_link_with_link_preview_is_tg():
 
 
 # ----------------------------------------------------------------------
+# B6: host-based t.me routing (query params, topic segments, invite links)
+# ----------------------------------------------------------------------
+
+
+def test_classify_tme_link_with_single_query_param_is_tg():
+    """`?single` is Telegram's "show only this message" query param —
+    a real-world share link shape the old anchored regex rejected."""
+    ev = _FakeEvent(_FakeMessage(message="https://t.me/somechan/4567?single"))
+    kind, payload = classify(ev)
+    assert kind == "tg"
+    assert payload["url"] == "https://t.me/somechan/4567?single"
+
+
+def test_classify_tme_link_with_comment_query_param_is_tg():
+    ev = _FakeEvent(_FakeMessage(message="https://t.me/somechan/4567?comment=123"))
+    kind, _ = classify(ev)
+    assert kind == "tg"
+
+
+def test_classify_tme_private_topic_link_is_tg():
+    """Forum-topic private links are 3-segment: t.me/c/<chat_id>/<topic_id>/<msg_id>."""
+    ev = _FakeEvent(_FakeMessage(message="https://t.me/c/123/2/456"))
+    kind, _ = classify(ev)
+    assert kind == "tg"
+
+
+def test_classify_tme_invite_link_is_tg():
+    """Invite links now route to the TG handler (whose resolver gives a
+    polite error) instead of being website-analyzed (t.me's login shell)."""
+    ev = _FakeEvent(_FakeMessage(message="https://t.me/+AbCdEf12345"))
+    kind, _ = classify(ev)
+    assert kind == "tg"
+
+
+def test_classify_telegram_me_host_variant_is_tg():
+    ev = _FakeEvent(_FakeMessage(message="https://telegram.me/somechan/4567"))
+    kind, _ = classify(ev)
+    assert kind == "tg"
+
+
+def test_classify_non_tme_host_is_unchanged():
+    """A lookalike host that merely contains "t.me" must NOT match —
+    hostname equality, not substring."""
+    ev = _FakeEvent(_FakeMessage(message="https://nott.me/somechan/4567"))
+    kind, payload = classify(ev)
+    assert kind == "url"
+    assert payload["url"] == "https://nott.me/somechan/4567"
+
+
+# ----------------------------------------------------------------------
 # Forwarded-from-channel metadata + caption preservation
 # ----------------------------------------------------------------------
 
