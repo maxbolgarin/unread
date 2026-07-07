@@ -130,6 +130,24 @@ def test_has_session_blob_false_when_neither_exists(tmp_path, monkeypatch):
 # ----------------------------------------------------------------------
 
 
+@pytest.fixture
+def isolated_home(tmp_path, monkeypatch):
+    """Per-test install home for `handle_uploaded_file` runs.
+
+    The handler resolves `settings.telegram.session_path` via
+    `get_settings()` and `shutil.move`s the validated upload there —
+    without this isolation it would write a fake
+    `storage/session.sqlite.session` into the session-wide shared
+    test home from conftest, contaminating other tests.
+    """
+    from unread.config import reset_settings
+
+    monkeypatch.setenv("UNREAD_HOME", str(tmp_path))
+    reset_settings()
+    yield tmp_path
+    reset_settings()
+
+
 class _FakeBotClient:
     """Captures the `file=` path `download_media` was told to write to,
     and simulates a successful download by writing bytes there."""
@@ -194,7 +212,7 @@ def _make_authorized_fake_telegram_client(captured: dict):
 
 
 @pytest.mark.asyncio
-async def test_staged_session_filename_ends_with_dot_session(monkeypatch):
+async def test_staged_session_filename_ends_with_dot_session(monkeypatch, isolated_home):
     """Regression for B1: Telethon's `SQLiteSession` appends `.session` to any
     session name that doesn't already end in it. If we stage the download as
     `candidate.sqlite`, the probe opens a brand-new empty `candidate.sqlite.session`
@@ -218,7 +236,7 @@ async def test_staged_session_filename_ends_with_dot_session(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_probe_opens_the_exact_staged_file(monkeypatch):
+async def test_probe_opens_the_exact_staged_file(monkeypatch, isolated_home):
     """The path Telethon's `TelegramClient` is constructed with must be
     byte-identical to the on-disk staged file — not a mangled sibling."""
     captured: dict = {}
@@ -237,7 +255,7 @@ async def test_probe_opens_the_exact_staged_file(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_successful_upload_reports_install_and_updates_owner(monkeypatch):
+async def test_successful_upload_reports_install_and_updates_owner(monkeypatch, isolated_home):
     captured: dict = {}
     monkeypatch.setattr("telethon.TelegramClient", _make_authorized_fake_telegram_client(captured))
 
@@ -249,10 +267,14 @@ async def test_successful_upload_reports_install_and_updates_owner(monkeypatch):
     assert app.user_session_ready is True
     assert app.owner_id == 987654321
     assert any("installed" in r.lower() for r in event.replies)
+    # The install must land inside the per-test home, not the shared one.
+    installed = isolated_home / "storage" / "session.sqlite.session"
+    assert installed.exists()
+    assert installed.read_bytes() == b"x" * 32
 
 
 @pytest.mark.asyncio
-async def test_install_uses_shutil_move_not_os_replace(monkeypatch):
+async def test_install_uses_shutil_move_not_os_replace(monkeypatch, isolated_home):
     """B1: `os.replace` fails across filesystems (Docker tmpfs → named
     volume mount) with EXDEV. The installer must use `shutil.move`."""
     captured: dict = {}
