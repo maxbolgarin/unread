@@ -36,9 +36,10 @@ log = structlog.get_logger(__name__)
 # request pays for one map+reduce pass plus its own enrichment fan-out,
 # so summing across both gives the user the real-money figure.
 _ANALYZE_PHASES: tuple[str, ...] = (
+    "analyze",
     "analyze_map",
     "analyze_reduce",
-    "filter",
+    "enrich_youtube",
     "enrich_voice",
     "enrich_videonote",
     "enrich_video",

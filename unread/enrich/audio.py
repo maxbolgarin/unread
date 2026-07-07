@@ -215,6 +215,7 @@ async def enrich_audio(
             audio_seconds=duration,
             cost_usd=cost,
             context={
+                "phase": f"enrich_{msg.media_type}",
                 "doc_id": msg.media_doc_id,
                 "chat_id": msg.chat_id,
                 "msg_id": msg.msg_id,
