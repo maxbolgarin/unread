@@ -106,6 +106,149 @@ async def test_non_flood_exception_propagates(monkeypatch):
         await explodes()
 
 
+async def test_retry_on_flood_makes_exactly_max_retries_attempts(monkeypatch):
+    """On permanent failure, the wrapped fn is called exactly `max_retries`
+    times — not `max_retries + 1` (the old off-by-one that made an extra
+    unguarded call after the loop)."""
+    import asyncio as _asyncio
+
+    monkeypatch.setattr(_asyncio, "sleep", _no_sleep)
+    calls = {"n": 0}
+
+    @retry_on_flood(max_retries=3)
+    async def always_floods():
+        calls["n"] += 1
+        raise _FakeFloodWait(seconds=1)
+
+    with pytest.raises(RuntimeError, match="rate-limited"):
+        await always_floods()
+    assert calls["n"] == 3
+
+
+# ---------- retry_on_429 --------------------------------------------------
+
+
+class _FakeRateLimitError(Exception):
+    """Stand-in for openai.RateLimitError."""
+
+
+class _FakeAPITimeoutError(Exception):
+    """Stand-in for openai.APITimeoutError."""
+
+
+class _FakeAPIStatusError(Exception):
+    """Stand-in for openai.APIStatusError; carries a status_code like the real one."""
+
+    def __init__(self, message: str, status_code: int) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
+_FakeRateLimitError.__name__ = "RateLimitError"
+_FakeAPITimeoutError.__name__ = "APITimeoutError"
+_FakeAPIStatusError.__name__ = "APIStatusError"
+
+
+@pytest.fixture(autouse=True)
+def _patch_openai_errors(monkeypatch):
+    """Register a fake `openai` module so `retry_on_429`'s lazy
+    `from openai import ...` import resolves to our fakes instead of
+    requiring the real SDK / real exception hierarchy in tests."""
+    import sys
+    import types
+
+    mod = sys.modules.get("openai")
+    if mod is None:
+        mod = types.ModuleType("openai")
+        sys.modules["openai"] = mod
+    mod.RateLimitError = _FakeRateLimitError
+    mod.APITimeoutError = _FakeAPITimeoutError
+    mod.APIStatusError = _FakeAPIStatusError
+    yield
+
+
+async def test_retry_on_429_makes_exactly_max_retries_attempts(monkeypatch):
+    """On permanent rate-limit failure, exactly `max_retries` calls are made."""
+    from unread.util.flood import retry_on_429
+
+    monkeypatch.setattr("unread.util.flood.asyncio.sleep", _no_sleep)
+    calls = {"n": 0}
+
+    @retry_on_429(max_retries=3)
+    async def always_rate_limited():
+        calls["n"] += 1
+        raise _FakeRateLimitError("rate limited")
+
+    with pytest.raises(_FakeRateLimitError):
+        await always_rate_limited()
+    assert calls["n"] == 3
+
+
+async def test_retry_on_429_reraises_original_exception_type_on_exhaustion(monkeypatch):
+    """Exhaustion must re-raise the ORIGINAL SDK exception type — not a
+    wrapped/friendly error — since provider-error handling and
+    `tests/test_provider_auth_error_friendly.py` dispatch on the concrete
+    exception class."""
+    from unread.util.flood import retry_on_429
+
+    monkeypatch.setattr("unread.util.flood.asyncio.sleep", _no_sleep)
+
+    @retry_on_429(max_retries=2)
+    async def always_times_out():
+        raise _FakeAPITimeoutError("timed out")
+
+    with pytest.raises(_FakeAPITimeoutError):
+        await always_times_out()
+
+
+async def test_retry_on_429_logs_exhausted_event(monkeypatch):
+    """A structured `openai.retry.exhausted` log fires on the final failure."""
+    from unread.util.flood import retry_on_429
+
+    monkeypatch.setattr("unread.util.flood.asyncio.sleep", _no_sleep)
+
+    captured: list[tuple[str, dict]] = []
+
+    class _FakeLog:
+        def warning(self, event: str, **kw) -> None:
+            captured.append((event, kw))
+
+        def error(self, event: str, **kw) -> None:
+            captured.append((event, kw))
+
+    monkeypatch.setattr("unread.util.flood.log", _FakeLog())
+
+    @retry_on_429(max_retries=2)
+    async def always_rate_limited():
+        raise _FakeRateLimitError("rate limited")
+
+    with pytest.raises(_FakeRateLimitError):
+        await always_rate_limited()
+
+    exhausted = [c for c in captured if c[0] == "openai.retry.exhausted"]
+    assert len(exhausted) == 1
+    assert exhausted[0][1]["attempts"] == 2
+
+
+async def test_retry_on_429_success_inside_retry_window(monkeypatch):
+    """Sanity: a transient failure that clears before exhaustion still
+    returns the value normally."""
+    from unread.util.flood import retry_on_429
+
+    monkeypatch.setattr("unread.util.flood.asyncio.sleep", _no_sleep)
+    calls = {"n": 0}
+
+    @retry_on_429(max_retries=3)
+    async def flaky():
+        calls["n"] += 1
+        if calls["n"] < 2:
+            raise _FakeRateLimitError("rate limited")
+        return "ok"
+
+    assert await flaky() == "ok"
+    assert calls["n"] == 2
+
+
 async def _no_sleep(_seconds):
     """Drop-in for asyncio.sleep that returns immediately."""
     return None

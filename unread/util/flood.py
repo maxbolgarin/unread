@@ -75,24 +75,26 @@ def retry_on_flood(
                             f"Telegram FloodWait of {seconds}s exceeds the {_MAX_FLOOD_WAIT_SEC}s "
                             "cap — try again later"
                         ) from e
+                    if attempt == max_retries - 1:
+                        # Final attempt exhausted — convert FloodWaitError to a
+                        # friendly RuntimeError so per-subscription handlers in
+                        # runner.py can report the chat cleanly instead of
+                        # letting a raw Telethon exception crash the whole
+                        # `unread tg chats run`.
+                        log.error("tg.flood_wait.exhausted", seconds=seconds, retries=max_retries)
+                        raise RuntimeError(
+                            f"Telegram rate-limited for {seconds}s after {max_retries} retries — "
+                            "try again later"
+                        ) from e
                     delay = seconds + 1
                     log.warning("tg.flood_wait", delay=delay, attempt=attempt + 1)
                     _user_visible_retry_status(
                         f"Telegram FloodWait — sleeping {delay}s (attempt {attempt + 1}/{max_retries})…"
                     )
                     await asyncio.sleep(delay)
-            # Final attempt — convert FloodWaitError to a friendly RuntimeError
-            # so per-subscription handlers in runner.py can report the chat
-            # cleanly instead of letting a raw Telethon exception crash the
-            # whole `unread tg chats run`.
-            try:
-                return await fn(*args, **kwargs)
-            except FloodWaitError as e:
-                seconds = int(getattr(e, "seconds", 0))
-                log.error("tg.flood_wait.exhausted", seconds=seconds, retries=max_retries)
-                raise RuntimeError(
-                    f"Telegram rate-limited for {seconds}s after {max_retries} retries — try again later"
-                ) from e
+            # Unreachable when max_retries >= 1 (the only way callers use this
+            # decorator) — the last loop iteration always returns or raises.
+            raise RuntimeError("retry_on_flood called with max_retries <= 0")  # pragma: no cover
 
         return inner
 
@@ -128,6 +130,19 @@ def retry_on_429(
                     is_4xx_other = isinstance(e, APIStatusError) and not is_rate_limit and e.status_code < 500
                     if is_4xx_other:
                         raise
+                    if attempt == max_retries - 1:
+                        # Final attempt exhausted — log then re-raise the
+                        # ORIGINAL SDK exception type (not a wrapped error).
+                        # Provider-friendly-error handling (see
+                        # `analyzer/openai_client._is_auth_error` and
+                        # `tests/test_provider_auth_error_friendly.py`)
+                        # dispatches on the concrete SDK exception class.
+                        log.error(
+                            "openai.retry.exhausted",
+                            attempts=max_retries,
+                            err=type(e).__name__,
+                        )
+                        raise
                     delay = min(base**attempt, cap) + random.uniform(0, 1)
                     log.warning(
                         "openai.retry",
@@ -140,7 +155,9 @@ def retry_on_429(
                         f"{label} — retrying in {delay:.0f}s (attempt {attempt + 1}/{max_retries})…"
                     )
                     await asyncio.sleep(delay)
-            return await fn(*args, **kwargs)
+            # Unreachable when max_retries >= 1 (the only way callers use this
+            # decorator) — the last loop iteration always returns or raises.
+            raise RuntimeError("retry_on_429 called with max_retries <= 0")  # pragma: no cover
 
         return inner
 
