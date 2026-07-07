@@ -6,9 +6,9 @@ Workflow:
    tags and returns ``[(idx, absolute_url), ...]``. Data URIs and
    tracking pixels are skipped at the source.
 2. :func:`download_inlined_images` fetches each URL via the same SSRF
-   guard the page fetch uses (:func:`unread.util.safe_fetch.safe_get`)
-   and writes ``img-N.<ext>`` to a destination directory. Returns the
-   ``(idx, local_path)`` mapping.
+   guard the page fetch uses (:func:`unread.util.safe_fetch.safe_get_capped`,
+   streaming under ``cfg.max_html_bytes``) and writes ``img-N.<ext>``
+   to a destination directory. Returns the ``(idx, local_path)`` mapping.
 3. :func:`render_image_section` produces a markdown ``## Images``
    section linking each saved file. We don't try to splice images
    inline because trafilatura's text output already stripped the
@@ -25,7 +25,7 @@ import httpx
 
 from unread.config import Settings
 from unread.util.logging import get_logger
-from unread.util.safe_fetch import BlockedURLError, safe_get
+from unread.util.safe_fetch import BlockedURLError, safe_get_capped
 
 log = get_logger(__name__)
 
@@ -116,11 +116,13 @@ async def download_inlined_images(
     saved: list[tuple[int, Path, str]] = []
     for idx, url, alt in images:
         try:
-            resp = await safe_get(
+            # Streamed under the cap — an unbounded image body can't OOM us.
+            resp, truncated = await safe_get_capped(
                 url,
                 timeout_sec=cfg.fetch_timeout_sec,
                 headers=headers,
                 max_redirects=10,
+                max_bytes=cfg.max_html_bytes,
             )
         except (BlockedURLError, httpx.HTTPError, httpx.InvalidURL) as e:
             log.warning("website.images.fetch_failed", url=url, err=str(e)[:200])
@@ -134,8 +136,10 @@ async def download_inlined_images(
         if ext is None:
             log.warning("website.images.unsupported_type", url=url, content_type=ctype)
             continue
-        if len(resp.content) > cfg.max_html_bytes:
-            log.warning("website.images.too_big", url=url, size=len(resp.content))
+        if truncated:
+            # A byte-capped image is corrupt — skip it, same as the old
+            # post-hoc over-size check (which this cap replaces).
+            log.warning("website.images.too_big", url=url, cap=cfg.max_html_bytes)
             continue
 
         local = dest_dir / f"img-{idx}{ext}"
