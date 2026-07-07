@@ -5,11 +5,19 @@
 ## One line, all platforms
 
 ```bash
+# macOS / Linux — installs uv for you if missing, then unread:
+curl -fsSL https://raw.githubusercontent.com/maxbolgarin/unread/main/scripts/install.sh | bash
+```
+
+Already have `uv`? This does the same thing on any platform:
+
+```bash
 uv tool install unread
 ```
 
 `uv` provisions a private Python ≥ 3.11 environment for `unread`,
-isolated from your system Python and any other tools. Don't have `uv`?
+isolated from your system Python and any other tools. Don't have `uv`
+and prefer to install it yourself?
 
 ```bash
 # macOS / Linux
@@ -18,7 +26,8 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
-Verify with `unread --version`. Upgrade later with `uv tool upgrade unread`.
+Verify with `unread --version`. Upgrade later with `unread update`
+(or `uv tool upgrade unread`).
 
 ## What works without extra dependencies
 

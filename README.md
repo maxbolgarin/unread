@@ -30,8 +30,8 @@ You have 47 unread Telegram groups. You will never read them.
 You will now.
 
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-uv tool install unread && unread init
+curl -fsSL https://raw.githubusercontent.com/maxbolgarin/unread/main/scripts/install.sh | bash
+unread init
 ```
 ```bash
 unread @somegroup --last-days 7
@@ -206,9 +206,10 @@ OpenAI key alongside — `unread init` will offer it.
 ## Quickstart (90 seconds)
 
 ```bash
-# 1. Install. uv handles the Python venv and binary.
-curl -LsSf https://astral.sh/uv/install.sh | sh         # macOS / Linux
-uv tool install unread
+# 1. Install. One line, macOS / Linux — installs uv for you if missing.
+curl -fsSL https://raw.githubusercontent.com/maxbolgarin/unread/main/scripts/install.sh | bash
+
+# (already have uv? `uv tool install unread` does the same thing)
 
 # 2. Interactive setup. Picks install folder, AI provider, Telegram (optional).
 unread init
@@ -222,7 +223,7 @@ unread help                                           # show help
 ```
 
 No virtualenv to activate, no `pip` conflicts, no global Python
-pollution. Upgrade later with `uv tool upgrade unread`.
+pollution. Upgrade later with `unread update`.
 
 Skip the Telegram step if you only want YouTube / web / file analysis —
 those work with only an AI key.
