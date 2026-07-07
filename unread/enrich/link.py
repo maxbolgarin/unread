@@ -127,19 +127,22 @@ def _clean_fetched_text(html: str) -> tuple[str | None, str]:
 
 
 async def _fetch(url: str, timeout_sec: int) -> str | None:
-    from unread.util.safe_fetch import BlockedURLError, safe_get
+    from unread.util.safe_fetch import BlockedURLError, safe_get_capped
 
     try:
-        # `safe_get` validates the initial URL plus every redirect hop
-        # against the SSRF allowlist (no loopback / RFC1918 / link-local).
-        # A malicious page redirecting to AWS metadata or a local admin
-        # service is rejected with `BlockedURLError`, never reaches the
-        # LLM.
-        resp = await safe_get(
+        # `safe_get_capped` validates the initial URL plus every redirect
+        # hop against the SSRF allowlist (no loopback / RFC1918 /
+        # link-local), pins each connection to the validated IP, and
+        # streams the body under a hard 2 MB cap so a multi-GB page can't
+        # OOM us. A malicious page redirecting to AWS metadata or a local
+        # admin service is rejected with `BlockedURLError`, never reaches
+        # the LLM.
+        resp, truncated = await safe_get_capped(
             url,
             timeout_sec=timeout_sec,
             headers={"User-Agent": "unread-link-enricher/0.1 (+https://github.com/maxbolgarin/unread)"},
             max_redirects=10,
+            max_bytes=2_000_000,
         )
         if resp.status_code >= 400:
             log.debug("enrich.link.http_error", url=url, status=resp.status_code)
@@ -148,9 +151,8 @@ async def _fetch(url: str, timeout_sec: int) -> str | None:
         if "text/html" not in ctype and "text/plain" not in ctype:
             log.debug("enrich.link.non_html", url=url, ctype=ctype)
             return None
-        # Cap at 2 MB — bail on anything larger to avoid hanging on big pages.
-        if len(resp.content) > 2_000_000:
-            return resp.text[:2_000_000]
+        if truncated:
+            log.debug("enrich.link.truncated", url=url, cap=2_000_000)
         return resp.text
     except BlockedURLError as e:
         log.info("enrich.link.blocked_private_address", url=url, reason=str(e)[:200])
