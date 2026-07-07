@@ -1,5 +1,37 @@
 ## [1.2.0](https://github.com/maxbolgarin/unread/compare/v1.1.0...v1.2.0) (2026-07-07)
 
+### 🚀 Features
+
+* **youtube:** add --transcript-lang flag and language-preference plumbing ([7817b2b](https://github.com/maxbolgarin/unread/commit/7817b2b69b4b88065d3dfdef2b754d7d4547ed6e))
+* **youtube:** interactive caption-language picker for analyze/ask/dump ([d404d4b](https://github.com/maxbolgarin/unread/commit/d404d4b655274118a715a72c1d5dcf97744338ec))
+* **install:** one-line curl installer for macOS/Linux ([818bce7](https://github.com/maxbolgarin/unread/commit/818bce79aa16d22a936741418ca830710c60eaa1))
+
+### 🐛 Bug Fixes
+
+* **usage-log:** align analyze/enrich phase tags with bot cost caption ([a79e27d](https://github.com/maxbolgarin/unread/commit/a79e27dd74c2a2cb3cb0d1a7da05057e700080ec))
+* **website:** cap image downloads with safe_get_capped ([184a8a0](https://github.com/maxbolgarin/unread/commit/184a8a021526f76cc2951b01234e110b31e96e16))
+* **runner:** enforce --max-cost on `tg chats run --flat` ([20b54ff](https://github.com/maxbolgarin/unread/commit/20b54ff98b577bdadd71ba1f3493a4994ab633f4))
+* **ai:** normalize Anthropic usage tokens to OpenAI cost-accounting semantics ([5c5c943](https://github.com/maxbolgarin/unread/commit/5c5c94334c769cd0d12e5fbf719aa16e17ae942e))
+* **analyzer:** price single-pass analyze runs on final_model, not filter_model ([913a5f1](https://github.com/maxbolgarin/unread/commit/913a5f15b48c143d8943ce03f649a9ad0cee8ed1))
+* **youtube:** re-fetch caption inventory on dump --transcript-lang cache bypass ([7e5f3a7](https://github.com/maxbolgarin/unread/commit/7e5f3a7bd6051833ff4a2c11e091ec71345db76e))
+* **bot:** repair session upload install and t.me link routing ([e84b0b5](https://github.com/maxbolgarin/unread/commit/e84b0b5f20ab4a8dee8880a69ec023f3b58e4fd3))
+* **youtube:** restrict subtitle candidates to preferred/requested languages ([59af696](https://github.com/maxbolgarin/unread/commit/59af6968c1497f6ed31f4891ea3fa9ad84561a54))
+* **flood:** retry decorators must attempt exactly max_retries times ([15dd7fd](https://github.com/maxbolgarin/unread/commit/15dd7fd1822885cb0b6e37c7b6dd8ca317f29236))
+* **ask:** skip dimension-mismatched embedding rows instead of truncating ([a4970ea](https://github.com/maxbolgarin/unread/commit/a4970ea9772177cc6dd132143dc48802c7e6a4a8))
+* **media:** stop mutating user files and leaking transcode temp files ([4da6a3f](https://github.com/maxbolgarin/unread/commit/4da6a3f38b21a50900ebf3f1ee45d01f6b595eef))
+* **safe_fetch:** stream body under a byte cap and pin the validated IP ([7a79bd5](https://github.com/maxbolgarin/unread/commit/7a79bd52fd6a6addffc7f27281c583190543bb04))
+
+### 📚 Documentation
+
+* **readme:** add uv installation command to setup instructions ([eca2e66](https://github.com/maxbolgarin/unread/commit/eca2e66589b22d650f1e6d3034d31c8bd4a8ac0e))
+* **youtube:** document --transcript-lang and the caption-language picker ([e9e83ca](https://github.com/maxbolgarin/unread/commit/e9e83ca3766ba520ad334724bac2d57b10d76f74))
+* move report citation in README ([c9535a8](https://github.com/maxbolgarin/unread/commit/c9535a8ae51052e4e45ebb7ab94294331f354a88))
+
+### 🚨 Tests
+
+* **bot:** isolate session-upload tests from shared test home ([0c251c6](https://github.com/maxbolgarin/unread/commit/0c251c672b8e7a4bd6f669b47492feb2f1de5e2c))
+* **youtube:** strip ANSI before asserting --transcript-lang in CLI error output ([5cd1239](https://github.com/maxbolgarin/unread/commit/5cd123975ee78780a2000fcc4bc8ad87133503fb))
+
 ## [1.1.0](https://github.com/maxbolgarin/unread/compare/v1.0.1...v1.1.0) (2026-06-02)
 
 ### 🚀 Features
