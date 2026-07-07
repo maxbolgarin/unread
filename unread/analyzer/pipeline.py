@@ -107,11 +107,23 @@ def estimate_cost(
 ) -> tuple[float | None, float | None]:
     """Return (lower, upper) cost estimate in USD for an analyze run.
 
-    Mirrors what `run_analysis` will actually do: builds chunks under the
-    same budget formula as `chunker.build_chunks`, charges every chunk for
-    the system+user overhead (the pipeline re-sends those), bounds the map
-    completion at the preset's `map_output_tokens`, and adds a reduce pass
-    only when there's more than one chunk.
+    Mirrors what `run_analysis` will actually do, INCLUDING its
+    single-pass shortcut: when the run collapses to one chunk, OR the
+    preset disables reduce entirely (`len(chunks) <= 1 or not
+    preset.needs_reduce` — see that exact branch in `run_analysis`), the
+    runtime skips the map/reduce split and sends the whole conversation
+    to `final_model` in a single call capped at `preset.output_budget_tokens`.
+    Pricing that as a map pass (`filter_model` / `map_output_tokens`)
+    would badly underprice it, since `final_model` is typically pricier
+    and the completion cap is usually larger. Only when there's more than
+    one chunk AND the preset needs a reduce pass do we price the full
+    map (filter_model, capped at map_output_tokens per chunk) + reduce
+    (final_model, capped at output_budget_tokens) shape.
+
+    The `chunks` count below is only ever used as a heuristic to decide
+    which of the two shapes applies — it always uses `filter_model`'s
+    context window, same as before, since it's just a decision signal,
+    not a per-model input estimate.
 
     Returns `(None, None)` if pricing is missing for either model — caller
     should treat that as "can't enforce a budget" (used by `--max-cost`).
@@ -146,21 +158,31 @@ def estimate_cost(
 
     chunks = max(1, _math.ceil(total_input_body / budget))
 
+    def _cost(prompt: int, completion: int, model: str) -> float:
+        return float(chat_cost(model, prompt, 0, completion, settings=settings) or 0.0)
+
+    # --- Single pass: mirrors `run_analysis`'s
+    # `len(chunks) <= 1 or not preset.needs_reduce` branch. The whole
+    # conversation goes to final_model in one call, capped at
+    # output_budget_tokens — NOT filter_model / map_output_tokens.
+    if chunks <= 1 or not preset.needs_reduce:
+        single_overhead = _ct(preset.system, final_model) + _ct(preset.user_template, final_model)
+        single_input_tokens = total_input_body + single_overhead
+        out_cap = preset.output_budget_tokens
+        lo = _cost(single_input_tokens, int(out_cap * 0.4), final_model)
+        hi = _cost(single_input_tokens, out_cap, final_model)
+        return lo, hi
+
+    # --- Map-reduce: multiple chunks AND the preset requires a reduce
+    # pass. Unchanged from before B9.
     map_input_tokens = total_input_body + chunks * per_chunk_overhead
     map_out_lo = int(chunks * map_out_cap * 0.4)
     map_out_hi = int(chunks * map_out_cap)
 
-    if chunks > 1 and preset.needs_reduce:
-        reduce_overhead = _ct(preset.system, final_model) + _ct(preset.user_template, final_model)
-        reduce_out = preset.output_budget_tokens
-        reduce_input_lo = map_out_lo + reduce_overhead
-        reduce_input_hi = map_out_hi + reduce_overhead
-    else:
-        reduce_input_lo = reduce_input_hi = 0
-        reduce_out = 0
-
-    def _cost(prompt: int, completion: int, model: str) -> float:
-        return float(chat_cost(model, prompt, 0, completion, settings=settings) or 0.0)
+    reduce_overhead = _ct(preset.system, final_model) + _ct(preset.user_template, final_model)
+    reduce_out = preset.output_budget_tokens
+    reduce_input_lo = map_out_lo + reduce_overhead
+    reduce_input_hi = map_out_hi + reduce_overhead
 
     lo = _cost(map_input_tokens, map_out_lo, filter_model) + _cost(
         reduce_input_lo, int(reduce_out * 0.4), final_model
