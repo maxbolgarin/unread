@@ -102,6 +102,35 @@ def test_dotenv_value_helper_returns_overlay_lookups(tmp_path, monkeypatch):
     assert "UNREAD_PASSPHRASE" not in os.environ
 
 
+def test_stray_cwd_dotenv_does_not_leak_into_settings(tmp_path, monkeypatch):
+    """A `.env` in the process's cwd (belonging to some other project)
+    must NOT be auto-loaded by pydantic-settings' own `env_file`
+    machinery. Only `~/.unread/.env` (via `_load_dotenv`) is a valid
+    source. Regression test: `Settings.model_config` used to carry a
+    relative `env_file=".env"`, which pydantic-settings resolves
+    against the current working directory — so running `unread` from
+    inside an unrelated project with its own `.env` pulled that
+    project's env vars into `Settings(**raw)` and blew up with
+    `extra_forbidden` (extra="forbid") for every foreign key.
+    """
+    home = tmp_path / "home"
+    home.mkdir()
+    other_project = tmp_path / "other_project"
+    other_project.mkdir()
+    _write_env(
+        other_project / ".env",
+        "SUPABASE_DB_URL=postgresql://example\nAZURE_AI_ENDPOINT=https://example\n",
+    )
+    monkeypatch.setenv("UNREAD_HOME", str(home))
+    monkeypatch.chdir(other_project)
+
+    reset_settings()
+    settings = load_settings()  # must not raise ValidationError
+
+    assert not hasattr(settings, "supabase_db_url")
+    assert not hasattr(settings, "azure_ai_endpoint")
+
+
 def test_shell_env_wins_over_dotenv(tmp_path, monkeypatch):
     """Real shell env always wins over the .env overlay."""
     home = tmp_path / "home"

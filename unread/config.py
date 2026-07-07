@@ -457,9 +457,14 @@ class PricingCfg(_StrictCfg):
 
 
 class Settings(BaseSettings):
+    # No `env_file` here on purpose: pydantic-settings resolves a relative
+    # env_file path against the process's current working directory, not
+    # `~/.unread/`. `.env` is already loaded correctly (and merged into
+    # `raw` below) via `_load_dotenv(default_env_path())` — a second,
+    # cwd-relative auto-load here would pick up an unrelated `.env` from
+    # whatever directory `unread` happens to be invoked from and blow up
+    # on every foreign key (`extra="forbid"`).
     model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
         extra="forbid",
     )
 
