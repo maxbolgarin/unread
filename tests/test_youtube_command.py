@@ -9,6 +9,7 @@ options_payload contract for the cache key).
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
@@ -28,6 +29,17 @@ from unread.youtube.commands import (
 from unread.youtube.metadata import YoutubeMetadata
 from unread.youtube.paths import youtube_report_path
 from unread.youtube.transcript import TranscriptResult
+
+# Strip ANSI control sequences before substring checks. Rich highlights
+# option flags by inserting reset codes mid-token (`--transcript-lang`
+# renders as `\x1b[1;33m-transcript\x1b[0m\x1b[1;33m-lang\x1b[0m`), so a
+# literal substring check fails on CI where `FORCE_COLOR=1` is set by
+# GitHub Actions. Stripping ANSI first restores the plain-text invariant.
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
+def _plain(s: str) -> str:
+    return _ANSI_RE.sub("", s).lower()
 
 
 def _meta(**overrides) -> YoutubeMetadata:
@@ -713,5 +725,5 @@ def test_cli_transcript_lang_flag_rejects_garbage() -> None:
             ["https://youtu.be/dQw4w9WgXcQ", "--transcript-lang", "klingon"],
         )
     assert result.exit_code != 0
-    assert "transcript-lang" in result.output.lower()
+    assert "transcript-lang" in _plain(result.output)
     mock_yt.assert_not_called()
