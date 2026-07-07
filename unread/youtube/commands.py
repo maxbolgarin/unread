@@ -485,6 +485,15 @@ async def cmd_analyze_youtube(
 
     async with open_repo(settings.storage.data_path) as repo:
         cached = None if no_cache else await repo.get_youtube_video(video_id)
+        # Explicit `--transcript-lang X` that disagrees with the cached
+        # row's language bypasses the cache entirely — the row was
+        # fetched under a different language preference and would
+        # silently return stale text. `put_youtube_video` below
+        # overwrites the row once the re-fetch completes.
+        if cached and transcript_lang:
+            cached_base = _lang_base(cached.get("language") or "")
+            if cached_base != _lang_base(transcript_lang):
+                cached = None
         timed_cues: list[tuple[int, str]] | None = None
         transcript_lang_kind: str | None = None
         if cached and cached.get("transcript"):
@@ -539,6 +548,19 @@ async def cmd_analyze_youtube(
                     raise typer.Exit(0)
                 effective_source = picked
 
+            # Caption language preference list: CLI overrides (already
+            # resolved to their effective values by `cmd_analyze`) win
+            # over the saved `[locale]` settings. Feeds both the picker's
+            # preselect AND `get_transcript`'s fallback order, so a
+            # `--report-language` / `--content-language` override affects
+            # non-interactive runs too (previously a dead param here).
+            preselect = _preferred_caption_langs(
+                settings,
+                content_language=source_language or None,
+                report_language=report_language or None,
+                ui_language=language or None,
+            )
+
             # Caption-language picker: runs AFTER the source picker so a
             # user who picked "audio" (or was given --youtube-source
             # audio) never sees a language menu for a path that isn't
@@ -550,9 +572,7 @@ async def cmd_analyze_youtube(
             if transcript_lang is None and not yes and _is_interactive() and effective_source != "audio":
                 tracks = _dedup_display_tracks(metadata)
                 if len(tracks) > 1:
-                    picked_lang = await _interactive_pick_caption_lang(
-                        metadata, preselect=_preferred_caption_langs(settings)
-                    )
+                    picked_lang = await _interactive_pick_caption_lang(metadata, preselect=preselect)
                     if picked_lang is None:
                         console.print("[yellow]Cancelled.[/]")
                         raise typer.Exit(0)
@@ -569,6 +589,7 @@ async def cmd_analyze_youtube(
                     settings=settings,
                     repo=repo,
                     transcript_lang=effective_transcript_lang,
+                    preferred_langs=preselect,
                 )
             except NoTranscriptAvailable as e:
                 raise typer.BadParameter(str(e)) from e

@@ -643,6 +643,27 @@ def _validate_lang_flags(
     )
 
 
+def _validate_transcript_lang(value: str | None) -> str | None:
+    """Validate/normalize `--transcript-lang` (ISO code or English name).
+
+    Returns the canonical lowercase code, or `None` when unset (meaning
+    "no explicit override — fall back to the caption-language
+    preference list"). Raises `typer.BadParameter` on an unrecognised
+    code, mirroring `_validate_lang_flags`'s `_check` helper.
+    """
+    if value is None or value == "":
+        return None
+    from unread.util.languages import normalize_language_code
+
+    code = normalize_language_code(value)
+    if code is None:
+        raise typer.BadParameter(
+            f"Invalid language code for --transcript-lang: {value!r}. "
+            f"Use an ISO 639-1 code (e.g. 'en', 'pt', 'zh') or its English name."
+        )
+    return code
+
+
 def _dispatch_analyze(**kwargs) -> None:
     """Shared bridge from the root + tg callbacks to `cmd_analyze`.
 
@@ -662,6 +683,8 @@ def _dispatch_analyze(**kwargs) -> None:
         kwargs.get("report_language"),
         kwargs.get("source_language"),
     )
+    if "transcript_lang" in kwargs:
+        kwargs["transcript_lang"] = _validate_transcript_lang(kwargs.get("transcript_lang"))
     save_flag = kwargs.pop("save", False)
     # Reject contradictory output flags up front so the user gets a
     # clear error rather than discovering downstream that one of the
@@ -723,8 +746,11 @@ def _looks_like_local_file(ref: str) -> bool:
     if not rl:
         return False
     # Path-shape signals: explicit relative / absolute / home-relative,
-    # or `file://` URI. These never collide with Telegram refs.
-    if rl.startswith(("./", "../", "/", "~/", "~")) or rl.startswith("file://"):
+    # or `file://` URI. These never collide with Telegram refs. Bare
+    # `~` (no trailing slash) is deliberately excluded — `~notes` looks
+    # like a fuzzy chat title, not a path, and a lone `~` isn't a file
+    # either; only `~/...` is unambiguous.
+    if rl.startswith(("./", "../", "/", "~/")) or rl.startswith("file://"):
         return True
     # `@user` is a Telegram ref; never a file path.
     if rl.startswith("@"):
@@ -744,7 +770,15 @@ def _looks_like_local_file(ref: str) -> bool:
     # fuzzy-title lookups still work.
     from pathlib import Path as _Path
 
-    p = _Path(rl).expanduser()
+    try:
+        p = _Path(rl).expanduser()
+    except RuntimeError:
+        # `~someuser` where "someuser" isn't a real account on this
+        # machine: unlike `os.path.expanduser`, `Path.expanduser()`
+        # raises instead of returning the string unchanged. Treat as
+        # "not a file" — the ref falls through to Telegram fuzzy-title
+        # lookup, same as any other unresolvable bare token.
+        return False
     if not p.suffix:
         return False
     # `is_file()` does a `stat()` syscall, which can hang indefinitely
@@ -2444,6 +2478,15 @@ def _root(
         "--youtube-source",
         help="YouTube transcript source: auto (captions, fallback to Whisper), captions, or audio (always Whisper).",
     ),
+    transcript_lang: str | None = typer.Option(
+        None,
+        "--transcript-lang",
+        help=(
+            "YouTube caption language (ISO code or English name, e.g. 'fr', 'French'). "
+            "Skips the interactive caption-language picker. Re-fetches if the cached "
+            "transcript is a different language."
+        ),
+    ),
     no_truncation_retry: bool = typer.Option(
         False,
         "--no-truncation-retry",
@@ -2571,6 +2614,7 @@ def _root(
         report_language=report_language,
         source_language=source_language,
         youtube_source=youtube_source,
+        transcript_lang=transcript_lang,
         disable_truncation_retry=no_truncation_retry,
     )
 
@@ -4005,6 +4049,15 @@ def ask(
         "--youtube-source",
         help="YouTube transcript source: auto (captions, fallback to Whisper), captions, or audio (always Whisper).",
     ),
+    transcript_lang: str | None = typer.Option(
+        None,
+        "--transcript-lang",
+        help=(
+            "YouTube caption language (ISO code or English name, e.g. 'fr', 'French'). "
+            "Skips the interactive caption-language picker. Re-fetches if the cached "
+            "transcript is a different language."
+        ),
+    ),
 ) -> None:
     """Answer a question about your synced Telegram archive.
 
@@ -4024,6 +4077,7 @@ def ask(
     language, report_language, source_language = _validate_lang_flags(
         language, report_language, source_language
     )
+    transcript_lang = _validate_transcript_lang(transcript_lang)
     # Reject contradictory output flags up front (mirrors `_dispatch_analyze`):
     # --no-console + --no-save (or its deprecated alias --no-console + --console)
     # would suppress every form of output, leaving an LLM-billed run with
@@ -4119,6 +4173,7 @@ def ask(
                     max_cost=max_cost,
                     yes=yes,
                     youtube_source=youtube_source,
+                    transcript_lang=transcript_lang,
                     language=language,
                     report_language=report_language,
                     source_language=source_language,
@@ -5227,6 +5282,15 @@ def dump(
             "Mirrors `unread <yt-url>` (analyze) behavior."
         ),
     ),
+    transcript_lang: str | None = typer.Option(
+        None,
+        "--transcript-lang",
+        help=(
+            "YouTube caption language (ISO code or English name, e.g. 'fr', 'French'). "
+            "Skips the interactive caption-language picker. Re-fetches if the cached "
+            "transcript is a different language."
+        ),
+    ),
     max_images: int = typer.Option(
         50,
         "--max-images",
@@ -5249,6 +5313,7 @@ def dump(
     language, report_language, source_language = _validate_lang_flags(
         language, report_language, source_language
     )
+    transcript_lang = _validate_transcript_lang(transcript_lang)
     from unread.export.commands import cmd_dump
 
     _run(
@@ -5285,6 +5350,7 @@ def dump(
             source_language=source_language,
             mode=mode,
             youtube_source=youtube_source,
+            transcript_lang=transcript_lang,
             max_images=max_images,
         )
     )

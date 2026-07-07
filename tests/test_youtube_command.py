@@ -538,3 +538,180 @@ async def test_analyze_youtube_forwards_transcript_lang_to_get_transcript() -> N
         )
     get_transcript_mock.assert_called_once()
     assert get_transcript_mock.call_args.kwargs["transcript_lang"] == "fr"
+
+
+async def test_analyze_youtube_forwards_preferred_langs_from_cli_overrides() -> None:
+    """`--report-language` / `--content-language` (already resolved to
+    their effective values by `cmd_analyze`) must reach `get_transcript`
+    as `preferred_langs` — this is the fix for the previously-dead
+    report-language plumbing described in the task brief."""
+    meta = _meta(video_id="lang-pref-01", url="https://www.youtube.com/watch?v=lang-pref-01")
+    tres = TranscriptResult(
+        text="hola mundo. " * 20,
+        source="captions",
+        language="es",
+        duration_sec=900,
+        cost_usd=0.0,
+        timed_cues=[(0, "hola")],
+        is_auto=False,
+    )
+    get_transcript_mock = AsyncMock(return_value=tres)
+    with (
+        patch("unread.youtube.commands.fetch_metadata", new=AsyncMock(return_value=meta)),
+        patch("unread.youtube.commands.get_transcript", new=get_transcript_mock),
+    ):
+        await cmd_analyze_youtube(
+            url=meta.url,
+            preset=None,
+            prompt_file=None,
+            model=None,
+            filter_model=None,
+            output=None,
+            console_out=True,
+            dry_run=True,
+            yes=True,
+            language="en",
+            report_language="es",
+            source_language="de",
+        )
+    get_transcript_mock.assert_called_once()
+    preferred = get_transcript_mock.call_args.kwargs["preferred_langs"]
+    # content_language (de) outranks report_language (es) outranks UI (en).
+    assert preferred[:3] == ["de", "es", "en"]
+
+
+# --- cmd_analyze_youtube: cached-row bypass on transcript_lang mismatch -----
+
+
+async def _put_cached_row(meta: YoutubeMetadata, *, language: str, transcript: str) -> None:
+    from unread.config import get_settings
+    from unread.db.repo import open_repo
+
+    settings = get_settings()
+    async with open_repo(settings.storage.data_path) as repo:
+        await repo.put_youtube_video(
+            video_id=meta.video_id,
+            url=meta.url,
+            title=meta.title,
+            channel_id=meta.channel_id,
+            channel_title=meta.channel_title,
+            channel_url=meta.channel_url,
+            description=meta.description,
+            upload_date=meta.upload_date,
+            duration_sec=meta.duration_sec,
+            view_count=meta.view_count,
+            like_count=meta.like_count,
+            tags=meta.tags,
+            language=language,
+            transcript=transcript,
+            transcript_source="captions",
+            transcript_model=None,
+            transcript_cost_usd=0.0,
+            transcript_timed=None,
+        )
+
+
+async def test_analyze_youtube_cached_row_bypassed_on_transcript_lang_mismatch() -> None:
+    """A cached English transcript must be bypassed and re-fetched when
+    `--transcript-lang fr` explicitly asks for a different language —
+    otherwise the CLI flag would silently no-op on a second run against
+    the same video."""
+    meta = _meta(video_id="lang-mismatch01", url="https://www.youtube.com/watch?v=lang-mismatch01")
+    await _put_cached_row(meta, language="en", transcript="cached english transcript")
+
+    tres = TranscriptResult(
+        text="texte francais. " * 20,
+        source="captions",
+        language="fr",
+        duration_sec=900,
+        cost_usd=0.0,
+        timed_cues=[(0, "bonjour")],
+        is_auto=False,
+    )
+    get_transcript_mock = AsyncMock(return_value=tres)
+    with (
+        patch("unread.youtube.commands.fetch_metadata", new=AsyncMock(return_value=meta)),
+        patch("unread.youtube.commands.get_transcript", new=get_transcript_mock),
+    ):
+        await cmd_analyze_youtube(
+            url=meta.url,
+            preset=None,
+            prompt_file=None,
+            model=None,
+            filter_model=None,
+            output=None,
+            console_out=True,
+            dry_run=True,
+            yes=True,
+            transcript_lang="fr",
+        )
+    get_transcript_mock.assert_called_once()
+    assert get_transcript_mock.call_args.kwargs["transcript_lang"] == "fr"
+
+
+async def test_analyze_youtube_cached_row_reused_when_lang_matches() -> None:
+    """Same cached row, but `--transcript-lang en` matches the cached
+    language (base-prefix aware via `_lang_base`) — the cache must still
+    be used and `get_transcript` must NOT be called."""
+    meta = _meta(video_id="lang-match-01", url="https://www.youtube.com/watch?v=lang-match-01")
+    await _put_cached_row(meta, language="en-US", transcript="cached english transcript. " * 20)
+
+    with (
+        patch(
+            "unread.youtube.commands.fetch_metadata",
+            new=AsyncMock(side_effect=AssertionError("cache must hit")),
+        ),
+        patch(
+            "unread.youtube.commands.get_transcript",
+            new=AsyncMock(side_effect=AssertionError("cache must hit")),
+        ),
+    ):
+        await cmd_analyze_youtube(
+            url=meta.url,
+            preset=None,
+            prompt_file=None,
+            model=None,
+            filter_model=None,
+            output=None,
+            console_out=True,
+            dry_run=True,
+            yes=True,
+            transcript_lang="en",
+        )
+
+
+# --- CLI: --transcript-lang flag wiring -------------------------------------
+
+
+def test_cli_transcript_lang_flag_reaches_cmd_analyze_youtube() -> None:
+    """`unread <yt-url> --transcript-lang FR` reaches `cmd_analyze_youtube`
+    with the validated + normalized code."""
+    from typer.testing import CliRunner
+
+    from unread.cli import app
+
+    with patch("unread.youtube.commands.cmd_analyze_youtube", new_callable=AsyncMock) as mock_yt:
+        result = CliRunner().invoke(
+            app,
+            ["https://youtu.be/dQw4w9WgXcQ", "--transcript-lang", "FR", "--yes"],
+        )
+    assert result.exit_code == 0, result.output
+    mock_yt.assert_called_once()
+    assert mock_yt.call_args.kwargs["transcript_lang"] == "fr"
+
+
+def test_cli_transcript_lang_flag_rejects_garbage() -> None:
+    """An unrecognised `--transcript-lang` value is a BadParameter, and
+    `cmd_analyze_youtube` must never be reached."""
+    from typer.testing import CliRunner
+
+    from unread.cli import app
+
+    with patch("unread.youtube.commands.cmd_analyze_youtube", new_callable=AsyncMock) as mock_yt:
+        result = CliRunner().invoke(
+            app,
+            ["https://youtu.be/dQw4w9WgXcQ", "--transcript-lang", "klingon"],
+        )
+    assert result.exit_code != 0
+    assert "transcript-lang" in result.output.lower()
+    mock_yt.assert_not_called()

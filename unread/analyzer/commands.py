@@ -487,6 +487,7 @@ async def cmd_analyze(
     source_language: str | None = None,
     youtube_source: str = "auto",
     disable_truncation_retry: bool = False,
+    transcript_lang: str | None = None,
 ) -> None:
     # The CLI surface exposes `--no-save` as the explicit "skip file"
     # flag; the legacy `--console`/`-c` and `--save`/`-s` map onto the
@@ -776,6 +777,7 @@ async def cmd_analyze(
             source_language=effective_source_language,
             youtube_source=youtube_source,  # type: ignore[arg-type]
             yes=yes,
+            transcript_lang=transcript_lang,
         )
         return
 

@@ -57,6 +57,11 @@ def _plain(s: str) -> str:
         ("~/docs/x.md", True, False),
         ("file:///abs/path.pdf", True, False),
         ("subdir/file.txt", True, False),
+        # Bare `~notes` / `~` (no trailing slash) are NOT path-shape —
+        # `~notes` reads as a fuzzy chat title and a lone `~` isn't a
+        # file at all. Only `~/...` is unambiguous. (B11 regression.)
+        ("~notes", False, True),
+        ("~", False, True),
         # Telegram-shaped refs never look like files.
         ("@durov", False, True),
         ("My Chat Title", False, True),

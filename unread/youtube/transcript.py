@@ -631,7 +631,13 @@ def _no_transcript_message(metadata: YoutubeMetadata) -> str:
     )
 
 
-def _preferred_caption_langs(settings: Settings) -> list[str]:
+def _preferred_caption_langs(
+    settings: Settings,
+    *,
+    content_language: str | None = None,
+    report_language: str | None = None,
+    ui_language: str | None = None,
+) -> list[str]:
     """Caption language preference.
 
     Order:
@@ -643,11 +649,24 @@ def _preferred_caption_langs(settings: Settings) -> list[str]:
       3. ``locale.language`` — UI language fallback.
       4. ``en``, ``ru`` — final default fallbacks so the picker still
          finds something if none of the above is set.
+
+    `content_language` / `report_language` / `ui_language`, when
+    non-empty, override the corresponding `settings.locale.*` read —
+    this is how CLI `--content-language` / `--report-language` /
+    `--language` overrides reach the caption-language preference list
+    without threading `settings` mutation through the call sites.
     """
     locale = getattr(settings, "locale", None)
+    overrides = {
+        "content_language": content_language,
+        "report_language": report_language,
+        "language": ui_language,
+    }
     out: list[str] = []
     for attr in ("content_language", "report_language", "language"):
-        val = (getattr(locale, attr, "") or "").lower()
+        override = overrides[attr]
+        raw = override if override else (getattr(locale, attr, "") or "")
+        val = raw.lower()
         if val and val not in out:
             out.append(val)
     for fallback in ("en", "ru"):

@@ -123,8 +123,29 @@ async def _do_transcript_mode(
     settings,
     cached_row: dict | None,
     transcript_lang: str | None = None,
+    language: str = "en",
+    report_language: str = "en",
+    source_language: str = "",
     yes: bool = False,
 ) -> None:
+    from unread.youtube.commands import _require_audio_ffmpeg
+    from unread.youtube.transcript import _lang_base
+
+    # Explicit `--transcript-lang X` that disagrees with the cached row's
+    # language bypasses the cache entirely — mirrors `cmd_analyze_youtube`'s
+    # bypass so the same flag has the same effect across analyze/ask/dump.
+    if cached_row and transcript_lang:
+        cached_base = _lang_base(cached_row.get("language") or "")
+        if cached_base != _lang_base(transcript_lang):
+            cached_row = None
+
+    # `--youtube-source audio` needs ffmpeg up front — mirrors
+    # `cmd_analyze_youtube`'s early preflight so a missing binary surfaces
+    # a friendly banner before any network work starts instead of failing
+    # deep inside `get_transcript`.
+    if youtube_source == "audio":
+        _require_audio_ffmpeg()
+
     if cached_row and cached_row.get("transcript"):
         tres = TranscriptResult(
             text=cached_row["transcript"] or "",
@@ -140,18 +161,26 @@ async def _do_transcript_mode(
             _dedup_display_tracks,
             _interactive_pick_caption_lang,
             _is_interactive,
-            _require_audio_ffmpeg,
         )
         from unread.youtube.transcript import _preferred_caption_langs
+
+        # Caption language preference list: CLI overrides win over the
+        # saved `[locale]` settings. Feeds both the picker's preselect
+        # AND `get_transcript`'s fallback order — fixes the previously
+        # dead `report_language` / `source_language` params.
+        preselect = _preferred_caption_langs(
+            settings,
+            content_language=source_language or None,
+            report_language=report_language or None,
+            ui_language=language or None,
+        )
 
         effective_source: TranscriptSource = youtube_source
         effective_transcript_lang: str | None = transcript_lang
         if transcript_lang is None and not yes and _is_interactive() and effective_source != "audio":
             tracks = _dedup_display_tracks(meta)
             if len(tracks) > 1:
-                picked_lang = await _interactive_pick_caption_lang(
-                    meta, preselect=_preferred_caption_langs(settings)
-                )
+                picked_lang = await _interactive_pick_caption_lang(meta, preselect=preselect)
                 if picked_lang is None:
                     console.print("[yellow]Cancelled.[/]")
                     raise typer.Exit(0)
@@ -168,6 +197,7 @@ async def _do_transcript_mode(
                 settings=settings,
                 repo=repo,
                 transcript_lang=effective_transcript_lang,
+                preferred_langs=preselect,
             )
         except NoTranscriptAvailable as e:
             raise typer.BadParameter(str(e)) from e
@@ -283,6 +313,9 @@ async def cmd_dump_youtube(
                 settings=settings,
                 cached_row=cached_row,
                 transcript_lang=transcript_lang,
+                language=language,
+                report_language=report_language,
+                source_language=source_language,
                 yes=yes,
             )
         elif mode == "audio":
