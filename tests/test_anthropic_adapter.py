@@ -75,10 +75,17 @@ def _settings() -> Settings:
 
 
 class _FakeUsage:
-    def __init__(self, in_tok: int = 100, out_tok: int = 50, cached: int = 10) -> None:
+    def __init__(
+        self,
+        in_tok: int = 100,
+        out_tok: int = 50,
+        cached: int = 10,
+        cache_creation: int = 0,
+    ) -> None:
         self.input_tokens = in_tok
         self.output_tokens = out_tok
         self.cache_read_input_tokens = cached
+        self.cache_creation_input_tokens = cache_creation
 
 
 class _FakeBlock:
@@ -196,6 +203,10 @@ async def test_chat_finish_reason_end_turn_is_not_truncated():
 
 
 async def test_chat_parses_usage_including_cached_tokens():
+    """`input_tokens` EXCLUDES cache reads (Anthropic semantics), so the
+    adapter must fold `cache_read_input_tokens` into `prompt_tokens` to
+    match OpenAI's "prompt_tokens includes cached" convention that
+    `util.pricing.chat_cost` assumes."""
     p, _ = _provider_with(
         _FakeResponse(
             text_blocks=["ok"],
@@ -208,9 +219,51 @@ async def test_chat_parses_usage_including_cached_tokens():
         max_tokens=64,
         temperature=0.0,
     )
-    assert result.prompt_tokens == 1234
+    assert result.prompt_tokens == 1234 + 890
     assert result.completion_tokens == 567
     assert result.cached_tokens == 890
+
+
+async def test_chat_parses_usage_folds_in_cache_creation_tokens():
+    """B13: `prompt_tokens` must also include `cache_creation_input_tokens`
+    (cache-write tokens) — Anthropic's `input_tokens` excludes both cache
+    reads AND cache writes. `cached_tokens` stays scoped to cache *reads*
+    only (cache-write cost accounting is a separate, out-of-scope concern
+    noted in the adapter's comment)."""
+    p, _ = _provider_with(
+        _FakeResponse(
+            text_blocks=["ok"],
+            usage=_FakeUsage(in_tok=100, out_tok=20, cached=400, cache_creation=50),
+        )
+    )
+    result = await p.chat(
+        model="claude-sonnet-4-6",
+        messages=[{"role": "user", "content": "hi"}],
+        max_tokens=64,
+        temperature=0.0,
+    )
+    assert result.prompt_tokens == 550
+    assert result.cached_tokens == 400
+
+
+async def test_chat_usage_without_cache_fields_falls_back_to_input_tokens_only():
+    """When the usage object has neither cache attribute at all (e.g. an
+    older SDK / non-caching response shape), `getattr(..., 0)` degrades
+    cleanly to the pre-fix behavior: prompt_tokens == input_tokens,
+    cached_tokens == 0."""
+    from types import SimpleNamespace as _NS
+
+    bare_usage = _NS(input_tokens=42, output_tokens=7)
+    p, _ = _provider_with(_FakeResponse(text_blocks=["ok"], usage=bare_usage))
+    result = await p.chat(
+        model="claude-sonnet-4-6",
+        messages=[{"role": "user", "content": "hi"}],
+        max_tokens=64,
+        temperature=0.0,
+    )
+    assert result.prompt_tokens == 42
+    assert result.completion_tokens == 7
+    assert result.cached_tokens == 0
 
 
 async def test_adapter_disables_sdk_retries():

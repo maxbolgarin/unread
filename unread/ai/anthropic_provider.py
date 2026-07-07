@@ -11,9 +11,13 @@ translations relative to the OpenAI shape:
     where OpenAI uses `finish_reason == "length"`. We map that to
     `ChatResult.truncated=True` so the orchestrator's truncation-retry
     fires identically.
-  - **Cached tokens**: Anthropic exposes `cache_read_input_tokens` on
-    the usage object. We surface it as `cached_tokens` for parity with
-    OpenAI's prompt-cache accounting.
+  - **Usage/cache-token accounting**: Anthropic's `usage.input_tokens`
+    excludes cache reads/writes entirely (unlike OpenAI's `prompt_tokens`,
+    which includes cached tokens in the total). We normalize to OpenAI
+    semantics: `prompt_tokens = input_tokens + cache_read_input_tokens +
+    cache_creation_input_tokens`, `cached_tokens = cache_read_input_tokens`,
+    so `unread.util.pricing.chat_cost`'s `fresh = prompt_tokens -
+    cached_tokens` math stays correct for both providers.
   - **Retries**: SDK retries are disabled (`max_retries=0`) and we run
     our own backoff loop so the user sees the same yellow "retrying
     in Ns" status they get for OpenAI 429s. Without this, an Anthropic
@@ -173,9 +177,21 @@ class AnthropicProvider:
         text = "".join(text_parts)
 
         usage = getattr(resp, "usage", None)
-        prompt_tokens = int(getattr(usage, "input_tokens", 0) or 0)
+        input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
+        cache_read_tokens = int(getattr(usage, "cache_read_input_tokens", 0) or 0)
+        cache_creation_tokens = int(getattr(usage, "cache_creation_input_tokens", 0) or 0)
+        # Anthropic's `input_tokens` EXCLUDES cache reads/writes, unlike
+        # OpenAI's `prompt_tokens` which reports the full prompt total
+        # (fresh + cached) with cached called out separately. `util.pricing
+        # .chat_cost` assumes OpenAI semantics (`fresh = prompt_tokens -
+        # cached_tokens`), so normalize here rather than at the pricing
+        # layer. Cache-creation (write) tokens are folded into the "fresh"
+        # bucket, which bills them at the 1.0x input rate — a slight
+        # underbill vs Anthropic's actual 1.25x cache-write multiplier,
+        # since there's no separate price column for it (out of scope).
+        prompt_tokens = input_tokens + cache_read_tokens + cache_creation_tokens
         completion_tokens = int(getattr(usage, "output_tokens", 0) or 0)
-        cached_tokens = int(getattr(usage, "cache_read_input_tokens", 0) or 0)
+        cached_tokens = cache_read_tokens
 
         truncated = getattr(resp, "stop_reason", None) == "max_tokens"
 
