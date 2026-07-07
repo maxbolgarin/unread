@@ -214,8 +214,19 @@ async def semantic_search(
     qnorm = _math.sqrt(sum(x * x for x in qvec)) or 1.0
 
     scored: list[tuple[int, int, float]] = []  # (chat_id, msg_id, score)
+    expected_dim = len(qvec)
+    dim_mismatches = 0
     for chat_id, msg_id, vec_bytes in rows:
         v = _bytes_to_vec(vec_bytes)
+        if len(v) != expected_dim:
+            # Stored vector doesn't match the query's dimensionality — a
+            # stale index built under the same model name but a different
+            # embedding size, or a corrupt BLOB. `zip(..., strict=False)`
+            # would silently truncate to the shorter vector and produce a
+            # meaningless-but-plausible-looking cosine score. Skip the row
+            # instead of ranking it wrong; surface a single warning below.
+            dim_mismatches += 1
+            continue
         # Cosine similarity. Vectors from text-embedding-3-* are NOT
         # pre-normalized, so divide by norms.
         dot = 0.0
@@ -227,6 +238,15 @@ async def semantic_search(
             continue
         score = dot / (qnorm * _math.sqrt(vnorm_sq))
         scored.append((chat_id, msg_id, score))
+
+    if dim_mismatches:
+        log.warning(
+            "ask.embeddings.dim_mismatch",
+            count=dim_mismatches,
+            expected_dim=expected_dim,
+            model=model,
+            hint="Run `unread ask --build-index --chat <ref>` (or `--folder`) to rebuild the index.",
+        )
 
     scored.sort(key=lambda r: -r[2])
     top = scored[:limit]
