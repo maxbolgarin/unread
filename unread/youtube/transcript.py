@@ -333,6 +333,31 @@ def _yt_dlp_run(
     raise last_err
 
 
+class _YtDlpLogger:
+    """Routes yt-dlp's own output into our logger instead of stderr.
+
+    `quiet` / `no_warnings` do NOT cover `report_error`, so a failed
+    caption probe printed a raw red `ERROR: Unable to download video
+    subtitles for 'ru': HTTP Error 429` straight to the terminal — on top
+    of our own handling, and looking like a crash when it is a
+    best-effort probe whose outcome we already report.
+    """
+
+    def debug(self, msg: str) -> None:
+        log.debug("ytdlp", msg=str(msg)[:300])
+
+    def info(self, msg: str) -> None:
+        log.debug("ytdlp", msg=str(msg)[:300])
+
+    def warning(self, msg: str) -> None:
+        log.debug("ytdlp.warning", msg=str(msg)[:300])
+
+    def error(self, msg: str) -> None:
+        # Debug, not error: every caller of a yt-dlp run already handles
+        # and reports failure in its own terms.
+        log.debug("ytdlp.error", msg=str(msg)[:300])
+
+
 def _yt_dlp_base_opts() -> dict[str, Any]:
     """Common yt-dlp options that bake in modest internal retries.
 
@@ -340,6 +365,7 @@ def _yt_dlp_base_opts() -> dict[str, Any]:
     fragment-level transient stuff (slow chunks, partial reads).
     """
     return {
+        "logger": _YtDlpLogger(),
         "quiet": True,
         "no_warnings": True,
         "noplaylist": True,
@@ -413,7 +439,7 @@ async def _try_single_caption_track(
                 # Captions are best-effort — log and let the next
                 # candidate try. Warn (not exception) so a transient
                 # YouTube hiccup doesn't spam diagnostics.
-                log.warning(
+                log.debug(
                     "youtube.captions.download_failed",
                     video_id=metadata.video_id,
                     lang=lang,
@@ -428,7 +454,7 @@ async def _try_single_caption_track(
 
     raw = await asyncio.to_thread(_download)
     if not raw:
-        log.warning(
+        log.debug(
             "youtube.captions.empty",
             video_id=metadata.video_id,
             lang=lang,

@@ -235,6 +235,7 @@ filter_model_default = "gpt-5.6-luna"    # map phase + cheap rerank + self-check
 min_msg_chars = 3                        # filter: drop messages shorter than N chars
 dedupe_forwards = true                   # collapse identical forwards/memes
 output_budget_tokens = 1500              # reduce / single-chunk max_tokens
+confirm_cost_above_usd = 0.25            # ask before a run estimated above this
 high_impact_reactions = 3                # `[high-impact]` marker threshold
 
 [enrich]

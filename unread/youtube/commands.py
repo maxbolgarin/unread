@@ -847,28 +847,27 @@ async def cmd_analyze_youtube(
                 console.print("  [yellow]Cost estimate unavailable (missing pricing entry)[/]")
             return
 
-        if max_cost is not None and loaded_preset is not None:
+        if loaded_preset is not None:
+            from unread.analyzer.commands import enforce_cost_gates
+
             lo, hi = estimate_cost(
                 n_messages=len(messages),
                 preset=loaded_preset,
                 settings=settings,
             )
-            if hi is not None:
-                upper = hi + transcript_cost
-                if upper > max_cost:
-                    console.print(
-                        f"[bold yellow]Estimated upper-bound cost ${upper:.4f} "
-                        f"exceeds --max-cost ${max_cost:.4f} "
-                        f"(transcript ${transcript_cost:.4f} + analysis ≤ ${hi:.4f})[/]"
-                    )
-                    if yes:
-                        console.print(f"[red]{_t('aborting_yes_set')}[/]")
-                        raise typer.Exit(2)
-                    from unread.util.prompt import confirm as _confirm
-
-                    if not _confirm("Run anyway?", default=False):
-                        console.print("[yellow]Aborted.[/]")
-                        raise typer.Exit(0)
+            # Whisper spend is already committed by this point but still
+            # belongs in the number the user is asked about — on a long
+            # podcast it can dominate the bill.
+            enforce_cost_gates(
+                lo=lo,
+                hi=hi,
+                extra_cost=transcript_cost,
+                max_cost=max_cost,
+                yes=yes,
+                n_messages=len(messages),
+                preset_name=effective_preset,
+                settings=settings,
+            )
 
         opts = AnalysisOptions(
             preset=effective_preset,

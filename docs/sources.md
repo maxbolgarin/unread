@@ -54,8 +54,10 @@ happened.
 
 Two caveats worth knowing:
 
-- **Cost.** All three providers bill web search *per search*, separately
-  from tokens. `unread stats` and the bot's cost caption count tokens, so
+- **Cost.** A 59-minute podcast is ~152k input tokens — roughly $0.04 a
+  run on the default `gpt-5.6-luna`. Add `--model gpt-5.6-sol` for a
+  stronger check at ~10x that. All three providers also bill web search
+  *per search*, separately from tokens. `unread stats` and the bot's cost caption count tokens, so
   a fact-check run costs more than the figure they show. The report's
   metadata row says so explicitly.
 - **It's still an LLM.** The preset refuses to issue a verdict without a

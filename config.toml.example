@@ -7,8 +7,10 @@
 # Model picks (Chat Completions API, refreshed 2026-05-01):
 #   gpt-5.5       — newest flagship (1M ctx, $5/$30 per 1M); use for top-quality reduce.
 #   gpt-5.6-luna  — default; cheapest AND 1M context ($0.20/$1.20).
-#   gpt-5.6-sol   — flagship; used where a preset pins one ($2.00/$10).
+#   gpt-5.6-sol   — flagship ($2.00/$10); nothing defaults to it.
 #   gpt-5.6-terra — pricier sibling of sol ($2.00/$12); nothing defaults to it.
+# Nothing pins a flagship by default — a long fact-check on sol runs ~10x
+# the cost of luna for the same context. Set `ai.chat_model` if you want one.
 #   gpt-4o / gpt-4o-mini — previous generation; gpt-4o-mini is the vision default.
 
 # ====================================================== AI provider (chat)
@@ -116,6 +118,12 @@ filter_model_default = "gpt-5.6-luna"
 # =================================================================== Analyze
 
 [analyze]
+# Ask before starting a run whose estimated cost (analysis + Whisper)
+# exceeds this many dollars. Unlike --max-cost — a hard ceiling you pass
+# per run — this is on by default and ASKS rather than aborts; `--yes` and
+# non-TTY runs just print the estimate and continue. 0 disables it.
+confirm_cost_above_usd = 0.25
+
 # Drop messages shorter than N chars after enrichment. 0 = keep everything
 # (including media-only rows that didn't get enrichment text).
 min_msg_chars = 3

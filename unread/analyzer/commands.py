@@ -390,10 +390,22 @@ async def enforce_max_cost_gate(
     else:
         console.print(f"[yellow]{_t('cost_estimate_unavailable')}[/]")
 
-    if max_cost is None:
-        return
-
     label = preset_label if preset_label is not None else preset.name
+
+    if max_cost is None:
+        # No explicit ceiling — fall back to the soft confirm threshold.
+        # The band was already printed above, so don't repeat it.
+        enforce_cost_gates(
+            lo=lo,
+            hi=hi,
+            max_cost=None,
+            yes=yes,
+            n_messages=n_messages,
+            preset_name=label,
+            settings=settings,
+            print_estimate=False,
+        )
+        return
 
     # 2. Hard gate when --max-cost is set.
     if hi is not None and hi > max_cost:
@@ -2651,6 +2663,89 @@ def _split_for_telegram(text: str, limit: int) -> list[str]:
     if buf:
         out.append(buf)
     return out
+
+
+def enforce_cost_gates(
+    *,
+    lo: float | None,
+    hi: float | None,
+    extra_cost: float = 0.0,
+    max_cost: float | None,
+    yes: bool,
+    n_messages: int,
+    preset_name: str,
+    settings: Any = None,
+    interactive: bool | None = None,
+    print_estimate: bool = True,
+) -> None:
+    """Cost guards, in order: the hard `--max-cost` ceiling, then the soft
+    confirm threshold.
+
+    The two are deliberately different. `--max-cost` is a ceiling the
+    caller opted into, so exceeding it under `--yes` aborts. The
+    `analyze.confirm_cost_above_usd` threshold is on by default, so it
+    must never turn a scripted run into a failure — under `--yes` (or a
+    non-TTY) it prints the estimate and continues.
+
+    `extra_cost` is spend already known outside the analysis estimate —
+    Whisper transcription, which on a long podcast can dominate the bill
+    and must not be excluded from the number the user is asked about.
+
+    A missing pricing entry (`hi is None`) never blocks: refusing to run
+    because we can't price a model would be worse than the surprise.
+    """
+    import sys
+
+    if settings is None:
+        settings = get_settings()
+    if hi is None:
+        return
+
+    upper = hi + extra_cost
+    lower = (lo or 0.0) + extra_cost
+
+    if max_cost is not None and upper > max_cost:
+        console.print(
+            f"[bold yellow]Estimated upper-bound cost ${upper:.4f} "
+            f"exceeds --max-cost ${max_cost:.4f} "
+            f"({n_messages} messages, preset={preset_name})[/]"
+        )
+        if yes:
+            console.print(f"[red]{_t('aborting_yes_set')}[/]")
+            raise typer.Exit(2)
+        from unread.util.prompt import confirm as _confirm
+
+        if not _confirm("Run anyway?", default=False):
+            console.print("[yellow]Aborted.[/]")
+            raise typer.Exit(0)
+        return
+
+    threshold = float(getattr(settings.analyze, "confirm_cost_above_usd", 0.0) or 0.0)
+    if threshold <= 0 or upper < threshold:
+        return
+
+    if interactive is None:
+        try:
+            interactive = sys.stdin.isatty()
+        except (AttributeError, OSError):
+            interactive = False
+
+    line = (
+        f"[bold]Estimated cost ${lower:.4f}–${upper:.4f}[/] "
+        f"({n_messages} messages, preset={preset_name}"
+        + (f", transcription ${extra_cost:.4f}" if extra_cost else "")
+        + ")"
+    )
+    if print_estimate:
+        console.print(line)
+    if yes or not interactive:
+        return
+
+    from unread.util.prompt import confirm as _confirm
+
+    if not _confirm("Continue?", default=True):
+        console.print("[yellow]Aborted.[/]")
+        raise typer.Exit(0)
 
 
 def _with_truncation_banner(result) -> str:

@@ -86,10 +86,13 @@ def test_no_preset_still_pins_a_gpt_5_4_model(language) -> None:
 
 
 @pytest.mark.parametrize("language", ["en", "ru"])
-def test_factcheck_uses_the_flagship(language) -> None:
-    """Verdict quality is the whole point of this preset — it must not
-    quietly land on the cheap tier."""
-    assert get_presets(language)["factcheck"].final_model == SOL
+def test_factcheck_uses_luna_not_a_flagship(language) -> None:
+    """Deliberate cost choice, not an oversight. A 59-minute podcast is
+    ~152k input tokens: on `sol` that's ~$0.38 a run, on `luna` ~$0.04 —
+    10x cheaper for the same 1.05M context and generation. Fact-checking
+    a long source is the case people repeat, so the cheap tier is the
+    right default; `--model` or `unread settings` buys a stronger one."""
+    assert get_presets(language)["factcheck"].final_model == LUNA
 
 
 @pytest.mark.parametrize("language", ["en", "ru"])

@@ -5,7 +5,7 @@ description: Fact-check — extract the checkable claims, verify each one, flag 
 needs_reduce: true
 needs_web_search: true
 filter_model: gpt-5.6-luna
-final_model: gpt-5.6-sol
+final_model: gpt-5.6-luna
 output_budget_tokens: 16000
 map_output_tokens: 2000
 max_chunk_input_tokens: 300000
@@ -34,9 +34,15 @@ These are NOT checkable claims — never list them:
 - Statements purely about the speaker's own feelings or intentions.
 - Trivia that nobody could act on being wrong about.
 
-Prioritize ruthlessly. A claim earns a place in the report when being
+Prioritize by consequence. A claim earns a place in the report when being
 wrong about it would actually change what a listener believes or does.
-Ten well-checked consequential claims beat forty trivial ones.
+A well-checked claim beats three trivial ones — but do not stop early
+just to keep the list short.
+
+Scale the count to the source. A short talk may only contain a handful of
+checkable claims; an hour-long interview usually carries 20-30, and a
+dense one more. Cover every consequential claim you find, and use the
+**Not checked** section for the rest.
 
 ## Verdicts
 

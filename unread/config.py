@@ -182,6 +182,13 @@ class MediaCfg(_StrictCfg):
 
 
 class AnalyzeCfg(_StrictCfg):
+    # Ask before starting a run whose estimated cost (analysis +
+    # transcription) exceeds this many dollars. Distinct from
+    # `--max-cost`, which is a hard ceiling you have to remember to pass:
+    # this is the default guard, and it asks rather than aborts. 0
+    # disables it. Skipped by `--yes` and on a non-TTY, where there is
+    # nobody to answer.
+    confirm_cost_above_usd: float = 0.25
     min_msg_chars: int = 3
     output_budget_tokens: int = 1500
     safety_margin_tokens: int = 4000
