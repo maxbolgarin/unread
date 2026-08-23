@@ -1,3 +1,18 @@
+## [1.3.0](https://github.com/maxbolgarin/unread/compare/v1.2.1...v1.3.0) (2026-08-23)
+
+### 🚀 Features
+
+* **bot:** allow several admin ids in UNREAD_BOT_OWNER_ID ([4ca4f3c](https://github.com/maxbolgarin/unread/commit/4ca4f3cd24d5da4eb7fc9da5d9db0455e974b650))
+* **youtube:** offer a transcript-only dump instead of analysis ([9643fe5](https://github.com/maxbolgarin/unread/commit/9643fe53b6e2f8d76a3fd8c321b449912f6d7fd2))
+
+### 🐛 Bug Fixes
+
+* **bot:** keep the TG window choice from the confirm panel ([53506b9](https://github.com/maxbolgarin/unread/commit/53506b96e963026ba6fadf1cdd8bce8715f1ae30))
+
+### ⚙️ Continuous Integration
+
+* **release:** pin the semantic-release changelog toolchain ([611224b](https://github.com/maxbolgarin/unread/commit/611224b014992dd7736187868eeb10cf5114c07f))
+
 ## [1.2.1](https://github.com/maxbolgarin/unread/compare/v1.2.0...v1.2.1) (2026-07-07)
 
 ## [1.2.0](https://github.com/maxbolgarin/unread/compare/v1.1.0...v1.2.0) (2026-07-07)
