@@ -66,6 +66,31 @@ def resolve_options(
     return merged
 
 
+def merge_panel_options(*, defaults: RunOptions, panel: RunOptions) -> RunOptions:
+    """Overlay the panel's per-run choices onto the kind's defaults.
+
+    `default_options(kind, settings)` knows the per-kind baseline
+    (`youtube_source="auto"`, the `settings.enrich.*` flags); the panel
+    knows what the user actually tapped (`tg_window="7d"`). The run path
+    needs both, so this merges them with the same rule
+    `resolve_options` uses one layer up: a set (truthy / non-None) panel
+    value wins, anything the panel left alone keeps the default.
+
+    Without this the run path rebuilt `RunOptions` from settings per
+    item and silently dropped the tap — every TG window button behaved
+    like the default lookback.
+    """
+    return replace(
+        defaults,
+        youtube_source=panel.youtube_source or defaults.youtube_source,
+        tg_window=panel.tg_window or defaults.tg_window,
+        enrich_image=panel.enrich_image or defaults.enrich_image,
+        enrich_doc=panel.enrich_doc or defaults.enrich_doc,
+        enrich_link=panel.enrich_link or defaults.enrich_link,
+        enrich_video=panel.enrich_video or defaults.enrich_video,
+    )
+
+
 def effective_report_language(chat_state: dict, settings: Settings) -> str:
     """Sticky `/lang` → config `locale.report_language` → `locale.language` → 'en'."""
     sticky = (chat_state.get(STICKY_REPORT_LANGUAGE) or "").strip()

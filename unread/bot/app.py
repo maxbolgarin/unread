@@ -419,10 +419,12 @@ class BotApp:
             return
 
         if is_tg_window:
-            # Stamp the chosen window onto pending.options so the TG
-            # handler's execute() reads it and overrides its default
-            # from_msg / last_days computation, then go through the
-            # normal single-item run path.
+            # Stamp the chosen window onto pending.options, then go
+            # through the normal single-item run path —
+            # `_run_batch_separately` merges it over the kind defaults
+            # (see `runtime.merge_panel_options`) so the TG handler's
+            # execute() reads it and overrides its default from_msg /
+            # last_days computation.
             pending.options.tg_window = tg_window_for_action(action)
             await self._run_batch_separately(pending, panel_msg)
             return
@@ -455,6 +457,7 @@ class BotApp:
         execute() spawns its own progress reply.
         """
         from unread.bot.confirm import default_options
+        from unread.bot.runtime import merge_panel_options
 
         items = pending.payload.get("items") or []
         total = len(items)
@@ -463,7 +466,10 @@ class BotApp:
 
         if total == 1:
             item = items[0]
-            options = default_options(item.kind, self.settings)
+            options = merge_panel_options(
+                defaults=default_options(item.kind, self.settings),
+                panel=pending.options,
+            )
             async with self._semaphore:
                 try:
                     await self._run_execute(
@@ -484,7 +490,10 @@ class BotApp:
 
         for idx, item in enumerate(items, start=1):
             await edit_progress(panel_msg, f"⏳ Running {idx}/{total}: {_burst_item_label(item)}")
-            options = default_options(item.kind, self.settings)
+            options = merge_panel_options(
+                defaults=default_options(item.kind, self.settings),
+                panel=pending.options,
+            )
             async with self._semaphore:
                 try:
                     await self._run_execute(
