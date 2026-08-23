@@ -27,6 +27,7 @@ the default when no `--preset` flag is passed.
 | `decisions` | Markdown table: decision / who / when / rationale | "What did we agree on?" |
 | `questions` | Open questions table — unanswered / partial / no-consensus | Things to come back to |
 | `reactions` | Top reaction-driven messages, grouped by reaction type | What the chat actually responded to |
+| `factcheck` | Checkable claims pulled out and verified against the web: verdict table + per-claim detail with sources | "Is any of this actually true?" — videos, articles, forwarded posts |
 
 Every preset that emits per-message citations renders them as
 `[#12345](https://t.me/username/12345)` (or `https://t.me/c/<id>/12345`

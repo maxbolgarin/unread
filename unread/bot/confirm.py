@@ -32,12 +32,14 @@ from unread.config import Settings
 #   T_WK  = TG link: last 7 days
 #   T_MO  = TG link: last 30 days
 #   Y_DUMP= YouTube link: skip analysis, return transcript.md
+#   Y_FACT= YouTube link: analyze with the `factcheck` preset
 _ACTIONS = frozenset(
     {
         "R",
         "A",
         "M",
         "Y_DUMP",
+        "Y_FACT",
         "T_ONE",
         "T_FRM",
         "T_DAY",
@@ -105,6 +107,10 @@ class RunOptions:
     """
 
     youtube_source: str | None = None
+    # Preset chosen by a button rather than by sticky `/preset` or config.
+    # Set by the Fact-check tap; wins over the sticky preset because an
+    # explicit tap is a stronger signal than a setting from last week.
+    preset_override: str | None = None
     enrich_image: bool = False
     enrich_doc: bool = False
     enrich_link: bool = False
@@ -363,11 +369,12 @@ def build_youtube_choice_panel(
 ) -> tuple[str, list[list[Any]]]:
     """Picker shown when a single YouTube link arrives in a burst.
 
-    Two very different jobs share one input shape: "tell me what this
-    video says" (analyze — LLM cost) and "give me the words" (dump the
-    transcript as Markdown — no LLM call unless captions are missing
-    and Whisper has to run). Asking up front is cheaper than running
-    the wrong one.
+    Three different jobs share one input shape: "tell me what this video
+    says" (analyze — LLM cost), "give me the words" (dump the transcript
+    as Markdown — no LLM call unless captions are missing and Whisper has
+    to run), and "is any of this true?" (fact-check — the most expensive
+    of the three, since it also pays per web search). Asking up front is
+    cheaper than running the wrong one.
 
     `▶ Analyze` keeps the generic `R` action so it flows through the
     same single-item batch path every other kind uses.
@@ -377,7 +384,8 @@ def build_youtube_choice_panel(
         [
             Button.inline("▶ Analyze", encode_callback("R", panel_msg_id)),
             Button.inline("📝 Transcript", encode_callback("Y_DUMP", panel_msg_id)),
-        ]
+        ],
+        [Button.inline("🔎 Fact-check", encode_callback("Y_FACT", panel_msg_id))],
     ]
     return text, rows
 

@@ -492,7 +492,7 @@ class BotApp:
             log.info("bot.callback.refused_non_primary", action=action, sender_id=event.sender_id)
             return
 
-        if action in ("R", "A", "M", "Y_DUMP") or is_tg_window or is_forward:
+        if action in ("R", "A", "M", "Y_DUMP", "Y_FACT") or is_tg_window or is_forward:
             pending_runs.pop(panel_msg_id, None)
             with contextlib.suppress(Exception):
                 await event.answer("Running…")
@@ -517,6 +517,14 @@ class BotApp:
 
         if action == "Y_DUMP":
             await self._run_youtube_dump(pending, panel_msg)
+            return
+
+        if action == "Y_FACT":
+            # Stamp the preset and reuse the ordinary single-item run
+            # path — `_run_batch_separately` merges panel options over
+            # the kind defaults, so the override survives.
+            pending.options.preset_override = "factcheck"
+            await self._run_batch_separately(pending, panel_msg)
             return
 
         if is_tg_window:

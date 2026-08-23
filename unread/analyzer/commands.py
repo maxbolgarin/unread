@@ -2431,6 +2431,18 @@ def _analyze_meta_rows(result: AnalysisResult, *, title: str | None) -> list[tup
         rows.append((_t("report_meta_enrichment", lang), ", ".join(result.enrich_kinds)))
     if result.enrich_summary:
         rows.append((_t("report_meta_enrichment_detail", lang), result.enrich_summary))
+    if result.web_search is not None:
+        rows.append(
+            (
+                _t("report_meta_web_search", lang),
+                _t(
+                    "report_meta_web_search_used"
+                    if result.web_search
+                    else "report_meta_web_search_unavailable",
+                    lang,
+                ),
+            )
+        )
     transcript_value = _format_transcript_provenance(result, language=lang)
     if transcript_value:
         rows.append((_t("report_meta_transcript", lang), transcript_value))

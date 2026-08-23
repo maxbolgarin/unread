@@ -57,6 +57,8 @@ def _split_system_and_messages(messages: list[dict[str, str]]) -> tuple[str, lis
 
 
 class AnthropicProvider:
+    supports_web_search = True
+
     name = "anthropic"
     # Defaults track the current generally-available lineup (refreshed
     # 2026-05-01). The user can switch via `ai.chat_model` /
@@ -88,6 +90,18 @@ class AnthropicProvider:
         )
         self._settings = settings
 
+    def _web_search_tool(self) -> dict[str, Any]:
+        """Server-tool block for Anthropic's native web search.
+
+        The `type` is date-versioned and must not exceed the account's
+        API version, so it comes from config — see
+        `AICfg.anthropic_web_search_tool`.
+        """
+        return {
+            "type": getattr(self._settings.ai, "anthropic_web_search_tool", "") or "web_search_20250305",
+            "name": "web_search",
+        }
+
     async def chat(
         self,
         *,
@@ -95,6 +109,7 @@ class AnthropicProvider:
         messages: list[dict[str, str]],
         max_tokens: int,
         temperature: float,
+        web_search: bool = False,
     ) -> ChatResult:
         system_prompt, rest = _split_system_and_messages(messages)
         # Anthropic requires `messages` non-empty AND each `content`
@@ -114,6 +129,8 @@ class AnthropicProvider:
         }
         if system_prompt:
             kwargs["system"] = system_prompt
+        if web_search:
+            kwargs["tools"] = [self._web_search_tool()]
 
         # Own retry loop (SDK retries are off — see __init__). Catches
         # the typed `RateLimitError`, `APIStatusError` 5xx, and
@@ -195,7 +212,12 @@ class AnthropicProvider:
 
         truncated = getattr(resp, "stop_reason", None) == "max_tokens"
 
+        # Anthropic is the only provider that reports a search count.
+        server_tool_use = getattr(usage, "server_tool_use", None)
+        searches = int(getattr(server_tool_use, "web_search_requests", 0) or 0)
+
         return ChatResult(
+            web_searches=searches,
             text=text,
             prompt_tokens=prompt_tokens,
             cached_tokens=cached_tokens,

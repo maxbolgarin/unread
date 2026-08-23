@@ -40,6 +40,14 @@ class ChatResult:
     completion_tokens: int
     cost_usd: float | None = None
     truncated: bool = False
+    # Number of web searches the provider ran for this call. Only
+    # Anthropic reports a count; OpenAI is inferred from the response's
+    # `web_search_call` output items and Google reports nothing, so 0
+    # means "none, or the provider didn't say". Recorded because all
+    # three bill web search PER SEARCH, separately from tokens — the
+    # cost figures elsewhere are token-only and would otherwise
+    # understate a fact-check run without explanation.
+    web_searches: int = 0
 
 
 class ProviderUnavailableError(RuntimeError):
@@ -81,6 +89,11 @@ class ChatProvider(Protocol):
     """
 
     name: str
+    # True only for adapters that can run a provider-native web search.
+    # Callers MUST check this before requesting `web_search=True`: an
+    # adapter without the capability ignores the flag, and a fact-check
+    # that silently didn't search is worse than one that says it couldn't.
+    supports_web_search: bool
 
     @property
     def default_chat_model(self) -> str:
@@ -97,8 +110,13 @@ class ChatProvider(Protocol):
         messages: list[dict[str, str]],
         max_tokens: int,
         temperature: float,
+        web_search: bool = False,
     ) -> ChatResult:
-        """One-shot chat call. No retries — the orchestrator handles those."""
+        """One-shot chat call. No retries — the orchestrator handles those.
+
+        `web_search` asks the provider to ground the answer in live web
+        results. Adapters where `supports_web_search` is False ignore it.
+        """
 
 
 _AUDIO_PROVIDERS: frozenset[str] = frozenset({"openai", "local"})

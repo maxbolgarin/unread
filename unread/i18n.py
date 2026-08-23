@@ -1561,6 +1561,15 @@ _STRINGS: dict[str, dict[str, str]] = {
     },
     "report_meta_enrichment": {"en": "**Enrichment:**", "ru": "**Обогащение:**"},
     "report_meta_enrichment_detail": {"en": "**Enrichment detail:**", "ru": "**Детали обогащения:**"},
+    "report_meta_web_search": {"en": "**Web search:**", "ru": "**Веб-поиск:**"},
+    "report_meta_web_search_used": {
+        "en": "used — per-search fees are NOT included in the cost above",
+        "ru": "использовался — плата за поиск НЕ входит в стоимость выше",
+    },
+    "report_meta_web_search_unavailable": {
+        "en": "unavailable on this provider — verdicts come from model knowledge only",
+        "ru": "недоступен у этого провайдера — вердикты только из знаний модели",
+    },
     "report_meta_transcript": {"en": "**Transcript:**", "ru": "**Транскрипт:**"},
     "report_meta_transcript_kind_manual": {"en": "manual subs", "ru": "ручные субтитры"},
     "report_meta_transcript_kind_auto": {"en": "auto-captions", "ru": "авто-субтитры"},

@@ -769,7 +769,8 @@ def test_build_youtube_choice_panel_offers_analyze_and_transcript():
     labels = " ".join(b.text.lower() for b in flat)
     assert "analyze" in labels
     assert "transcript" in labels
-    assert len(flat) == 2
+    # Fact-check is the third; `test_factcheck_surfaces.py` pins the count.
+    assert len(flat) == 3
 
 
 def test_build_youtube_choice_panel_callbacks_round_trip():
@@ -794,7 +795,7 @@ def test_render_burst_panel_single_youtube_uses_the_choice_panel():
     items = [BurstItem(kind="youtube", payload={"url": "https://youtu.be/xyz"}, event=None)]
     _text, buttons = render_burst_panel(items=items, panel_msg_id=3)
     flat = [b for row in buttons for b in row]
-    assert len(flat) == 2
+    assert len(flat) == 3
     assert any("transcript" in b.text.lower() for b in flat)
 
 

@@ -45,7 +45,8 @@ async def execute(
     s = get_settings()
     url = payload["url"]
     chat_state = app._chat_state.get(event.chat_id) or {}
-    preset = _effective_preset(s, app, event.chat_id)
+    # An explicit button tap beats a sticky `/preset` set some other day.
+    preset = options.preset_override or _effective_preset(s, app, event.chat_id)
     started = time.time()
 
     try:

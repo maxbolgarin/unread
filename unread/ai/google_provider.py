@@ -64,6 +64,8 @@ def _convert_messages(
 
 
 class GoogleProvider:
+    supports_web_search = True
+
     name = "google"
     default_chat_model = "gemini-2.5-flash"
     default_filter_model = "gemini-2.5-flash-lite"
@@ -90,6 +92,7 @@ class GoogleProvider:
         messages: list[dict[str, str]],
         max_tokens: int,
         temperature: float,
+        web_search: bool = False,
     ) -> ChatResult:
         from google.genai import errors as genai_errors
         from google.genai import types
@@ -101,6 +104,11 @@ class GoogleProvider:
         }
         if system_prompt:
             config_kwargs["system_instruction"] = system_prompt
+        if web_search:
+            # Grounding with Google Search. Gemini reports no search
+            # count, so `web_searches` stays 0 for this provider even
+            # when it did search.
+            config_kwargs["tools"] = [types.Tool(google_search=types.GoogleSearch())]
 
         max_retries = self._settings.openai.max_retries
         resp = None

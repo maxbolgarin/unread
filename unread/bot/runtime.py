@@ -83,6 +83,7 @@ def merge_panel_options(*, defaults: RunOptions, panel: RunOptions) -> RunOption
     return replace(
         defaults,
         youtube_source=panel.youtube_source or defaults.youtube_source,
+        preset_override=panel.preset_override or defaults.preset_override,
         tg_window=panel.tg_window or defaults.tg_window,
         enrich_image=panel.enrich_image or defaults.enrich_image,
         enrich_doc=panel.enrich_doc or defaults.enrich_doc,

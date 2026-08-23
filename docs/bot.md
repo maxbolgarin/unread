@@ -52,13 +52,27 @@ Citations in the report follow the same shape as the CLI: `[#42](t.me/…)` for 
 When the bot receives something to analyze, it doesn't run immediately — it sends a small inline panel with a **▶ Run** button:
 
 ```
-🎬 YouTube: https://youtu.be/dQw4w9WgXcQ
-Preset: `video`
-Mode: `auto`
+🌐 Web page: https://example.com/article
+Preset: `website`
 [▶ Run]
 ```
 
 Tap **Run** and the analysis starts. The panel is there so an accidentally-tapped Telegram link doesn't silently spend money. Per-run tuning happens through slash commands (`/preset`, `/lang`, `/enrich`, `/window`) and is **sticky** — set once, applies to every subsequent run in the same chat.
+
+**YouTube links get three buttons**, because "summarize this", "give me the words" and "is any of this true?" are different jobs with very different costs:
+
+```
+🎬 YouTube: https://youtu.be/dQw4w9WgXcQ
+What do you want?
+[▶ Analyze]  [📝 Transcript]
+[🔎 Fact-check]
+```
+
+- **▶ Analyze** — the normal pipeline: the `video` preset over the timestamped transcript, report as PDF/`.md`.
+- **📝 Transcript** — no analysis at all. The bot writes `transcript.md` (metadata header + plain transcript text) and uploads it as a Markdown file. No LLM call, so the only possible cost is Whisper, and only when the video has no usable captions.
+- **🔎 Fact-check** — pulls the checkable claims out of the video and verifies them against the web, then replies with a verdict table plus per-claim detail and source links. The most expensive of the three: flagship model *and* a per-search fee. See [Fact-checking](sources.md#fact-checking) for how it behaves on providers without web search, and why the cost caption understates this one.
+
+Fact-check isn't YouTube-only — `/preset factcheck` makes it the default for everything you send in that chat, articles and forwarded posts included.
 
 **Forwarded messages get a richer picker.** If you forward a message from a channel, the panel asks what to analyze:
 
@@ -75,7 +89,7 @@ Tap **Run** and the analysis starts. The panel is there so an accidentally-tappe
 | `/help` | Show the input list + this command list. |
 | `/ping` | Health check — reply `pong`. |
 | `/settings` | Show current sticky settings (preset, language, enrich, window) + their defaults. |
-| `/preset <name>` | Sticky preset for this chat (e.g. `/preset digest`). Bare `/preset` clears the override. Names match the CLI: `summary`, `tldr`, `digest`, `highlights`, `quotes`, `links`, `action_items`, `decisions`, `questions`, `reactions`, `video`, `website`. |
+| `/preset <name>` | Sticky preset for this chat (e.g. `/preset digest`). Bare `/preset` clears the override. Names match the CLI: `summary`, `tldr`, `digest`, `highlights`, `quotes`, `links`, `action_items`, `decisions`, `questions`, `reactions`, `factcheck`, `video`, `website`. |
 | `/lang <code>` | Sticky report language (e.g. `/lang en`, `/lang ru`). Bare clears. |
 | `/enrich <list\|all\|none>` | Sticky extra enrichments for Telegram chat analyses. `/enrich image,link` turns those two on; `/enrich all` enables every kind; `/enrich none` strips even the defaults. |
 | `/window <day\|week\|month\|msg\|from_msg\|none>` | Sticky default time window for TG-chat analyses. |

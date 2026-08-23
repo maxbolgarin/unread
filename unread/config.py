@@ -104,6 +104,13 @@ class AICfg(_StrictCfg):
     # uses an OpenAI-compatible base URL (openai / openrouter / local).
     # Anthropic and Google use their own SDK base-URL config.
     base_url: str = ""
+    # Anthropic's server-side web-search tool is versioned by DATE
+    # (`web_search_20250305`, `web_search_20260209`, …) and the API
+    # rejects a type newer than the account's API version with a 400.
+    # Exposed as config so a mismatch is fixable without shipping a
+    # release. Default is the oldest widely-available version, which is
+    # the most compatible choice.
+    anthropic_web_search_tool: str = "web_search_20250305"
     # Safety: when `base_url` resolves to anything outside the per-provider
     # trusted-host allowlist (api.openai.com, api.anthropic.com,
     # generativelanguage.googleapis.com, openrouter.ai, plus localhost/RFC1918

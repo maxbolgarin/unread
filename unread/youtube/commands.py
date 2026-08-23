@@ -273,6 +273,11 @@ def _is_interactive() -> bool:
 # `WHISPER_LANG_SENTINEL` below.
 DUMP_SENTINEL = "__dump__"
 
+# Sentinel for the "fact-check instead" row. Switches the run's preset to
+# `factcheck` rather than handing off to another command — fact-checking
+# IS an analysis, just a different one.
+FACTCHECK_SENTINEL = "__factcheck__"
+
 
 async def _interactive_pick_source(
     meta: YoutubeMetadata,
@@ -283,7 +288,8 @@ async def _interactive_pick_source(
 
     Returns the chosen TranscriptSource ("auto" / "captions" / "audio"),
     `DUMP_SENTINEL` for "skip the analysis, just write the transcript",
-    or `None` to signal cancel.
+    `FACTCHECK_SENTINEL` for "run the fact-check preset instead", or
+    `None` to signal cancel.
     """
     from unread.util.prompt import Choice
     from unread.util.prompt import select as _select
@@ -308,6 +314,12 @@ async def _interactive_pick_source(
         Choice(
             value=DUMP_SENTINEL,
             label="📝 Transcript only — save the text as Markdown, no analysis (no LLM cost)",
+        )
+    )
+    choices.append(
+        Choice(
+            value=FACTCHECK_SENTINEL,
+            label="🔎 Fact-check — extract the claims and verify them (slower, costs more)",
         )
     )
     choices.append(_sep())
@@ -629,6 +641,12 @@ async def cmd_analyze_youtube(
                         prefetched_meta=metadata,
                     )
                     return
+                if picked == FACTCHECK_SENTINEL:
+                    # Same pipeline, different preset — and `auto` stays
+                    # the transcript source, since fact-checking needs the
+                    # words either way.
+                    effective_preset = "factcheck"
+                    picked = "auto"
                 effective_source = picked
 
             # `preselect` (the caption-language preference list, CLI

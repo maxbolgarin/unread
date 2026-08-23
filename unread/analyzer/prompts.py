@@ -255,6 +255,12 @@ class Preset:
     # dedicated preset). The CLI's `--preset` flag still accepts hidden
     # names — `hidden` only affects user-facing menus.
     hidden: bool = False
+    # Route the final (reduce) call through a web-search-enabled provider
+    # path. Off for every preset but `factcheck`: web search is billed per
+    # search on all three providers that support it, so a summary must
+    # never opt in by accident. Providers without search still run the
+    # preset — the report says so instead of pretending it checked.
+    needs_web_search: bool = False
 
     def render_user(self, **kw: object) -> str:
         return self.user_template.format(**kw)
@@ -351,6 +357,7 @@ def _load_preset_file(path: Path, *, language: str = "en") -> Preset:
         description=meta.get("description") or None,
         enrich_kinds=_coerce_list(meta.get("enrich", "")),
         hidden=_coerce_bool(meta.get("hidden", "false")),
+        needs_web_search=_coerce_bool(meta.get("needs_web_search", "false")),
     )
 
 
@@ -579,6 +586,7 @@ def load_custom_preset(prompt_file: Path, *, language: str = "en") -> Preset:
         description=meta.get("description") or None,
         enrich_kinds=_coerce_list(meta.get("enrich", "")),
         hidden=_coerce_bool(meta.get("hidden", "false")),
+        needs_web_search=_coerce_bool(meta.get("needs_web_search", "false")),
     )
 
 

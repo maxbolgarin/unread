@@ -84,6 +84,7 @@ async def _one_call(
     max_tokens: int,
     temperature: float,
     context: dict[str, Any] | None,
+    web_search: bool = False,
 ) -> ChatResult:
     """Single chat call with usage logging. Does NOT retry on truncation.
 
@@ -92,12 +93,21 @@ async def _one_call(
     log with the provider name so multi-provider installs can attribute
     spend correctly.
     """
-    raw = await provider.chat(
-        model=model,
-        messages=messages,
-        max_tokens=max_tokens,
-        temperature=temperature,
-    )
+    # Only passed when actually requested. Keeps the default call path
+    # byte-identical to before this flag existed, so any provider-like
+    # object that predates it (the protocol is structural, so custom
+    # adapters are possible) keeps working for ordinary analysis. A
+    # `web_search=True` call only ever reaches an adapter that advertised
+    # `supports_web_search`, and those all take the kwarg.
+    chat_kwargs: dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+    }
+    if web_search:
+        chat_kwargs["web_search"] = True
+    raw = await provider.chat(**chat_kwargs)
     cost = chat_cost(model, raw.prompt_tokens, raw.cached_tokens, raw.completion_tokens)
     finish = "length" if raw.truncated else None
     log_context: dict[str, Any] = {**(context or {}), "provider": provider.name}
@@ -212,8 +222,14 @@ async def chat_complete(
     max_tokens: int,
     context: dict[str, Any] | None = None,
     disable_truncation_retry: bool = False,
+    web_search: bool = False,
 ) -> ChatResult:
     """Chat completion with automatic retry when the response is truncated.
+
+    `web_search` grounds the answer in live web results. Requested only
+    by the fact-check preset's verify call, and only when the provider
+    advertises `supports_web_search` — adapters without the capability
+    ignore it.
 
     If the provider reports `truncated=True` on the first call, retry
     once with `max_tokens` doubled, capped at the per-model
@@ -252,6 +268,7 @@ async def chat_complete(
             max_tokens=max_tokens,
             temperature=settings.openai.temperature,
             context=context,
+            web_search=web_search,
         )
     except ProviderSafetyBlockedError as e:
         from unread.util.flood import _user_visible_retry_status
@@ -298,6 +315,7 @@ async def chat_complete(
             max_tokens=bumped,
             temperature=settings.openai.temperature,
             context={**(context or {}), "retry_of_truncated": True},
+            web_search=web_search,
         )
         if result.truncated:
             log.warning(

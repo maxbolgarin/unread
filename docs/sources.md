@@ -28,6 +28,35 @@ The wizard's chat picker accepts non-Latin type-to-filter (Cyrillic,
 Greek, Arabic, Hebrew, Latin Extended) so searching for `биохакинг` or
 `finanças` works the same as `crypto`.
 
+### Fact-checking
+
+```bash
+unread "https://youtu.be/..." --preset factcheck
+unread "https://example.com/article" --preset factcheck
+```
+
+Two phases: a cheap pass over each chunk pulls out the checkable factual
+claims (opinions, predictions and jokes are deliberately excluded), then a
+single web-search-grounded call verifies them and writes the report.
+
+Live web search runs natively on **OpenAI, Anthropic and Google**. On
+OpenRouter or a local model the run still works, but the model is told it
+has no web access — it marks what it can't confirm as ❓ Unverifiable and
+opens the report saying so, rather than quietly looking like a grounded
+check. The report's metadata table always records which of the two
+happened.
+
+Two caveats worth knowing:
+
+- **Cost.** All three providers bill web search *per search*, separately
+  from tokens. `unread stats` and the bot's cost caption count tokens, so
+  a fact-check run costs more than the figure they show. The report's
+  metadata row says so explicitly.
+- **It's still an LLM.** The preset refuses to issue a verdict without a
+  source it consulted — no source means ❓ Unverifiable, not a guess — but
+  a fact-check report is a starting point for reading the sources, not a
+  substitute for it.
+
 ## YouTube videos
 
 `unread <youtube-url>` analyzes a single video end-to-end. Flow:
@@ -320,6 +349,7 @@ What kind of analysis do you want? Pick a preset with `--preset`:
 | `decisions` | Markdown table: *Decision / Who / When / Rationale / Link*. |
 | `questions` | Open questions table: *unanswered / partial / no consensus*. |
 | `reactions` | Top-reacted messages grouped by reaction kind (👍 / 🔥 / 🤔 / 👎). |
+| `factcheck` | Pulls the checkable claims out of the source and verifies them against the web: a verdict table (✅ true / ❌ false / ⚠️ misleading / 🎭 manipulated / ❓ unverifiable) followed by per-claim detail with source links. Works on any source — video, article, PDF, forwarded post. |
 | `single_msg` | Picked automatically when `<ref>` is a `t.me/.../<msg_id>` link. |
 | `multichat` | Picked automatically for batch / folder analysis: aggregates across chats into ONE report instead of per-chat. |
 | `video` | Picked automatically for YouTube URLs — transcript summary with time-stamped citations. |

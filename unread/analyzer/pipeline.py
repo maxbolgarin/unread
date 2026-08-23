@@ -92,6 +92,26 @@ def _resolve_source_hint(settings: Any) -> str:
     return (locale.content_language or "").strip().lower()
 
 
+# Appended to the fact-check system prompt when the active provider has
+# no web search. The run still happens — it just has to be honest about
+# what it could and couldn't check, rather than looking identical to a
+# grounded run.
+_NO_WEB_ACCESS_NOTICE: dict[str, str] = {
+    "en": (
+        "IMPORTANT: you have NO web access in this run. You cannot look anything up. "
+        "Verify only from your own knowledge, mark everything you cannot confirm that way "
+        "as Unverifiable, and open the report with a clear line stating that no web search "
+        "was available and the verdicts are therefore limited to model knowledge."
+    ),
+    "ru": (
+        "ВАЖНО: в этом запуске у тебя НЕТ доступа в интернет. Ничего найти нельзя. "
+        "Проверяй только по собственным знаниям, всё, что так подтвердить нельзя, помечай "
+        "как «Проверить невозможно», и начни отчёт с явной строки о том, что веб-поиск был "
+        "недоступен и вердикты ограничены знаниями модели."
+    ),
+}
+
+
 def _resolve_language(settings: Any) -> str:
     locale = getattr(settings, "locale", None)
     if locale is None:
@@ -274,6 +294,13 @@ class AnalysisResult:
     # falls back to that global, so callers that build an AnalysisResult
     # directly keep their old behavior.
     ui_language: str = ""
+    # Tri-state, only meaningful for a preset with `needs_web_search`:
+    # True = the verify call searched, False = the provider couldn't,
+    # None = not applicable (every other preset). Surfaced in the report
+    # metadata because a grounded and an ungrounded fact-check otherwise
+    # look identical, and because per-search fees are billed separately
+    # from the tokens the cost line is computed from.
+    web_search: bool | None = None
     # Identifiers used to build a clickable chat link in the report
     # header. `chat_username` is set for public chats / channels;
     # `chat_internal_id` is the t.me/c/<id>/ form (chat_id stripped of
@@ -337,6 +364,13 @@ class AnalysisOptions:
     # doubled budget. Doesn't affect the cache key — toggling it
     # between runs of the same input must hit the same cache row.
     disable_truncation_retry: bool = False
+    # Whether this run's provider can actually run a web search. Only
+    # meaningful for a preset with `needs_web_search`, and resolved in
+    # `run_analysis` from the provider's capability. It IS part of the
+    # cache key for such presets: a fact-check done with no web access
+    # is a materially different (weaker) answer and must never be served
+    # to a later run that could have searched.
+    web_search: bool = False
 
     def options_payload(self, preset: Preset) -> dict[str, Any]:
         """Hash ingredients that must bust cache when toggled."""
@@ -386,6 +420,12 @@ class AnalysisOptions:
             # tooling.
             "redact": self.redact if self.redact is not None else s.analyze.redact,
         }
+        # Only emitted for presets that ask for web search, so every
+        # existing cache row for every other preset keeps its hash on
+        # upgrade. Same conditional-emission trick as the source-language
+        # hint below.
+        if preset.needs_web_search:
+            payload["web_search"] = bool(self.web_search)
         # Source-language hint (Whisper-style override). Conditionally
         # emitted so users who never set the hint keep hitting the same
         # cache rows they had before the field was introduced — the
@@ -461,6 +501,7 @@ async def _call_cached(
     run_context: dict[str, Any],
     use_cache: bool,
     disable_truncation_retry: bool = False,
+    web_search: bool = False,
 ) -> tuple[str, float, bool, bool]:
     """Return (text, cost, was_cache_hit, truncated). Writes cache and usage log on miss.
 
@@ -486,6 +527,7 @@ async def _call_cached(
     messages = build_messages(system, static_ctx, dynamic)
     res = await chat_complete(
         oai,
+        web_search=web_search,
         repo=repo,
         model=model,
         messages=messages,
@@ -665,8 +707,12 @@ async def run_analysis(
             msgs = dedupe(msgs)
 
     if not msgs:
+        # Empty-input early return: nothing was analyzed, so there is no
+        # web-search story to tell. This runs before the provider is even
+        # constructed, hence None rather than the resolved flag.
         return AnalysisResult(
             ui_language=language or "",
+            web_search=None,
             preset=preset.name,
             model=final_model,
             chat_id=chat_id,
@@ -725,6 +771,12 @@ async def run_analysis(
     # token accounting and actual prompt stay consistent — feeding
     # preset.system to the chunker but composed_system to the LLM would
     # under-budget each chunk by the base's ~300 tokens.
+    # Constructed before the system prompt is composed because the
+    # provider's web-search capability feeds into it (and into the cache
+    # key). `make_client` only validates config and builds an SDK client,
+    # so doing it earlier just surfaces a missing-key error sooner.
+    oai = make_client()
+
     composed_system = compose_system_prompt(
         preset.system,
         topic_titles=topic_titles,
@@ -732,6 +784,15 @@ async def run_analysis(
         source_kind=opts.source_kind,
         source_language=source_language,
     )
+
+    # Web search: only for presets that ask, and only when the active
+    # provider can actually do it. Resolved once here so the cache key,
+    # the system prompt and the call itself can never disagree.
+    web_search_on = bool(preset.needs_web_search and getattr(oai, "supports_web_search", False))
+    opts.web_search = web_search_on
+    if preset.needs_web_search and not web_search_on:
+        composed_system += "\n\n" + _NO_WEB_ACCESS_NOTICE.get(report_language, _NO_WEB_ACCESS_NOTICE["en"])
+        log.info("analyze.web_search_unavailable", provider=getattr(oai, "name", "?"))
 
     # Final-position language reminder appended to the END of every user
     # prompt when source and report languages differ. Earlier-in-prompt
@@ -786,7 +847,6 @@ async def run_analysis(
             redact_stats[k] = redact_stats.get(k, 0) + v
         return scrubbed
 
-    oai = make_client()
     options_payload = opts.options_payload(preset)
     # Any change to the shared base system prompt (presets/_base.md) bumps
     # BASE_VERSION, which lands here and busts every preset's cache — one
@@ -848,6 +908,7 @@ async def run_analysis(
                 dynamic=user,
                 max_tokens=preset.output_budget_tokens,
                 run_context={**run_ctx, "phase": "analyze"},
+                web_search=web_search_on,
                 use_cache=opts.use_cache,
                 disable_truncation_retry=opts.disable_truncation_retry,
             ),
@@ -870,6 +931,7 @@ async def run_analysis(
         )
         return AnalysisResult(
             ui_language=language or "",
+            web_search=web_search_on if preset.needs_web_search else None,
             preset=preset.name,
             model=final_model,
             chat_id=chat_id,
@@ -1028,6 +1090,7 @@ async def run_analysis(
             dynamic=reduce_user,
             max_tokens=preset.output_budget_tokens,
             run_context={**run_ctx, "phase": "analyze_reduce"},
+            web_search=web_search_on,
             use_cache=opts.use_cache,
             disable_truncation_retry=opts.disable_truncation_retry,
         ),
@@ -1051,6 +1114,7 @@ async def run_analysis(
     )
     return AnalysisResult(
         ui_language=language or "",
+        web_search=web_search_on if preset.needs_web_search else None,
         preset=preset.name,
         model=final_model,
         chat_id=chat_id,

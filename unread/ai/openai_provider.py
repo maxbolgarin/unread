@@ -68,6 +68,10 @@ class _OpenAICompatBase:
     name: str = "openai-compat"
     default_chat_model: str = ""
     default_filter_model: str = ""
+    # Off on the base class on purpose: OpenRouter and local servers
+    # inherit this plumbing but have no `web_search` tool. Only
+    # `OpenAIProvider` flips it on.
+    supports_web_search: bool = False
 
     def __init__(self, settings) -> None:  # type: ignore[no-untyped-def]
         self._settings = settings
@@ -110,7 +114,10 @@ class _OpenAICompatBase:
         messages: list[dict[str, str]],
         max_tokens: int,
         temperature: float,
+        web_search: bool = False,
     ) -> ChatResult:
+        # `web_search` is ignored here — see `supports_web_search`.
+        # `OpenAIProvider` overrides `chat` to handle it.
         resp = await self._completion(
             model=model,
             messages=messages,
@@ -141,6 +148,85 @@ class OpenAIProvider(_OpenAICompatBase):
     name = "openai"
     default_chat_model = "gpt-5.4-mini"
     default_filter_model = "gpt-5.4-nano"
+    supports_web_search = True
+
+    async def chat(
+        self,
+        *,
+        model: str,
+        messages: list[dict[str, str]],
+        max_tokens: int,
+        temperature: float,
+        web_search: bool = False,
+    ) -> ChatResult:
+        """Chat Completions, or the Responses API when searching.
+
+        The `web_search` tool exists only on the Responses API, so a
+        search-grounded call is a genuinely different request shape —
+        not a parameter on the usual one. Everything else keeps going
+        through Chat Completions unchanged; this is the only place in
+        the codebase that touches `responses.create`.
+        """
+        if not web_search:
+            return await super().chat(
+                model=model,
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+            )
+        return await self._searched_completion(model=model, messages=messages, max_tokens=max_tokens)
+
+    @retry_on_429()
+    async def _searched_completion(
+        self,
+        *,
+        model: str,
+        messages: list[dict[str, str]],
+        max_tokens: int,
+    ) -> ChatResult:
+        # The Responses API takes a single `input` plus a separate
+        # `instructions`, not a messages array. Our callers always build
+        # `[system, user]` (see `build_messages`), so fold accordingly.
+        instructions = "\n\n".join(
+            m.get("content", "") for m in messages if m.get("role") == "system"
+        ).strip()
+        user_input = "\n\n".join(m.get("content", "") for m in messages if m.get("role") != "system").strip()
+
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "input": user_input,
+            "tools": [{"type": "web_search"}],
+            "max_output_tokens": max_tokens,
+        }
+        if instructions:
+            kwargs["instructions"] = instructions
+        resp = await self._client.responses.create(**kwargs)
+
+        text = getattr(resp, "output_text", "") or ""
+        usage = getattr(resp, "usage", None)
+        prompt = int(getattr(usage, "input_tokens", 0) or 0)
+        completion = int(getattr(usage, "output_tokens", 0) or 0)
+        cached = 0
+        details = getattr(usage, "input_tokens_details", None)
+        if details is not None:
+            cached = int(getattr(details, "cached_tokens", 0) or 0)
+
+        # No count in usage — infer it from the tool-call items the model
+        # emitted. Defensive `getattr` throughout: the exact item shape
+        # is the part of this integration most likely to drift.
+        searches = 0
+        for item in getattr(resp, "output", None) or []:
+            if getattr(item, "type", "") == "web_search_call":
+                searches += 1
+
+        return ChatResult(
+            text=text,
+            prompt_tokens=prompt,
+            cached_tokens=cached,
+            completion_tokens=completion,
+            truncated=getattr(resp, "status", "") == "incomplete",
+            web_searches=searches,
+        )
 
     def _make_client(self, settings) -> AsyncOpenAI:  # type: ignore[no-untyped-def]
         if not settings.openai.api_key:

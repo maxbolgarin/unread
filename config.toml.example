@@ -34,6 +34,10 @@
 # base_url = ""             # OpenAI-compat endpoint override (Azure, …)
 # chat_model = ""           # empty → provider's hard-coded default
 # filter_model = ""
+# Anthropic's server-side web-search tool is versioned by date and the API
+# rejects a type newer than your account's API version with a 400. Only the
+# `factcheck` preset uses it. Bump if Anthropic retires this version.
+# anthropic_web_search_tool = "web_search_20250305"
 
 # [openrouter]
 # api_key = "sk-or-…"
