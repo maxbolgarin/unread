@@ -31,11 +31,13 @@ from unread.config import Settings
 #   T_DAY = TG link: last 1 day
 #   T_WK  = TG link: last 7 days
 #   T_MO  = TG link: last 30 days
+#   Y_DUMP= YouTube link: skip analysis, return transcript.md
 _ACTIONS = frozenset(
     {
         "R",
         "A",
         "M",
+        "Y_DUMP",
         "T_ONE",
         "T_FRM",
         "T_DAY",
@@ -351,6 +353,32 @@ def build_tg_choice_panel(
             Button.inline("📅 Last month", encode_callback("T_MO", panel_msg_id)),
         ]
     )
+    return text, rows
+
+
+def build_youtube_choice_panel(
+    *,
+    url: str,
+    panel_msg_id: int,
+) -> tuple[str, list[list[Any]]]:
+    """Picker shown when a single YouTube link arrives in a burst.
+
+    Two very different jobs share one input shape: "tell me what this
+    video says" (analyze — LLM cost) and "give me the words" (dump the
+    transcript as Markdown — no LLM call unless captions are missing
+    and Whisper has to run). Asking up front is cheaper than running
+    the wrong one.
+
+    `▶ Analyze` keeps the generic `R` action so it flows through the
+    same single-item batch path every other kind uses.
+    """
+    text = f"🎬 **YouTube**: {url}\nWhat do you want?"
+    rows: list[list[Any]] = [
+        [
+            Button.inline("▶ Analyze", encode_callback("R", panel_msg_id)),
+            Button.inline("📝 Transcript", encode_callback("Y_DUMP", panel_msg_id)),
+        ]
+    ]
     return text, rows
 
 

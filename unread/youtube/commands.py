@@ -267,14 +267,22 @@ def _is_interactive() -> bool:
         return False
 
 
+# Sentinel returned by `_interactive_pick_source` for the "just dump the
+# transcript" row. The caller translates it into a `cmd_dump_youtube`
+# hand-off instead of running the analysis pipeline. Mirrors the shape of
+# `WHISPER_LANG_SENTINEL` below.
+DUMP_SENTINEL = "__dump__"
+
+
 async def _interactive_pick_source(
     meta: YoutubeMetadata,
     *,
     audio_estimate: float,
-) -> TranscriptSource | None:
+) -> TranscriptSource | str | None:
     """Prompt the user to confirm + pick a transcript source.
 
-    Returns the chosen TranscriptSource ("auto" / "captions" / "audio")
+    Returns the chosen TranscriptSource ("auto" / "captions" / "audio"),
+    `DUMP_SENTINEL` for "skip the analysis, just write the transcript",
     or `None` to signal cancel.
     """
     from unread.util.prompt import Choice
@@ -295,6 +303,13 @@ async def _interactive_pick_source(
             Choice(value="captions", label="Captions only — cheaper (skips Whisper; analysis still costs)")
         )
     choices.append(Choice(value="audio", label=audio_label))
+    choices.append(_sep())
+    choices.append(
+        Choice(
+            value=DUMP_SENTINEL,
+            label="📝 Transcript only — save the text as Markdown, no analysis (no LLM cost)",
+        )
+    )
     choices.append(_sep())
     choices.append(Choice(value="__cancel__", label="Cancel"))
 
@@ -551,6 +566,29 @@ async def cmd_analyze_youtube(
                 if picked is None:
                     console.print("[yellow]Cancelled.[/]")
                     raise typer.Exit(0)
+                if picked == DUMP_SENTINEL:
+                    # Hand off to the dump path and stop — no chunking, no
+                    # map-reduce, no OpenAI call. `cmd_dump_youtube` opens
+                    # its own repo connection; the outer one is idle here
+                    # and SQLite runs in WAL mode, so the nested open is
+                    # safe. `prefetched_meta` reuses the yt-dlp round-trip
+                    # we already paid for above.
+                    from unread.youtube.dump import cmd_dump_youtube
+
+                    await cmd_dump_youtube(
+                        url=url,
+                        mode="transcript",
+                        youtube_source="auto",
+                        output=None,
+                        console_out=False,
+                        language=language,
+                        report_language=report_language,
+                        source_language=source_language,
+                        yes=False,
+                        transcript_lang=transcript_lang,
+                        prefetched_meta=metadata,
+                    )
+                    return
                 effective_source = picked
 
             # Caption language preference list: CLI overrides (already

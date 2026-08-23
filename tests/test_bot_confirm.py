@@ -750,3 +750,74 @@ async def test_confirm_with_garbage_arg_is_rejected():
     # Garbage arg → no state change, friendly error reply.
     assert app._chat_state.get(42, {}).get("confirm_disabled") in (None, False)
     assert event.replies
+
+
+# ---------------------------------------------------------------------------
+# YouTube choice panel (analyze vs transcript dump)
+# ---------------------------------------------------------------------------
+
+
+def test_build_youtube_choice_panel_offers_analyze_and_transcript():
+    from unread.bot.confirm import build_youtube_choice_panel
+
+    text, buttons = build_youtube_choice_panel(
+        url="https://youtu.be/dQw4w9WgXcQ",
+        panel_msg_id=7,
+    )
+    assert "youtu.be/dQw4w9WgXcQ" in text
+    flat = [b for row in buttons for b in row]
+    labels = " ".join(b.text.lower() for b in flat)
+    assert "analyze" in labels
+    assert "transcript" in labels
+    assert len(flat) == 2
+
+
+def test_build_youtube_choice_panel_callbacks_round_trip():
+    from unread.bot.confirm import build_youtube_choice_panel
+
+    _text, buttons = build_youtube_choice_panel(
+        url="https://youtu.be/abc",
+        panel_msg_id=99,
+    )
+    flat = [b for row in buttons for b in row]
+    analyze_btn = next(b for b in flat if "analyze" in b.text.lower())
+    dump_btn = next(b for b in flat if "transcript" in b.text.lower())
+    assert parse_callback(analyze_btn.data) == ("R", 99, None)
+    assert parse_callback(dump_btn.data) == ("Y_DUMP", 99, None)
+
+
+def test_render_burst_panel_single_youtube_uses_the_choice_panel():
+    """A lone YouTube link must get the Analyze / Transcript picker, not
+    the generic single-item `▶ Run` batch panel."""
+    from unread.bot.burst import render_burst_panel
+
+    items = [BurstItem(kind="youtube", payload={"url": "https://youtu.be/xyz"}, event=None)]
+    _text, buttons = render_burst_panel(items=items, panel_msg_id=3)
+    flat = [b for row in buttons for b in row]
+    assert len(flat) == 2
+    assert any("transcript" in b.text.lower() for b in flat)
+
+
+def test_render_burst_panel_multiple_items_still_uses_batch_panel():
+    """The picker is a single-item affordance — a mixed burst keeps the
+    Run separately / Run combined shape."""
+    from unread.bot.burst import render_burst_panel
+
+    items = [
+        BurstItem(kind="youtube", payload={"url": "https://youtu.be/xyz"}, event=None),
+        BurstItem(kind="url", payload={"url": "https://example.com"}, event=None),
+    ]
+    text, buttons = render_burst_panel(items=items, panel_msg_id=4)
+    flat = [b for row in buttons for b in row]
+    assert "2 items ready to analyze" in text
+    assert not any("transcript" in b.text.lower() for b in flat)
+
+
+def test_render_burst_panel_single_non_youtube_keeps_plain_run_button():
+    from unread.bot.burst import render_burst_panel
+
+    items = [BurstItem(kind="url", payload={"url": "https://example.com"}, event=None)]
+    _text, buttons = render_burst_panel(items=items, panel_msg_id=5)
+    flat = [b for row in buttons for b in row]
+    assert len(flat) == 1
+    assert parse_callback(flat[0].data) == ("R", 5, None)

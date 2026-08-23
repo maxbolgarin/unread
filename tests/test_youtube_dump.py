@@ -564,3 +564,66 @@ async def test_transcript_mode_explicit_audio_source_requires_ffmpeg_early(tmp_p
             yes=True,
         )
     ffmpeg_mock.assert_called_once()
+
+
+# --- return value + prefetched metadata (analyze → dump handoff) -------------
+
+
+async def test_transcript_mode_returns_the_dump_dir(tmp_path) -> None:
+    """`cmd_dump_youtube` returns the directory it wrote into.
+
+    The bot's transcript button and the analyze picker's "dump instead"
+    row both need the concrete path so they can upload / print
+    `transcript.md` without re-deriving the slug + timestamp.
+    """
+    meta = _meta("vid-retdir01")
+    out = tmp_path / "out"
+    with (
+        patch("unread.youtube.dump.fetch_metadata", new=AsyncMock(return_value=meta)),
+        patch(
+            "unread.youtube.dump.get_transcript",
+            new=AsyncMock(return_value=_trans_with_cues()),
+        ),
+    ):
+        dump_dir = await cmd_dump_youtube(
+            url=meta.url,
+            mode="transcript",
+            youtube_source="auto",
+            output=out,
+            console_out=False,
+            language="en",
+            report_language="en",
+            source_language="",
+            yes=True,
+        )
+    assert dump_dir == out
+    assert (dump_dir / "transcript.md").exists()
+
+
+async def test_prefetched_meta_skips_the_metadata_refetch(tmp_path) -> None:
+    """`cmd_analyze_youtube` already paid for a yt-dlp metadata call before
+    the picker runs. Handing that object over must not trigger a second one."""
+    meta = _meta("vid-prefetch1")
+    out = tmp_path / "out"
+    fetch_mock = AsyncMock(return_value=meta)
+    with (
+        patch("unread.youtube.dump.fetch_metadata", new=fetch_mock),
+        patch(
+            "unread.youtube.dump.get_transcript",
+            new=AsyncMock(return_value=_trans_with_cues()),
+        ),
+    ):
+        await cmd_dump_youtube(
+            url=meta.url,
+            mode="transcript",
+            youtube_source="auto",
+            output=out,
+            console_out=False,
+            language="en",
+            report_language="en",
+            source_language="",
+            yes=True,
+            prefetched_meta=meta,
+        )
+    fetch_mock.assert_not_called()
+    assert (out / "transcript.md").exists()

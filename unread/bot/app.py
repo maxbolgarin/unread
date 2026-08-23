@@ -484,7 +484,7 @@ class BotApp:
             log.info("bot.callback.refused_non_primary", action=action, sender_id=event.sender_id)
             return
 
-        if action in ("R", "A", "M") or is_tg_window or is_forward:
+        if action in ("R", "A", "M", "Y_DUMP") or is_tg_window or is_forward:
             pending_runs.pop(panel_msg_id, None)
             with contextlib.suppress(Exception):
                 await event.answer("Running…")
@@ -505,6 +505,10 @@ class BotApp:
 
         if action == "M":
             await self._run_batch_combined(pending, panel_msg)
+            return
+
+        if action == "Y_DUMP":
+            await self._run_youtube_dump(pending, panel_msg)
             return
 
         if is_tg_window:
@@ -598,6 +602,37 @@ class BotApp:
                     log.exception("bot.batch.item_failed", kind=item.kind, idx=idx)
                     await _safe_reply(item.event, f"⚠️ Item {idx}/{total} failed: {type(e).__name__}: {e}")
         await edit_progress(panel_msg, f"✓ Finished {total} items.")
+
+    async def _run_youtube_dump(self, pending, panel_msg) -> None:
+        """Transcript-dump path for the burst's single YouTube item.
+
+        Deliberately NOT routed through `_run_batch_separately`: that
+        helper rebuilds `RunOptions` from settings per item, which is
+        right for the analyze path but would drop the fact that the user
+        asked for a dump. The panel that offers this button is only ever
+        built for a single-item burst (see `burst.render_burst_panel`),
+        so there is no N-item loop to mirror here.
+        """
+        from unread.bot.handlers import youtube as yt_handler
+
+        items = pending.payload.get("items") or []
+        if not items:
+            return
+        item = items[0]
+        async with self._semaphore:
+            try:
+                await yt_handler.execute_dump(
+                    item.event,
+                    item.payload,
+                    pending.options,
+                    app=self,
+                    progress_msg=panel_msg,
+                )
+            except Exception as e:
+                if _is_clean_exit(e):
+                    return
+                log.exception("bot.youtube_dump_failed")
+                await _safe_reply(item.event, f"⚠️ {type(e).__name__}: {e}")
 
     async def _run_forward_action(self, action: str, pending, panel_msg) -> None:
         """Execute a forward-picker button tap.

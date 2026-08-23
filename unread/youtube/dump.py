@@ -304,8 +304,20 @@ async def cmd_dump_youtube(
     source_language: str,
     yes: bool,
     transcript_lang: str | None = None,
-) -> None:
-    """Dump a YouTube video. Mode picks the artifact (transcript / audio / video)."""
+    prefetched_meta: YoutubeMetadata | None = None,
+) -> Path:
+    """Dump a YouTube video. Mode picks the artifact (transcript / audio / video).
+
+    Returns the directory the artifacts were written into, so callers
+    that need the concrete `transcript.md` path (the bot's transcript
+    button, the analyze picker's "dump instead" row) don't have to
+    re-derive the slug + timestamp.
+
+    `prefetched_meta` short-circuits the metadata lookup for callers
+    that already paid for a yt-dlp round-trip — `cmd_analyze_youtube`
+    fetches metadata before it shows the source picker, so handing the
+    object over avoids a second identical call.
+    """
     settings = get_settings()
     try:
         video_id = extract_video_id(url)
@@ -314,7 +326,12 @@ async def cmd_dump_youtube(
 
     async with open_repo(settings.storage.data_path) as repo:
         cached_row = await repo.get_youtube_video(video_id)
-        if cached_row:
+        if prefetched_meta is not None:
+            # Caller's object wins over the DB row: `_restore_metadata_from_row`
+            # hard-nulls the caption inventory, while a freshly fetched meta
+            # still carries `subtitles` / `automatic_captions`.
+            meta = prefetched_meta
+        elif cached_row:
             meta = _restore_metadata_from_row(cached_row)
         else:
             try:
@@ -350,3 +367,5 @@ async def cmd_dump_youtube(
 
     if console_out and mode == "transcript":
         console.print((dump_dir / "transcript.md").read_text(encoding="utf-8"))
+
+    return dump_dir

@@ -102,6 +102,49 @@ async def _debounce_then_flush(app: BotApp, chat_id: int, debounce_seconds: floa
         log.exception("bot.burst.flush_failed", chat_id=chat_id)
 
 
+def render_burst_panel(*, items: list[BurstItem], panel_msg_id: int) -> tuple[str, list]:
+    """Pick and build the confirm panel for a settled burst.
+
+    Pure — no Telethon I/O — so the routing rules are testable on their
+    own. Single-item bursts get a kind-specific picker when the kind has
+    a meaningful up-front choice:
+
+    * forwarded-from-channel → analyze the message vs the source channel
+    * TG link                → how much of the chat to pull
+    * YouTube link           → analyze vs dump the transcript
+
+    Everything else (and every multi-item burst) falls through to the
+    generic Run separately / Run combined batch panel.
+    """
+    from unread.bot.confirm import (
+        build_batch_panel,
+        build_forward_choice_panel,
+        build_tg_choice_panel,
+        build_youtube_choice_panel,
+    )
+
+    if len(items) == 1:
+        item = items[0]
+        # Forward-from-channel takes priority over the generic batch /
+        # tg-link paths — picker offers "analyze this msg" vs "analyze
+        # the source channel" options.
+        if item.payload.get("fwd_channel_id"):
+            return build_forward_choice_panel(payload=item.payload, panel_msg_id=panel_msg_id)
+        if item.kind == "tg":
+            url = item.payload.get("url", "")
+            return build_tg_choice_panel(
+                url=url,
+                msg_id=_extract_tg_msg_id(url),
+                panel_msg_id=panel_msg_id,
+            )
+        if item.kind == "youtube":
+            return build_youtube_choice_panel(
+                url=item.payload.get("url", ""),
+                panel_msg_id=panel_msg_id,
+            )
+    return build_batch_panel(items=items, panel_msg_id=panel_msg_id)
+
+
 async def _flush_burst(app: BotApp, chat_id: int) -> None:
     """Drain the chat's burst into one confirm panel.
 
@@ -115,13 +158,7 @@ async def _flush_burst(app: BotApp, chat_id: int) -> None:
     private-channel users can only address the channel via a msg link,
     so we ask them up front how much of the channel to pull.
     """
-    from unread.bot.confirm import (
-        PendingRun,
-        RunOptions,
-        build_batch_panel,
-        build_forward_choice_panel,
-        build_tg_choice_panel,
-    )
+    from unread.bot.confirm import PendingRun, RunOptions
 
     chat_state = app._chat_state.get(chat_id)
     if not chat_state:
@@ -143,29 +180,9 @@ async def _flush_burst(app: BotApp, chat_id: int) -> None:
 
     # First send the panel with a placeholder ID so the buttons exist;
     # then edit with the real ID once Telethon returns the sent message.
-    def _render(panel_id: int):
-        if len(items) == 1:
-            item = items[0]
-            # Forward-from-channel takes priority over the generic
-            # batch / tg-link paths — picker offers "analyze this msg"
-            # vs "analyze the source channel" options.
-            if item.payload.get("fwd_channel_id"):
-                return build_forward_choice_panel(
-                    payload=item.payload,
-                    panel_msg_id=panel_id,
-                )
-            if item.kind == "tg":
-                url = item.payload.get("url", "")
-                return build_tg_choice_panel(
-                    url=url,
-                    msg_id=_extract_tg_msg_id(url),
-                    panel_msg_id=panel_id,
-                )
-        return build_batch_panel(items=items, panel_msg_id=panel_id)
-
-    text, buttons = _render(0)
+    text, buttons = render_burst_panel(items=items, panel_msg_id=0)
     panel = await last_event.reply(text, buttons=buttons, parse_mode="md")
-    text, buttons = _render(panel.id)
+    text, buttons = render_burst_panel(items=items, panel_msg_id=panel.id)
     with contextlib.suppress(Exception):
         await panel.edit(text, buttons=buttons, parse_mode="md")
 

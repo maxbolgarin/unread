@@ -35,8 +35,11 @@ Greek, Arabic, Hebrew, Latin Extended) so searching for `биохакинг` or
 1. yt-dlp fetches metadata (title, channel, duration, captions index).
 2. A summary panel shows up + an interactive picker asks for the
    transcript source — captions (free), audio + Whisper (paid, with a
-   cost estimate), or cancel. Skipped when stdin isn't a TTY, when
-   `--yes` is passed, or when an explicit `--youtube-source` flag was set.
+   cost estimate), transcript-only (no analysis), or cancel. Skipped
+   when stdin isn't a TTY, when `--yes` is passed, or when an explicit
+   `--youtube-source` flag was set. Picking **Transcript only** hands
+   off to `unread dump <url> --mode transcript` and stops there — you
+   get `transcript.md` + `metadata.json` and pay no LLM cost.
 3. When the video has more than one caption language, a second prompt
    asks which track to use (or to fall back to Whisper). Skipped when
    stdin isn't a TTY, when `--yes` is passed, when `--transcript-lang`
@@ -67,6 +70,9 @@ unread "https://youtu.be/dQw4w9WgXcQ" --youtube-source audio
 
 # Pick the caption language up front (skips the picker):
 unread "https://youtu.be/dQw4w9WgXcQ" --transcript-lang french
+
+# Transcript only, no analysis (same as picking it in the menu):
+unread dump "https://youtu.be/dQw4w9WgXcQ" --mode transcript
 
 # Different preset; see `unread --help` for the full list.
 unread "https://www.youtube.com/watch?v=..." --preset summary --console

@@ -122,6 +122,47 @@ async def send_website_report(
     await _upload_with_caption(event, report, started=started)
 
 
+async def send_transcript_dump(
+    event: events.NewMessage.Event,
+    *,
+    transcript: Path,
+    started: float,
+    title: str,
+) -> None:
+    """Upload a `transcript.md` written by `cmd_dump_youtube`.
+
+    Deliberately NOT `_upload_with_caption`: a transcript has no TL;DR
+    section to extract and no report structure worth rendering to PDF —
+    the raw Markdown text is the whole point of the button. The cost
+    caption still runs, so a Whisper-backed dump shows what it billed
+    (`enrich_youtube` is already in `_ANALYZE_PHASES`); a captions-only
+    dump shows $0.
+    """
+    if not transcript.exists():
+        log.warning("bot.transcript_missing", transcript=str(transcript))
+        await event.reply("⚠️ Transcript finished but the file is missing on the host.")
+        return
+
+    elapsed = max(0.0, time.time() - started)
+    caption = await _build_caption(started, elapsed)
+    # Telegram caps captions at 1024 chars; video titles can be long.
+    head = (title or "Transcript").strip()
+    if len(head) > 100:
+        head = head[:97] + "…"
+
+    try:
+        await event.client.send_file(
+            event.chat_id,
+            file=str(transcript),
+            caption=f"📝 {head}\n{caption}",
+            reply_to=event.message.id,
+            force_document=True,
+        )
+    except Exception:
+        log.exception("bot.transcript_upload_failed", transcript=str(transcript))
+        await event.reply(f"⚠️ Couldn't upload the transcript. It's at `{transcript}` on the host.")
+
+
 # ----------------------------------------------------------------------
 # Internals
 # ----------------------------------------------------------------------

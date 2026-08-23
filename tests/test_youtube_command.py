@@ -727,3 +727,79 @@ def test_cli_transcript_lang_flag_rejects_garbage() -> None:
     assert result.exit_code != 0
     assert "transcript-lang" in _plain(result.output)
     mock_yt.assert_not_called()
+
+
+# --- cmd_analyze_youtube: "dump transcript instead" picker row --------------
+
+
+async def test_analyze_youtube_dump_choice_dispatches_to_dump_and_skips_analysis() -> None:
+    """Picking the dump row in the source picker hands off to
+    `cmd_dump_youtube` and never touches the analysis path."""
+    from unread.youtube.commands import DUMP_SENTINEL
+
+    meta = _meta(video_id="dumpchoice1", url="https://www.youtube.com/watch?v=dumpchoice1")
+    get_transcript_mock = AsyncMock()
+    dump_mock = AsyncMock(return_value=None)
+    with (
+        patch("unread.youtube.commands.fetch_metadata", new=AsyncMock(return_value=meta)),
+        patch("unread.youtube.commands.get_transcript", new=get_transcript_mock),
+        patch("unread.youtube.commands._is_interactive", return_value=True),
+        patch(
+            "unread.youtube.commands._interactive_pick_source",
+            new=AsyncMock(return_value=DUMP_SENTINEL),
+        ),
+        patch("unread.youtube.dump.cmd_dump_youtube", new=dump_mock),
+    ):
+        await cmd_analyze_youtube(
+            url=meta.url,
+            preset=None,
+            prompt_file=None,
+            model=None,
+            filter_model=None,
+            output=None,
+            console_out=True,
+            yes=False,
+        )
+    get_transcript_mock.assert_not_called()
+    dump_mock.assert_called_once()
+    kwargs = dump_mock.call_args.kwargs
+    assert kwargs["mode"] == "transcript"
+    assert kwargs["prefetched_meta"] is meta
+
+
+async def test_analyze_youtube_dump_choice_forwards_languages_to_dump() -> None:
+    """Locale axes chosen on the CLI must reach the dump path unchanged —
+    they drive the caption-language preference order."""
+    from unread.youtube.commands import DUMP_SENTINEL
+
+    meta = _meta(video_id="dumpchoice2", url="https://www.youtube.com/watch?v=dumpchoice2")
+    dump_mock = AsyncMock(return_value=None)
+    with (
+        patch("unread.youtube.commands.fetch_metadata", new=AsyncMock(return_value=meta)),
+        patch("unread.youtube.commands.get_transcript", new=AsyncMock()),
+        patch("unread.youtube.commands._is_interactive", return_value=True),
+        patch(
+            "unread.youtube.commands._interactive_pick_source",
+            new=AsyncMock(return_value=DUMP_SENTINEL),
+        ),
+        patch("unread.youtube.dump.cmd_dump_youtube", new=dump_mock),
+    ):
+        await cmd_analyze_youtube(
+            url=meta.url,
+            preset=None,
+            prompt_file=None,
+            model=None,
+            filter_model=None,
+            output=None,
+            console_out=True,
+            yes=False,
+            language="en",
+            report_language="ru",
+            source_language="de",
+            transcript_lang="fr",
+        )
+    kwargs = dump_mock.call_args.kwargs
+    assert kwargs["language"] == "en"
+    assert kwargs["report_language"] == "ru"
+    assert kwargs["source_language"] == "de"
+    assert kwargs["transcript_lang"] == "fr"
