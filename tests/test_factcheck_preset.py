@@ -54,3 +54,14 @@ def test_factcheck_prompt_forbids_a_verdict_without_a_source(language) -> None:
     can't source must land in the unverifiable bucket, never a guess."""
     system = get_presets(language)["factcheck"].system.lower()
     assert "unverifi" in system or "не пров" in system
+
+
+@pytest.mark.parametrize("language", ["en", "ru"])
+def test_factcheck_output_budget_avoids_the_truncation_retry(language) -> None:
+    """A verdict table plus a section per claim runs long. At 6000 tokens
+    a normal 8-claim report truncated, and the retry re-bills the whole
+    prompt AND a second round of per-search-billed web searches — the
+    most expensive failure mode this preset has. The models it pins cap
+    output at 128k, so a generous budget costs nothing when unused:
+    output tokens are billed as generated, not as reserved."""
+    assert get_presets(language)["factcheck"].output_budget_tokens >= 12_000

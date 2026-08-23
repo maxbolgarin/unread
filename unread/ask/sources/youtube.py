@@ -130,7 +130,7 @@ async def cmd_ask_youtube(
             # the text). Mirrors `cmd_analyze_youtube`'s cached branch.
             console.print(f"[grey70]Using cached YouTube metadata + transcript ({video_id})[/]")
             meta = _restore_metadata_from_row(cached)
-            console.print(_render_metadata_panel(meta, audio_estimate=0.0))
+            console.print(_render_metadata_panel(meta, audio_estimate=0.0, captions_known=False))
             timed_cues = cached_tres.timed_cues
             text = _render_timed(timed_cues).strip() if timed_cues else (cached_tres.text or "").strip()
             console.print(f"[green]Transcript ready[/] ({cached_tres.source}, {len(text):,} chars, cached)")
@@ -152,22 +152,23 @@ async def cmd_ask_youtube(
                     console.print(f"[red]YouTube fetch failed: {str(e)[:300]}[/]")
                     raise typer.Exit(1) from e
 
-            audio_estimate = float(audio_cost(settings.openai.audio_model_default, meta.duration_sec) or 0.0)
-            console.print(_render_metadata_panel(meta, audio_estimate=audio_estimate))
-
             # `_restore_metadata_from_row` hard-nulls `subtitles` /
             # `automatic_captions`, and `load_cached` reads that inventory
             # to decide whether this request could fetch captions at all.
             # Handing it a restored object made it conclude "no captions"
             # and serve a wrong-language Whisper transcript on videos that
             # DO have the requested captions. Re-fetch first, exactly like
-            # the analyze and dump paths do.
+            # the analyze and dump paths do — and before the panel, so the
+            # panel's Captions row reports reality too.
             if cached and not (meta.subtitles or meta.automatic_captions):
                 try:
                     meta = await fetch_metadata(video_id)
                 except YoutubeFetchError as e:
                     console.print(f"[red]YouTube fetch failed: {str(e)[:300]}[/]")
                     raise typer.Exit(1) from e
+
+            audio_estimate = float(audio_cost(settings.openai.audio_model_default, meta.duration_sec) or 0.0)
+            console.print(_render_metadata_panel(meta, audio_estimate=audio_estimate))
 
             # Second chance now that `meta` carries a real caption
             # inventory: reuses a Whisper transcript somebody already paid

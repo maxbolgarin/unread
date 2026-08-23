@@ -372,3 +372,41 @@ async def test_web_search_count_reaches_the_usage_log(repo: Repo) -> None:
     rows = [r[0] for r in await cur.fetchall()]
     await cur.close()
     assert any("web_searches" in (r or "") and "4" in (r or "") for r in rows)
+
+
+# --- the metadata panel must not claim "no captions" from a cache row --------
+
+
+def _panel_text(panel) -> str:
+    from rich.console import Console
+
+    buf = Console(record=True, width=200, force_terminal=False)
+    buf.print(panel)
+    return buf.export_text()
+
+
+def test_panel_does_not_claim_no_captions_when_the_inventory_is_unknown() -> None:
+    """`_restore_metadata_from_row` nulls the caption inventory, and a
+    fresh fetch also collapses "no captions" to None — so the object alone
+    can't tell them apart. On the cached path the panel used to announce
+    `Captions none (Whisper required)` directly above a perfectly good
+    cached English caption transcript."""
+    from unread.youtube.commands import _render_metadata_panel
+
+    text = _panel_text(_render_metadata_panel(_meta(), audio_estimate=0.0, captions_known=False))
+    assert "Whisper required" not in text
+    assert "not recorded" in text
+
+
+def test_panel_still_reports_genuinely_absent_captions() -> None:
+    from unread.youtube.commands import _render_metadata_panel
+
+    text = _panel_text(_render_metadata_panel(_meta(), audio_estimate=0.0))
+    assert "Whisper required" in text
+
+
+def test_panel_reports_available_captions() -> None:
+    from unread.youtube.commands import _render_metadata_panel
+
+    text = _panel_text(_render_metadata_panel(_meta(subtitles={"en": [{}]}), audio_estimate=0.0))
+    assert "available" in text

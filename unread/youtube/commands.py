@@ -230,8 +230,18 @@ def _has_any_captions(meta: YoutubeMetadata) -> bool:
     return bool(meta.subtitles or meta.automatic_captions)
 
 
-def _render_metadata_panel(meta: YoutubeMetadata, *, audio_estimate: float) -> Panel:
-    """Pretty-print metadata + caption availability + Whisper estimate."""
+def _render_metadata_panel(
+    meta: YoutubeMetadata, *, audio_estimate: float, captions_known: bool = True
+) -> Panel:
+    """Pretty-print metadata + caption availability + Whisper estimate.
+
+    `captions_known=False` when `meta` was rebuilt from a `youtube_videos`
+    row: that helper doesn't store the caption inventory, and a fresh
+    fetch ALSO collapses "no captions" to None (`dict(...) or None` in
+    `metadata.py`), so the object alone can't distinguish "none" from
+    "not recorded". Guessing "none" printed `Captions none (Whisper
+    required)` directly above a cached English caption transcript.
+    """
     rows: list[str] = []
     if meta.channel_title:
         rows.append(f"[bold]Channel[/] {meta.channel_title}")
@@ -244,8 +254,10 @@ def _render_metadata_panel(meta: YoutubeMetadata, *, audio_estimate: float) -> P
         rows.append(f"[bold]Views[/]    {meta.view_count:,}")
     if meta.like_count is not None:
         rows.append(f"[bold]Likes[/]    {meta.like_count:,}")
-    captions = _has_any_captions(meta)
-    cap_label = "[green]available[/]" if captions else "[yellow]none[/] (Whisper required)"
+    if captions_known:
+        cap_label = "[green]available[/]" if _has_any_captions(meta) else "[yellow]none[/] (Whisper required)"
+    else:
+        cap_label = "[grey70]not recorded[/] (metadata from cache)"
     rows.append(f"[bold]Captions[/] {cap_label}")
     if audio_estimate > 0:
         rows.append(
@@ -595,7 +607,7 @@ async def cmd_analyze_youtube(
             # cached path (the transcript already exists, no Whisper
             # call coming) so we pass 0.0 — the panel still shows title /
             # channel / duration / language, which is the useful part.
-            console.print(_render_metadata_panel(metadata, audio_estimate=0.0))
+            console.print(_render_metadata_panel(metadata, audio_estimate=0.0, captions_known=False))
             if notice := fallback_notice(
                 requested=requested_lang,
                 delivered=fetched_lang,
