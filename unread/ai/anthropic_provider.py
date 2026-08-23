@@ -184,9 +184,10 @@ class AnthropicProvider:
         if resp is None:
             raise RuntimeError("Anthropic call exhausted retries without a response")
 
-        # Concatenate any text blocks (Anthropic returns a list of
-        # content blocks; tool-use / thinking blocks are absent here
-        # since we don't request them).
+        # Concatenate any text blocks. Anthropic returns a list of content
+        # blocks; when `web_search=True` the list ALSO carries
+        # `server_tool_use` / `web_search_tool_result` blocks, which we
+        # skip — the model's prose already contains the source URLs.
         text_parts: list[str] = []
         for block in getattr(resp, "content", []) or []:
             if getattr(block, "type", None) == "text":
@@ -210,7 +211,16 @@ class AnthropicProvider:
         completion_tokens = int(getattr(usage, "output_tokens", 0) or 0)
         cached_tokens = cache_read_tokens
 
-        truncated = getattr(resp, "stop_reason", None) == "max_tokens"
+        # `pause_turn` means the server-tool turn was suspended mid-flight
+        # and is meant to be continued by re-sending the response. We don't
+        # implement that continuation loop yet, so flag it as truncated:
+        # that stops `_call_cached` from caching a half-finished verdict
+        # table (which would poison every later run of the same input) and
+        # buys one retry. A proper continuation is the real fix.
+        stop_reason = getattr(resp, "stop_reason", None)
+        if stop_reason == "pause_turn":
+            log.warning("anthropic.pause_turn", model=model, hint="partial answer; retrying")
+        truncated = stop_reason in ("max_tokens", "pause_turn")
 
         # Anthropic is the only provider that reports a search count.
         server_tool_use = getattr(usage, "server_tool_use", None)

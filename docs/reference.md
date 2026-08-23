@@ -234,7 +234,7 @@ unread ask "..." --folder Work --build-index
 unread ask "open questions on the API" --folder Work --semantic --rerank --last-days 14
 
 # Cheap and small:
-unread ask "..." --limit 50 --model gpt-5.4-nano
+unread ask "..." --limit 50 --model gpt-5.6-luna
 
 # Debug retrieval before paying for the answer:
 unread ask "..." @somegroup --show-retrieved --max-cost 0.05
@@ -271,7 +271,7 @@ URL/file/stdin — a doc ref already names the source.
 
 - **Retrieval**: free (local SQL).
 - **Rerank** (default on): ~10 cheap-model calls × ~1k tokens each ≈ $0.005 per question.
-- **Answer**: scales with `--limit`. With rerank+keep=50 and `gpt-5.4-mini`, typical cost is **~$0.01–0.05 per question**.
+- **Answer**: scales with `--limit`. With rerank+keep=50 and `gpt-5.6-luna`, typical cost is **~$0.01–0.05 per question**.
 
 Cost is logged under `phase=ask` in `usage_log` — see `unread stats --by kind`.
 

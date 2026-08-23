@@ -1561,6 +1561,15 @@ _STRINGS: dict[str, dict[str, str]] = {
     },
     "report_meta_enrichment": {"en": "**Enrichment:**", "ru": "**Обогащение:**"},
     "report_meta_enrichment_detail": {"en": "**Enrichment detail:**", "ru": "**Детали обогащения:**"},
+    "transcript_lang_fallback": {
+        "en": "No {requested} transcript available — this one is in {delivered}.",
+        "ru": "Транскрипта на языке {requested} нет — этот на языке {delivered}.",
+    },
+    "transcript_lang_unknown": {
+        "en": "No {requested} transcript available — this one was transcribed from audio "
+        "and its language was not detected.",
+        "ru": "Транскрипта на языке {requested} нет — этот распознан из аудио, его язык не определён.",
+    },
     "report_meta_web_search": {"en": "**Web search:**", "ru": "**Веб-поиск:**"},
     "report_meta_web_search_used": {
         "en": "used — per-search fees are NOT included in the cost above",

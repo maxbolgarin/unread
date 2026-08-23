@@ -336,7 +336,7 @@ template that the LLM translates on the fly.
 **Will it cost me money?**
 Yes — your AI provider charges. `unread` itself is free. Per-call USD
 is logged; `--max-cost N` caps a single run. Re-running an unchanged
-chat is free (local cache hit). With cheap models (`gpt-5.4-mini`-class,
+chat is free (local cache hit). With cheap models (`gpt-5.6-luna`-class,
 Gemini Flash, Claude Haiku) the bill is small enough that most users
 stop reading the cost reports after a week.
 

@@ -4,11 +4,11 @@ prompt_version: v1
 description: Фактчек — вытащить проверяемые утверждения, проверить каждое, показать что ложно или манипулятивно
 needs_reduce: true
 needs_web_search: true
-filter_model: gpt-5.4-mini
-final_model: gpt-5.4
+filter_model: gpt-5.6-luna
+final_model: gpt-5.6-terra
 output_budget_tokens: 6000
 map_output_tokens: 2000
-max_chunk_input_tokens: 35000
+max_chunk_input_tokens: 300000
 ---
 Ты фактчекер. Твоя задача — найти в источнике **проверяемые фактические
 утверждения** и по каждому установить: правда это, ложь, вводит в

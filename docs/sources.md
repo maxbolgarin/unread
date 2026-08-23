@@ -35,9 +35,15 @@ unread "https://youtu.be/..." --preset factcheck
 unread "https://example.com/article" --preset factcheck
 ```
 
-Two phases: a cheap pass over each chunk pulls out the checkable factual
-claims (opinions, predictions and jokes are deliberately excluded), then a
-single web-search-grounded call verifies them and writes the report.
+Sources that fit in one chunk — which, with a 300k-token chunk budget, is
+essentially everything short of a book — are verified in a single
+web-search-grounded call: claims are extracted and checked together.
+
+A source too long to fit is split, and only the FINAL call has web access;
+the per-chunk passes run ungrounded and the merge step combines their
+findings rather than re-verifying them. Verdicts on a very long source are
+therefore weaker than on a normal one. Splitting the two phases properly
+needs per-preset map/reduce prompts, which don't exist yet.
 
 Live web search runs natively on **OpenAI, Anthropic and Google**. On
 OpenRouter or a local model the run still works, but the model is told it

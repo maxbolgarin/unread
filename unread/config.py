@@ -43,8 +43,8 @@ class TelegramCfg(_StrictCfg):
 
 class OpenAICfg(_StrictCfg):
     api_key: str = ""
-    chat_model_default: str = "gpt-5.4-mini"
-    filter_model_default: str = "gpt-5.4-nano"
+    chat_model_default: str = "gpt-5.6-luna"
+    filter_model_default: str = "gpt-5.6-luna"
     audio_model_default: str = "gpt-4o-mini-transcribe"
     # None / empty → Whisper autodetects per file. Set to an ISO code
     # ("ru", "en", "de", …) when every audio file is the same language —

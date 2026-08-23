@@ -4,11 +4,11 @@ prompt_version: v1
 description: Fact-check — extract the checkable claims, verify each one, flag what's false or manipulated
 needs_reduce: true
 needs_web_search: true
-filter_model: gpt-5.4-mini
-final_model: gpt-5.4
+filter_model: gpt-5.6-luna
+final_model: gpt-5.6-terra
 output_budget_tokens: 6000
 map_output_tokens: 2000
-max_chunk_input_tokens: 35000
+max_chunk_input_tokens: 300000
 ---
 You are a fact-checker. Your job is to find the **checkable factual
 claims** in the source and establish, for each one, whether it is true,

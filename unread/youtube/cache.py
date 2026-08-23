@@ -79,6 +79,13 @@ def _row_to_result(row: dict[str, Any], *, duration_sec: int | None) -> Transcri
             timed = [(int(s), str(t)) for s, t in json.loads(raw)]
         except (TypeError, ValueError):
             timed = None
+    # Restore manual-vs-auto. Without it every cached run derived
+    # `is_auto=None`, which degraded the report's `Transcript:` row to a
+    # bare language code AND — because `save_transcript` recomputes the
+    # column from this field with no COALESCE — overwrote the stored
+    # value with NULL on the next save.
+    kind = row.get("transcript_lang_kind")
+    is_auto = True if kind == "auto" else (False if kind == "manual" else None)
     return TranscriptResult(
         text=row.get("transcript") or "",
         source=row.get("transcript_source") or "captions",  # type: ignore[arg-type]
@@ -86,6 +93,7 @@ def _row_to_result(row: dict[str, Any], *, duration_sec: int | None) -> Transcri
         duration_sec=duration_sec,
         cost_usd=float(row.get("transcript_cost_usd") or 0.0),
         timed_cues=timed,
+        is_auto=is_auto,
     )
 
 
@@ -187,25 +195,47 @@ async def save_transcript(
     )
 
 
-def fallback_notice(*, requested: str, delivered: str | None) -> str:
+def fallback_notice(
+    *,
+    requested: str,
+    delivered: str | None,
+    source: str | None = None,
+    language: str | None = None,
+) -> str:
     """One-line warning when the transcript isn't in the requested language.
 
     Returns "" when they match, when the request was a variant of the
     delivered language (`en` vs `en-US`), or when nothing was requested.
-    The caller decides where to show it — a bot caption, a console line.
+    The caller decides where to show it — a bot caption, a console line,
+    the top of `transcript.md`.
+
+    `delivered=None` is NOT silence when the transcript came from Whisper:
+    the audio path stores no language unless `openai.audio_language` is
+    set, so short-circuiting there handed the user a wrong-language
+    transcript with no warning — precisely the case this exists for.
+
+    `language` selects the message's own language. It is written into a
+    file the bot uploads, so an English sentence in a Russian admin's
+    transcript would defeat the per-admin language feature.
     """
+    from unread.i18n import tf as _tf
+    from unread.util.languages import language_display_name
+
     if not requested or requested == AUDIO_CACHE_KEY:
         return ""
-    if not delivered:
-        return ""
+
     req_base = _lang_base(requested)
+    if not delivered:
+        if source == "audio":
+            return _tf("transcript_lang_unknown", language, requested=language_display_name(req_base))
+        return ""
+
     got_base = _lang_base(delivered)
     if req_base == got_base:
         return ""
-
-    from unread.util.languages import language_display_name
-
-    return (
-        f"No {language_display_name(req_base)} transcript available — "
-        f"this one is in {language_display_name(got_base)} ({got_base})."
+    return _tf(
+        "transcript_lang_fallback",
+        language,
+        requested=language_display_name(req_base),
+        delivered=f"{language_display_name(got_base)} ({got_base})",
     )

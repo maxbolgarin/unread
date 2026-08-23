@@ -44,12 +44,14 @@ def test_openai_advertises_web_search():
     assert OpenAIProvider(_s()).supports_web_search is True
 
 
-def test_openrouter_does_not_advertise_web_search():
-    """Shares `_OpenAICompatBase` with OpenAI — the capability must not be
-    inherited, or a fact-check on OpenRouter would claim it searched."""
-    from unread.ai.openai_provider import OpenRouterProvider
+def test_web_search_is_not_inherited_from_the_shared_base():
+    """OpenAI, OpenRouter and local all share `_OpenAICompatBase`, but each
+    reaches web search differently (Responses API / `web` plugin / not at
+    all). The base must stay False so a new subclass doesn't silently
+    claim a capability it hasn't wired."""
+    from unread.ai.openai_provider import _OpenAICompatBase
 
-    assert OpenRouterProvider(_s()).supports_web_search is False
+    assert _OpenAICompatBase.supports_web_search is False
 
 
 def test_local_does_not_advertise_web_search():
@@ -267,3 +269,89 @@ async def test_google_web_search_enables_the_google_search_tool():
     tools = getattr(seen["config"], "tools", None)
     assert tools, "google_search tool must be attached to the config"
     assert getattr(tools[0], "google_search", None) is not None
+
+
+# --- OpenRouter: the `web` plugin --------------------------------------------
+
+
+class _CapturingCompletions:
+    def __init__(self) -> None:
+        self.kwargs: dict[str, Any] | None = None
+
+    async def create(self, **kwargs):
+        self.kwargs = kwargs
+
+        class _R:
+            choices: ClassVar[list] = [
+                type(
+                    "C",
+                    (),
+                    {"message": type("M", (), {"content": "searched"})(), "finish_reason": "stop"},
+                )()
+            ]
+            usage = type("U", (), {"prompt_tokens": 4, "completion_tokens": 2})()
+
+        return _R()
+
+
+def _openrouter_with(fake) -> Any:
+    from unread.ai.openai_provider import OpenRouterProvider
+
+    p = OpenRouterProvider(_s())
+    p._client = type("C", (), {"chat": type("Ch", (), {"completions": fake})()})()
+    return p
+
+
+def test_openrouter_advertises_web_search():
+    """OpenRouter routes to the same models but exposes search through its
+    own `web` plugin rather than a provider-native tool."""
+    from unread.ai.openai_provider import OpenRouterProvider
+
+    assert OpenRouterProvider(_s()).supports_web_search is True
+
+
+async def test_openrouter_web_search_sends_the_web_plugin():
+    fake = _CapturingCompletions()
+    p = _openrouter_with(fake)
+    res = await p.chat(
+        model="openai/gpt-5.4",
+        messages=[{"role": "user", "content": "check"}],
+        max_tokens=100,
+        temperature=0.2,
+        web_search=True,
+    )
+    assert fake.kwargs["extra_body"] == {"plugins": [{"id": "web"}]}
+    # Still an ordinary Chat Completions call — no Responses API here.
+    assert fake.kwargs["model"] == "openai/gpt-5.4"
+    assert res.text == "searched"
+
+
+async def test_openrouter_without_web_search_sends_no_extra_body():
+    """The default path must stay byte-identical — an unexpected body
+    field would be sent on every ordinary summary."""
+    fake = _CapturingCompletions()
+    p = _openrouter_with(fake)
+    await p.chat(
+        model="openai/gpt-5.4",
+        messages=[{"role": "user", "content": "hi"}],
+        max_tokens=10,
+        temperature=0.2,
+    )
+    assert "extra_body" not in fake.kwargs
+
+
+async def test_local_ignores_web_search_even_when_asked():
+    """A local server has no such plugin; sending one would 400."""
+    from unread.ai.openai_provider import LocalProvider
+
+    fake = _CapturingCompletions()
+    p = LocalProvider(_s())
+    p._client = type("C", (), {"chat": type("Ch", (), {"completions": fake})()})()
+    await p.chat(
+        model="llama3.1",
+        messages=[{"role": "user", "content": "hi"}],
+        max_tokens=10,
+        temperature=0.2,
+        web_search=True,
+    )
+    assert "extra_body" not in fake.kwargs

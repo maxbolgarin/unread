@@ -111,6 +111,11 @@ async def _one_call(
     cost = chat_cost(model, raw.prompt_tokens, raw.cached_tokens, raw.completion_tokens)
     finish = "length" if raw.truncated else None
     log_context: dict[str, Any] = {**(context or {}), "provider": provider.name}
+    # Billed per search, separately from tokens, so `cost_usd` below does
+    # NOT include it. Recorded here so the spend is at least reconstructable
+    # from `usage_log` rather than invisible.
+    if raw.web_searches:
+        log_context["web_searches"] = raw.web_searches
     if finish:
         log_context["finish_reason"] = finish
     # `Repo.log_usage` is internally shielded against CancelledError so
@@ -305,7 +310,9 @@ async def chat_complete(
 
         _user_visible_retry_status(
             f"Output truncated at {max_tokens} tokens — retrying with {bumped} "
-            f"(model cap: {cap}; this re-bills the full prompt)"
+            f"(model cap: {cap}; this re-bills the full prompt"
+            + (", including a second round of web searches" if web_search else "")
+            + ")"
         )
         result = await _one_call(
             provider,

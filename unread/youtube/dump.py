@@ -260,10 +260,20 @@ async def _do_transcript_mode(
             transcript_timed=tres.timed_cues,
             transcript_lang_kind=transcript_lang_kind,
         )
+        # Recomputed from what we're ACTUALLY about to fetch, not from the
+        # default preference: the picker may have changed the caption
+        # language or switched to Whisper since `requested_lang` was
+        # derived. Saving under the default key made one interactive
+        # "German" choice serve German to every later default run.
+        save_lang = resolve_requested_lang(
+            transcript_lang=effective_transcript_lang,
+            preferred_langs=preselect,
+            source=effective_source,
+        )
         await save_transcript(
             repo,
             video_id=meta.video_id,
-            requested_lang=requested_lang,
+            requested_lang=save_lang,
             tres=tres,
             transcript_model=(settings.openai.audio_model_default if tres.source == "audio" else None),
         )
@@ -274,7 +284,12 @@ async def _do_transcript_mode(
 
     from unread.youtube.cache import fallback_notice
 
-    notice = fallback_notice(requested=requested_lang, delivered=tres.language)
+    notice = fallback_notice(
+        requested=requested_lang,
+        delivered=tres.language,
+        source=tres.source,
+        language=language or None,
+    )
 
     _write_metadata(meta, dump_dir / "metadata.json")
     (dump_dir / "transcript.md").write_text(_build_transcript_md(meta, tres, notice=notice), encoding="utf-8")

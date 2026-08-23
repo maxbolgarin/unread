@@ -222,8 +222,8 @@ Most-tuned settings:
 
 ```toml
 [openai]
-chat_model_default = "gpt-5.4-mini"      # final / single-chunk model
-filter_model_default = "gpt-5.4-nano"    # map phase + cheap rerank + self-check
+chat_model_default = "gpt-5.6-luna"      # final / single-chunk model
+filter_model_default = "gpt-5.6-luna"    # map phase + cheap rerank + self-check
 # audio_language = ""                    # Whisper hint; empty = autodetect
 
 [locale]

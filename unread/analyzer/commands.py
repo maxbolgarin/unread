@@ -2654,9 +2654,17 @@ def _split_for_telegram(text: str, limit: int) -> list[str]:
 
 
 def _with_truncation_banner(result) -> str:
+    """Prepend the truncation notice, in the run's own language.
+
+    `result.ui_language` rather than the process-global setting, for the
+    same reason the metadata table uses it: the banner is injected into
+    the SAME saved report, so resolving the two differently produced a
+    Russian metadata table under an English banner.
+    """
     if not getattr(result, "truncated", False):
         return result.final_result
-    return _tf("truncation_banner_md", preset=result.preset) + result.final_result
+    lang = getattr(result, "ui_language", "") or None
+    return _tf("truncation_banner_md", lang, preset=result.preset) + result.final_result
 
 
 def _default_output_path(

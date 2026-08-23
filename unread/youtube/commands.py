@@ -283,6 +283,8 @@ async def _interactive_pick_source(
     meta: YoutubeMetadata,
     *,
     audio_estimate: float,
+    allow_actions: bool = True,
+    source_choices: bool = True,
 ) -> TranscriptSource | str | None:
     """Prompt the user to confirm + pick a transcript source.
 
@@ -290,6 +292,17 @@ async def _interactive_pick_source(
     `DUMP_SENTINEL` for "skip the analysis, just write the transcript",
     `FACTCHECK_SENTINEL` for "run the fact-check preset instead", or
     `None` to signal cancel.
+
+    `allow_actions=False` drops the dump / fact-check rows for callers
+    that can only act on a transcript SOURCE — `unread ask` passes the
+    return value straight to `get_transcript(source=...)`, where a
+    sentinel would be a garbage source value.
+
+    `source_choices=False` drops the source rows instead, for when a
+    cached transcript already exists: there is nothing to fetch, but the
+    user must still get to choose what to DO with it. Skipping the whole
+    picker on a cache hit silently removed the transcript and fact-check
+    options.
     """
     from unread.util.prompt import Choice
     from unread.util.prompt import select as _select
@@ -301,28 +314,38 @@ async def _interactive_pick_source(
         if audio_estimate > 0
         else "Audio + Whisper + analysis"
     )
-    choices: list = [
-        Choice(value="auto", label="Auto — captions if available, otherwise Whisper (recommended)"),
-    ]
-    if has_captions:
+    choices: list = []
+    if source_choices:
         choices.append(
-            Choice(value="captions", label="Captions only — cheaper (skips Whisper; analysis still costs)")
+            Choice(value="auto", label="Auto — captions if available, otherwise Whisper (recommended)")
         )
-    choices.append(Choice(value="audio", label=audio_label))
+        if has_captions:
+            choices.append(
+                Choice(
+                    value="captions",
+                    label="Captions only — cheaper (skips Whisper; analysis still costs)",
+                )
+            )
+        choices.append(Choice(value="audio", label=audio_label))
+    else:
+        # Transcript already cached — "analyze it" is the only source-ish
+        # row left, and it's the default.
+        choices.append(Choice(value="auto", label="▶ Analyze (transcript already cached)"))
     choices.append(_sep())
-    choices.append(
-        Choice(
-            value=DUMP_SENTINEL,
-            label="📝 Transcript only — save the text as Markdown, no analysis (no LLM cost)",
+    if allow_actions:
+        choices.append(
+            Choice(
+                value=DUMP_SENTINEL,
+                label="📝 Transcript only — save the text as Markdown, no analysis (no LLM cost)",
+            )
         )
-    )
-    choices.append(
-        Choice(
-            value=FACTCHECK_SENTINEL,
-            label="🔎 Fact-check — extract the claims and verify them (slower, costs more)",
+        choices.append(
+            Choice(
+                value=FACTCHECK_SENTINEL,
+                label="🔎 Fact-check — extract the claims and verify them (slower, costs more)",
+            )
         )
-    )
-    choices.append(_sep())
+        choices.append(_sep())
     choices.append(Choice(value="__cancel__", label="Cancel"))
 
     answer = _select(
@@ -573,7 +596,12 @@ async def cmd_analyze_youtube(
             # call coming) so we pass 0.0 — the panel still shows title /
             # channel / duration / language, which is the useful part.
             console.print(_render_metadata_panel(metadata, audio_estimate=0.0))
-            if notice := fallback_notice(requested=requested_lang, delivered=fetched_lang):
+            if notice := fallback_notice(
+                requested=requested_lang,
+                delivered=fetched_lang,
+                source=cached_tres.source,
+                language=language or None,
+            ):
                 console.print(f"[yellow]{notice}[/]")
         else:
             console.print(f"[grey70]Fetching YouTube metadata for {video_id}…[/]")
@@ -613,8 +641,14 @@ async def cmd_analyze_youtube(
             #   - --youtube-source was left at the default "auto".
             # Explicit `--youtube-source captions|audio` is honoured as-is.
             effective_source: TranscriptSource = youtube_source
-            if reuse is None and youtube_source == "auto" and not yes and _is_interactive():
-                picked = await _interactive_pick_source(metadata, audio_estimate=audio_estimate)
+            if youtube_source == "auto" and not yes and _is_interactive():
+                picked = await _interactive_pick_source(
+                    metadata,
+                    audio_estimate=audio_estimate,
+                    # A cache hit means there's no source left to choose,
+                    # but the user must still reach dump / fact-check.
+                    source_choices=reuse is None,
+                )
                 if picked is None:
                     console.print("[yellow]Cancelled.[/]")
                     raise typer.Exit(0)
@@ -711,16 +745,32 @@ async def cmd_analyze_youtube(
             console.print(
                 f"[green]Transcript ready[/] ({tres.source}, {len(transcript_text):,} chars{cost_str})"
             )
-            if notice := fallback_notice(requested=requested_lang, delivered=fetched_lang):
+            if notice := fallback_notice(
+                requested=requested_lang,
+                delivered=fetched_lang,
+                source=tres.source,
+                language=language or None,
+            ):
                 console.print(f"[yellow]{notice}[/]")
 
             # Per-requested-language cache. Written even on a `reuse` hit:
             # cheap, and it means the next request for THIS language is an
             # exact hit instead of re-deriving the reuse each time.
+            # Recomputed from what we ACTUALLY fetched, not from the
+            # default preference: the pickers may have changed the caption
+            # language or switched to Whisper since `requested_lang` was
+            # derived. Saving under the default key made one interactive
+            # "German" choice serve German to every later default run,
+            # while the English captions were never fetched again.
+            save_lang = resolve_requested_lang(
+                transcript_lang=effective_transcript_lang,
+                preferred_langs=preselect,
+                source=effective_source,
+            )
             await save_transcript(
                 repo,
                 video_id=video_id,
-                requested_lang=requested_lang,
+                requested_lang=save_lang,
                 tres=tres,
                 transcript_model=(
                     settings.openai.audio_model_default if transcript_source == "audio" else None

@@ -6,9 +6,9 @@
 #
 # Model picks (Chat Completions API, refreshed 2026-05-01):
 #   gpt-5.5       — newest flagship (1M ctx, $5/$30 per 1M); use for top-quality reduce.
-#   gpt-5.4       — heavy reasoning ($2.50/$15); good cost/quality trade-off.
-#   gpt-5.4-mini  — balance of cost/latency/quality for medium workloads ($0.75/$4.50).
-#   gpt-5.4-nano  — cheapest; per-chunk map/filter passes ($0.20/$1.25).
+#   gpt-5.6-luna  — default; cheapest AND 1M context ($0.20/$1.20).
+#   gpt-5.6-sol   — mid flagship ($2.00/$10).
+#   gpt-5.6-terra — strongest; used where a preset pins the flagship ($2.00/$12).
 #   gpt-4o / gpt-4o-mini — previous generation; gpt-4o-mini is the vision default.
 
 # ====================================================== AI provider (chat)
@@ -57,8 +57,8 @@
 
 [openai]
 # What you'll usually tune:
-chat_model_default = "gpt-5.4-mini"
-filter_model_default = "gpt-5.4-nano"
+chat_model_default = "gpt-5.6-luna"
+filter_model_default = "gpt-5.6-luna"
 
 # Whisper transcription language. Empty = autodetect (good for mixed-language
 # corpuses). Set to "ru" / "en" / "de" / … if every audio file is the same
@@ -164,8 +164,8 @@ vision_model = "gpt-4o-mini"
 # concurrency = 3                      # parallel enrichment API calls
 
 # doc_model / link_model default to filter_model when unset.
-# doc_model = "gpt-5.4-nano"
-# link_model = "gpt-5.4-nano"
+# doc_model = "gpt-5.6-luna"
+# link_model = "gpt-5.6-luna"
 
 # Host substring match (case-insensitive) — URLs on these domains are skipped.
 # skip_link_domains = ["twitter.com", "x.com"]

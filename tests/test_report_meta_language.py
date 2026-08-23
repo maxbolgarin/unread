@@ -67,3 +67,15 @@ def test_two_languages_produce_different_labels():
     en = _labels(_analyze_meta_rows(_result(ui_language="en"), title="Chat"))
     ru = _labels(_analyze_meta_rows(_result(ui_language="ru"), title="Chat"))
     assert en != ru
+
+
+def test_truncation_banner_follows_the_runs_language():
+    """The banner is injected into the same saved report as the metadata
+    table — resolving them differently mixed two languages in one file."""
+    from unread.analyzer.commands import _with_truncation_banner
+
+    get_settings().locale.language = "ru"
+    body = _with_truncation_banner(_result(truncated=True, ui_language="en", final_result="B"))
+    ru_body = _with_truncation_banner(_result(truncated=True, ui_language="ru", final_result="B"))
+    assert body != ru_body
+    assert body.endswith("B") and ru_body.endswith("B")

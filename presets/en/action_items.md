@@ -3,8 +3,8 @@ name: action_items
 prompt_version: v1
 description: Tasks from the chat — table of who/what/deadline/status
 needs_reduce: true
-filter_model: gpt-5.4-nano
-final_model: gpt-5.4-mini
+filter_model: gpt-5.6-luna
+final_model: gpt-5.6-luna
 output_budget_tokens: 2500
 map_output_tokens: 1500
 ---

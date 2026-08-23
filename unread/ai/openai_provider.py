@@ -80,6 +80,15 @@ class _OpenAICompatBase:
     def _make_client(self, settings) -> AsyncOpenAI:  # type: ignore[no-untyped-def]
         raise NotImplementedError
 
+    def _search_extra_body(self) -> dict[str, Any] | None:
+        """Non-standard body fields that turn on web search, if any.
+
+        None on the base class: a plain OpenAI-compatible server has no
+        such concept, and sending an unknown field would 400 an ordinary
+        local model. Only OpenRouter overrides it.
+        """
+        return None
+
     @retry_on_429()
     async def _completion(
         self,
@@ -88,6 +97,7 @@ class _OpenAICompatBase:
         messages: list[dict[str, str]],
         max_tokens: int,
         temperature: float,
+        extra_body: dict[str, Any] | None = None,
     ) -> Any:
         # `max_completion_tokens` is the modern name (gpt-5+, reasoning
         # models). Older OpenAI-compat servers still accept it; the few
@@ -98,6 +108,8 @@ class _OpenAICompatBase:
             "messages": messages,
             "max_completion_tokens": max_tokens,
         }
+        if extra_body:
+            kwargs["extra_body"] = extra_body
         # OpenAI's reasoning model family (gpt-5, gpt-5.4, o1, o3, ...)
         # rejects any `temperature` other than the default 1.0 with a
         # 400. Drop the parameter for those models so the wired-in
@@ -116,13 +128,17 @@ class _OpenAICompatBase:
         temperature: float,
         web_search: bool = False,
     ) -> ChatResult:
-        # `web_search` is ignored here — see `supports_web_search`.
-        # `OpenAIProvider` overrides `chat` to handle it.
+        # Adapters without the capability return None here, so `web_search`
+        # is a no-op for them rather than a 400 from an unexpected body
+        # field. `OpenAIProvider` never reaches this — it overrides `chat`
+        # because its search path is a different API entirely.
+        extra_body = self._search_extra_body() if web_search else None
         resp = await self._completion(
             model=model,
             messages=messages,
             max_tokens=max_tokens,
             temperature=temperature,
+            extra_body=extra_body,
         )
         choice = resp.choices[0]
         text = choice.message.content or ""
@@ -146,8 +162,8 @@ class _OpenAICompatBase:
 
 class OpenAIProvider(_OpenAICompatBase):
     name = "openai"
-    default_chat_model = "gpt-5.4-mini"
-    default_filter_model = "gpt-5.4-nano"
+    default_chat_model = "gpt-5.6-luna"
+    default_filter_model = "gpt-5.6-luna"
     supports_web_search = True
 
     async def chat(
@@ -197,6 +213,12 @@ class OpenAIProvider(_OpenAICompatBase):
             "input": user_input,
             "tools": [{"type": "web_search"}],
             "max_output_tokens": max_tokens,
+            # The Responses API defaults to store=True, which would retain
+            # the prompt (a whole transcript or chat) on OpenAI's servers.
+            # Every other call in this project goes through Chat
+            # Completions, which doesn't. Opt out explicitly so the search
+            # path doesn't quietly weaken the local-only posture.
+            "store": False,
         }
         if instructions:
             kwargs["instructions"] = instructions
@@ -248,10 +270,21 @@ class OpenAIProvider(_OpenAICompatBase):
 
 class OpenRouterProvider(_OpenAICompatBase):
     name = "openrouter"
+    # OpenRouter has no provider-native tool; it exposes search as its own
+    # `web` plugin, which rides along on the ordinary Chat Completions
+    # body. Billed per result rather than per search.
+    supports_web_search = True
     # OpenRouter prefixes models by upstream vendor. These are widely
     # available, cheap defaults; users can override via `ai.chat_model`.
-    default_chat_model = "openai/gpt-5.4-mini"
-    default_filter_model = "openai/gpt-5.4-nano"
+    default_chat_model = "openai/gpt-5.6-luna"
+    default_filter_model = "openai/gpt-5.6-luna"
+
+    def _search_extra_body(self) -> dict[str, Any] | None:
+        # `plugins` is an OpenRouter extension to the OpenAI body, so it
+        # goes through the SDK's `extra_body` passthrough. The `:online`
+        # model-suffix form does the same thing, but mangling the model
+        # name would corrupt cost lookups and the report's model row.
+        return {"plugins": [{"id": "web"}]}
 
     def _make_client(self, settings) -> AsyncOpenAI:  # type: ignore[no-untyped-def]
         if not settings.openrouter.api_key:

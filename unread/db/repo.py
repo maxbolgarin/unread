@@ -1742,6 +1742,11 @@ class Repo:
             "table": "youtube_videos",
             "id_col": "video_id",
             "label_col": "url",
+            # Transcripts moved to their own per-requested-language table.
+            # Purge has to clear both, or `cache sources purge youtube`
+            # reports success while the transcript keeps being served.
+            "child_table": "youtube_transcripts",
+            "child_fk": "video_id",
             "domain_col": None,  # all rows are youtube.com → no domain filter
         },
         "file": {
@@ -1853,6 +1858,21 @@ class Repo:
         where, params = self._source_cache_where(
             meta, url=url, domain=domain, older_than_days=older_than_days
         )
+        # Child rows first: they're found by joining on the parent's id,
+        # so deleting the parent first would orphan them permanently.
+        child_table = meta.get("child_table")
+        child_fk = meta.get("child_fk")
+        if child_table and child_fk:
+            id_cur = await self._conn.execute(f"SELECT {meta['id_col']} FROM {meta['table']} {where}", params)
+            ids = [row[0] for row in await id_cur.fetchall()]
+            await id_cur.close()
+            if ids:
+                placeholders = ",".join("?" * len(ids))
+                await self._conn.execute(
+                    f"DELETE FROM {child_table} WHERE {child_fk} IN ({placeholders})",
+                    tuple(ids),
+                )
+
         sql = f"DELETE FROM {meta['table']} {where}"
         cur = await self._conn.execute(sql, params)
         await self._conn.commit()

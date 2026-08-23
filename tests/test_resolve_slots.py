@@ -34,8 +34,8 @@ def _settings_with(**overrides) -> Settings:
 
 def test_default_resolution_falls_back_to_openai():
     s = _settings_with()
-    assert resolve_chat(s) == ("openai", "gpt-5.4-mini")
-    assert resolve_filter(s) == ("openai", "gpt-5.4-nano")
+    assert resolve_chat(s) == ("openai", "gpt-5.6-luna")
+    assert resolve_filter(s) == ("openai", "gpt-5.6-luna")
     assert resolve_audio(s) == ("openai", "gpt-4o-mini-transcribe")
     assert resolve_vision(s) == ("openai", "gpt-4o-mini")
 

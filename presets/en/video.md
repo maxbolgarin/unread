@@ -3,8 +3,8 @@ name: video
 prompt_version: v1
 description: Video transcript summary — TL;DR, key points, time-stamped citations
 needs_reduce: true
-filter_model: gpt-5.4-nano
-final_model: gpt-5.4-mini
+filter_model: gpt-5.6-luna
+final_model: gpt-5.6-luna
 output_budget_tokens: 4000
 map_output_tokens: 1500
 max_chunk_input_tokens: 35000
