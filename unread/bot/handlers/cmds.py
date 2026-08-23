@@ -20,7 +20,7 @@ Slash commands:
 `/ping` — health check
 `/settings` — show current sticky + default settings for this chat
 `/preset <name>` — sticky preset (e.g. `/preset digest`); bare `/preset` clears
-`/lang <code>` — sticky report language (e.g. `/lang en`); bare clears
+`/lang <code>` — your language for analyses, report headings and transcripts (e.g. `/lang en`); bare clears
 `/enrich <list|all|none>` — sticky extra enrichments for TG chats (e.g. `image,link`)
 `/window <day|week|month|msg|from_msg|none>` — sticky default TG window
 `/confirm on|off` — toggle the pre-run confirm panel (default: on)
@@ -78,14 +78,16 @@ async def handle(
         return
 
     if cmd == "preset":
-        chat_state = app._chat_state.setdefault(event.chat_id, {})
+        from unread.bot import prefs
+        from unread.bot.runtime import STICKY_PRESET
+
         if not args:
-            chat_state.pop("preset", None)
+            await prefs.clear_sticky(app, chat_id=event.chat_id, key=STICKY_PRESET)
             await event.reply("Sticky preset cleared. Falling back to the default.")
         else:
             preset = args[0].strip()
-            chat_state["preset"] = preset
-            await event.reply(f"Sticky preset → `{preset}` (used until you clear it).")
+            await prefs.set_sticky(app, chat_id=event.chat_id, key=STICKY_PRESET, value=preset)
+            await event.reply(f"Sticky preset → `{preset}` (kept across restarts until you clear it).")
         return
 
     if cmd == "confirm":
@@ -99,12 +101,18 @@ async def handle(
             return
         choice = args[0].strip().lower()
         if choice == "off":
-            chat_state["confirm_disabled"] = True
+            from unread.bot import prefs
+            from unread.bot.runtime import STICKY_CONFIRM_DISABLED
+
+            await prefs.set_sticky(app, chat_id=event.chat_id, key=STICKY_CONFIRM_DISABLED, value=True)
             await event.reply(
                 "Pre-run confirm panel disabled. Messages will run immediately with sticky defaults."
             )
         elif choice == "on":
-            chat_state.pop("confirm_disabled", None)
+            from unread.bot import prefs
+            from unread.bot.runtime import STICKY_CONFIRM_DISABLED
+
+            await prefs.clear_sticky(app, chat_id=event.chat_id, key=STICKY_CONFIRM_DISABLED)
             await event.reply(
                 "Pre-run confirm panel re-enabled. Each message will get a ▶ Run / ⚙ Change / ✖ Cancel panel."
             )
@@ -113,50 +121,50 @@ async def handle(
         return
 
     if cmd == "lang":
+        from unread.bot import prefs
         from unread.bot.runtime import STICKY_REPORT_LANGUAGE, parse_lang_value
 
-        chat_state = app._chat_state.setdefault(event.chat_id, {})
         arg = args[0] if args else ""
         value, msg = parse_lang_value(arg)
         if value is None:
             await event.reply(msg)
             return
         if value:
-            chat_state[STICKY_REPORT_LANGUAGE] = value
+            await prefs.set_sticky(app, chat_id=event.chat_id, key=STICKY_REPORT_LANGUAGE, value=value)
         else:
-            chat_state.pop(STICKY_REPORT_LANGUAGE, None)
+            await prefs.clear_sticky(app, chat_id=event.chat_id, key=STICKY_REPORT_LANGUAGE)
         await event.reply(msg)
         return
 
     if cmd == "enrich":
+        from unread.bot import prefs
         from unread.bot.runtime import STICKY_ENRICH_EXTRAS, parse_enrich_list
 
-        chat_state = app._chat_state.setdefault(event.chat_id, {})
         arg = " ".join(args) if args else ""
         value, msg = parse_enrich_list(arg)
         if value is None:
             await event.reply(msg)
             return
         if value:
-            chat_state[STICKY_ENRICH_EXTRAS] = value
+            await prefs.set_sticky(app, chat_id=event.chat_id, key=STICKY_ENRICH_EXTRAS, value=value)
         else:
-            chat_state.pop(STICKY_ENRICH_EXTRAS, None)
+            await prefs.clear_sticky(app, chat_id=event.chat_id, key=STICKY_ENRICH_EXTRAS)
         await event.reply(msg)
         return
 
     if cmd == "window":
+        from unread.bot import prefs
         from unread.bot.runtime import STICKY_TG_WINDOW, parse_window_value
 
-        chat_state = app._chat_state.setdefault(event.chat_id, {})
         arg = args[0] if args else ""
         value, msg = parse_window_value(arg)
         if value is None:
             await event.reply(msg)
             return
         if value:
-            chat_state[STICKY_TG_WINDOW] = value
+            await prefs.set_sticky(app, chat_id=event.chat_id, key=STICKY_TG_WINDOW, value=value)
         else:
-            chat_state.pop(STICKY_TG_WINDOW, None)
+            await prefs.clear_sticky(app, chat_id=event.chat_id, key=STICKY_TG_WINDOW)
         await event.reply(msg)
         return
 

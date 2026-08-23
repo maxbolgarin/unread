@@ -83,7 +83,22 @@ Tap **Run** and the analysis starts. The panel is there so an accidentally-tappe
 | `/upload_session` | Install your Telegram user session (one-time). The bot waits for you to send `~/.unread/storage/session.sqlite` as a Telegram document. |
 | `/cancel` | Drop any pending `/upload_session` state. |
 
-Sticky settings live in-memory per chat (`BotApp._chat_state`) and reset on bot restart by design — there's nothing about a single user worth persisting separately.
+Sticky settings are **per chat and persistent** — stored in `data.sqlite::bot_chat_settings` and restored at startup, so a `docker compose up` doesn't reset them. Each admin has their own 1:1 chat with the bot, so each admin has their own settings.
+
+### Language
+
+`/lang` is the one to know about in a multi-admin bot:
+
+```
+you:      /lang ru      → your analyses, report headings and transcripts in Russian
+admin #2: /lang en      → theirs in English
+```
+
+It sets everything language-related for that admin: the language the LLM writes in, the report's own `## Sources` / `## Verification` headings and metadata table, and which caption track a YouTube transcript prefers. `/lang none` clears it back to the bot's config default.
+
+Transcripts fall back rather than fail: ask for English on a video with no English captions and you get the captions that exist, with a `⚠️` line at the top of the transcript saying which language it actually is. The *analysis* is still written in your language — only the source text falls back.
+
+Transcripts are cached per requested language, so you asking for Russian and admin #2 asking for English don't evict each other, and neither pays to re-transcribe what the other already fetched.
 
 ## Who can use the bot
 

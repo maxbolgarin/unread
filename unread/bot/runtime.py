@@ -100,7 +100,24 @@ def effective_report_language(chat_state: dict, settings: Settings) -> str:
 
 
 def effective_language(chat_state: dict, settings: Settings) -> str:
-    """UI/display language. No sticky override today — uses `locale.language`."""
+    """UI/display language for this chat — sticky `/lang` → `locale.language`.
+
+    Deliberately reads the SAME sticky key as `effective_report_language`.
+    The three language axes stay independent in config (see the "Three
+    language axes" section in CLAUDE.md); this is the bot choosing to
+    derive both of its axes from one per-admin choice, because a chat has
+    exactly one human in it and asking them to set two languages would be
+    a worse product.
+
+    It matters because the two axes surface in the SAME artifact: the LLM
+    writes the body in `report_language`, while the report's own
+    `## Sources` / `## Verification` headings resolve from this one. Split
+    them and an admin who set `/lang en` gets an English analysis filed
+    under Russian headings.
+    """
+    sticky = (chat_state.get(STICKY_REPORT_LANGUAGE) or "").strip()
+    if sticky:
+        return sticky
     return (settings.locale.language or "en").strip()
 
 
@@ -214,7 +231,10 @@ def parse_lang_value(arg: str) -> tuple[str | None, str]:
         return ("", "Language cleared — reports use the bot's config default.")
     if not arg.isalpha() or not (2 <= len(arg) <= 8):
         return (None, "Usage: /lang <code> (e.g. en, ru, de) or /lang none to clear.")
-    return (arg, f"Report language set → {arg}.")
+    return (
+        arg,
+        f"Language set → {arg}. Applies to analyses, report headings and transcripts, and is kept across restarts.",
+    )
 
 
 # ---------------------------------------------------------------------------

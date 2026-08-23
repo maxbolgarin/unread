@@ -220,6 +220,20 @@ CREATE TABLE IF NOT EXISTS secrets (
     updated_at TIMESTAMP NOT NULL
 );
 
+-- Per-chat sticky settings for `unread bot`, mirroring the in-memory
+-- `BotApp._chat_state`. Without this the settings reset on every restart,
+-- which for a multi-admin bot means each admin re-sends `/lang` after
+-- every redeploy. Keyed by Telegram chat_id — each admin's 1:1 chat with
+-- the bot is its own row set, which is exactly the isolation we want.
+-- Allowlisted keys: see `unread.db._keys.BOT_CHAT_SETTING_KEYS`.
+CREATE TABLE IF NOT EXISTS bot_chat_settings (
+    chat_id    INTEGER NOT NULL,
+    key        TEXT NOT NULL,
+    value      TEXT NOT NULL,
+    updated_at TIMESTAMP NOT NULL,
+    PRIMARY KEY (chat_id, key)
+);
+
 -- One row per analyzed YouTube video. Reused across runs: a re-analyze of
 -- the same `video_id` skips both yt-dlp metadata and Whisper. Transcript
 -- is stored inline; the audio file itself is not retained.

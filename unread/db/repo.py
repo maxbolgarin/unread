@@ -1920,6 +1920,63 @@ class Repo:
         await cur.close()
         return deleted > 0
 
+    # ------------------------------------------------------------------
+    # Per-chat bot settings
+    # ------------------------------------------------------------------
+
+    async def put_bot_chat_setting(self, *, chat_id: int, key: str, value: str) -> None:
+        """Upsert one sticky setting for one bot chat.
+
+        Validated against :data:`unread.db._keys.BOT_CHAT_SETTING_KEYS`
+        for the same reason `set_app_setting` validates: a key nothing
+        reads back is dead weight, and a typo would look like it worked.
+        """
+        if key not in _BOT_CHAT_SETTING_KEYS:
+            raise ValueError(f"unknown bot chat setting: {key!r}; allowed: {sorted(_BOT_CHAT_SETTING_KEYS)}")
+        await self._conn.execute(
+            """
+            INSERT INTO bot_chat_settings(chat_id, key, value, updated_at) VALUES(?, ?, ?, ?)
+            ON CONFLICT(chat_id, key) DO UPDATE SET
+                value=excluded.value,
+                updated_at=excluded.updated_at
+            """,
+            (chat_id, key, value, _utcnow()),
+        )
+        await self._conn.commit()
+
+    async def delete_bot_chat_setting(self, *, chat_id: int, key: str) -> bool:
+        """Drop one sticky setting. Returns True if a row was removed."""
+        cur = await self._conn.execute(
+            "DELETE FROM bot_chat_settings WHERE chat_id=? AND key=?", (chat_id, key)
+        )
+        await self._conn.commit()
+        deleted = cur.rowcount or 0
+        await cur.close()
+        return deleted > 0
+
+    async def get_bot_chat_settings(self, chat_id: int) -> dict[str, str]:
+        """Every stored sticky setting for one chat. Unknown keys filtered."""
+        cur = await self._conn.execute("SELECT key, value FROM bot_chat_settings WHERE chat_id=?", (chat_id,))
+        rows = await cur.fetchall()
+        await cur.close()
+        return {r["key"]: r["value"] for r in rows if r["key"] in _BOT_CHAT_SETTING_KEYS}
+
+    async def get_all_bot_chat_settings(self) -> dict[int, dict[str, str]]:
+        """Whole table as `{chat_id: {key: value}}`.
+
+        The bot loads this once at startup rather than querying per chat —
+        the table has one row per (admin, setting), so it is tiny.
+        """
+        cur = await self._conn.execute("SELECT chat_id, key, value FROM bot_chat_settings")
+        rows = await cur.fetchall()
+        await cur.close()
+        out: dict[int, dict[str, str]] = {}
+        for r in rows:
+            if r["key"] not in _BOT_CHAT_SETTING_KEYS:
+                continue
+            out.setdefault(int(r["chat_id"]), {})[r["key"]] = r["value"]
+        return out
+
     async def get_all_app_settings(self) -> dict[str, str]:
         """Return all saved user overrides as a `{key: value}` dict.
 
@@ -2617,6 +2674,7 @@ async def open_repo(path: Path | str) -> AsyncIterator[Repo]:
 #      (e.g. empty string for "autodetect").
 #   3. Surface it in `unread/settings/commands.py:_SETTING_DEFS` so
 #      the interactive editor can show + edit it.
+from unread.db._keys import BOT_CHAT_SETTING_KEYS as _BOT_CHAT_SETTING_KEYS  # noqa: E402
 from unread.db._keys import OVERRIDE_KEYS as _OVERRIDE_KEYS  # noqa: E402
 from unread.db._keys import SECRET_KEYS as _SECRET_KEYS  # noqa: E402
 

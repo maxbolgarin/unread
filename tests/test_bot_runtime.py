@@ -309,3 +309,42 @@ async def test_settings_command_replies_with_overview():
     await cmds.handle(event, {"name": "settings", "args": []}, app=app)
     assert event.replies
     assert "Settings" in event.replies[0]
+
+
+# --- /lang drives both the report language AND the UI language --------------
+
+
+def test_effective_language_follows_the_sticky_lang_choice():
+    """A bot chat has ONE language knob. Without this, an admin who set
+    `/lang en` got an English analysis under Russian `## Источники`
+    headings, because the report headings resolve from the UI axis."""
+    from unread.bot.runtime import STICKY_REPORT_LANGUAGE, effective_language
+
+    s = _fresh_settings()
+    s.locale.language = "ru"
+    assert effective_language({STICKY_REPORT_LANGUAGE: "en"}, s) == "en"
+
+
+def test_effective_language_falls_back_to_config_without_a_sticky_choice():
+    from unread.bot.runtime import effective_language
+
+    s = _fresh_settings()
+    s.locale.language = "ru"
+    assert effective_language({}, s) == "ru"
+
+
+def test_effective_language_ignores_a_blank_sticky_value():
+    from unread.bot.runtime import STICKY_REPORT_LANGUAGE, effective_language
+
+    s = _fresh_settings()
+    s.locale.language = "ru"
+    assert effective_language({STICKY_REPORT_LANGUAGE: ""}, s) == "ru"
+
+
+def test_two_chats_resolve_to_different_ui_languages():
+    from unread.bot.runtime import STICKY_REPORT_LANGUAGE, effective_language
+
+    s = _fresh_settings()
+    s.locale.language = "ru"
+    assert effective_language({STICKY_REPORT_LANGUAGE: "ru"}, s) == "ru"
+    assert effective_language({STICKY_REPORT_LANGUAGE: "en"}, s) == "en"

@@ -1,6 +1,6 @@
 """Shared allowlists for the on-disk SQLite key/value tables.
 
-Two tables in `data.sqlite` are key/value-shaped and need to refuse rows
+Three tables in `data.sqlite` are key/value-shaped and need to refuse rows
 outside a controlled set:
 
 * ``secrets`` — credentials. Surface outside this allowlist either lets a
@@ -9,6 +9,8 @@ outside a controlled set:
   trusts.
 * ``app_settings`` — config overrides applied at startup. Surface outside
   this allowlist gets persisted but ignored, which is confusing.
+* ``bot_chat_settings`` — per-chat sticky bot settings. Same reasoning as
+  ``app_settings``: a key nothing reads is dead weight.
 
 Both lists used to be duplicated in :mod:`unread.secrets` and
 :mod:`unread.db.repo`. They drifted at least once. Defining them here —
@@ -44,6 +46,23 @@ SECRET_KEYS: frozenset[str] = frozenset(
         # credentials AND the bot token to start a second client
         # alongside the user one.
         "telegram.bot_token",
+    }
+)
+
+
+# Per-chat sticky bot settings allowed in `data.sqlite::bot_chat_settings`.
+# Mirrors the `STICKY_*` constants in :mod:`unread.bot.runtime` — that
+# module owns the in-memory `_chat_state` keys, this table is just their
+# durable mirror so a bot restart doesn't reset every admin's `/lang`.
+# Keep the two in sync: a key here with no `STICKY_*` counterpart is dead
+# weight, and one missing here silently stops persisting.
+BOT_CHAT_SETTING_KEYS: frozenset[str] = frozenset(
+    {
+        "preset",
+        "report_language",
+        "enrich_extras",
+        "tg_window",
+        "confirm_disabled",
     }
 )
 

@@ -141,6 +141,14 @@ class BotApp:
             )
             log.error("bot.no_owner_allowlist")
             raise RuntimeError("no owner allowlist")
+
+        # Restore each admin's sticky settings (/lang, /preset, …) before
+        # wiring handlers, so the first message after a restart already
+        # runs with the right language instead of the config default.
+        from unread.bot import prefs
+
+        await prefs.load_all(self)
+
         self._wire_handlers()
         session_state = (
             "[green]ready[/]"
