@@ -268,6 +268,44 @@ CREATE TABLE IF NOT EXISTS youtube_videos (
 CREATE INDEX IF NOT EXISTS idx_youtube_channel
     ON youtube_videos(channel_id, fetched_at);
 
+-- One cached transcript per (video, REQUESTED language).
+--
+-- `youtube_videos` stores a single transcript per video, which breaks down
+-- as soon as two people want different languages: each request evicts the
+-- other's row and re-fetches (re-billing Whisper when captions are absent).
+--
+-- The key is what the caller ASKED for, not what they got. That distinction
+-- is what makes the fallback case cacheable: request 'en' for a Russian-only
+-- video, get Russian back, store it under 'en' — the next 'en' request is a
+-- HIT instead of a permanent miss that re-fetches forever. `language` records
+-- what was actually delivered so callers can tell the user when the two
+-- differ.
+--
+-- `requested_lang = ''` means the caller expressed no preference (scripted
+-- `--yes` runs with no locale configured).
+--
+-- Rows in `youtube_videos.transcript` written by older versions are still
+-- read as a fallback; see `Repo.get_youtube_transcript`'s callers.
+CREATE TABLE IF NOT EXISTS youtube_transcripts (
+    video_id            TEXT NOT NULL,
+    requested_lang      TEXT NOT NULL,
+    language            TEXT,            -- what was actually delivered
+    transcript          TEXT NOT NULL,
+    transcript_source   TEXT,            -- 'captions' | 'audio'
+    transcript_lang_kind TEXT,           -- 'manual' | 'auto'; null for audio
+    transcript_model    TEXT,            -- whisper model id when source='audio'
+    transcript_cost_usd REAL,
+    transcript_timed_json TEXT,          -- JSON [[start_sec, "text"], …]
+    transcribed_at      TIMESTAMP NOT NULL,
+    PRIMARY KEY (video_id, requested_lang)
+);
+
+-- Supports the "reuse an existing Whisper transcript" lookup: Whisper output
+-- doesn't depend on the requested language, so a second admin must never pay
+-- to re-transcribe the same audio.
+CREATE INDEX IF NOT EXISTS idx_youtube_transcripts_source
+    ON youtube_transcripts(video_id, transcript_source);
+
 -- One row per analyzed web page. Re-analyzing the same URL skips both the
 -- HTTP fetch and the trafilatura/BS4 extraction. `paragraphs_json` is the
 -- post-split content array (one entry per synthetic message for the LLM);

@@ -499,16 +499,44 @@ async def cmd_analyze_youtube(
     effective_preset = preset or "video"
 
     async with open_repo(settings.storage.data_path) as repo:
-        cached = None if no_cache else await repo.get_youtube_video(video_id)
-        # Explicit `--transcript-lang X` that disagrees with the cached
-        # row's language bypasses the cache entirely — the row was
-        # fetched under a different language preference and would
-        # silently return stale text. `put_youtube_video` below
-        # overwrites the row once the re-fetch completes.
-        if cached and transcript_lang:
-            cached_base = _lang_base(cached.get("language") or "")
-            if cached_base != _lang_base(transcript_lang):
-                cached = None
+        from unread.youtube.cache import (
+            fallback_notice,
+            load_cached,
+            load_exact,
+            resolve_requested_lang,
+            save_transcript,
+        )
+
+        # Caption preference is settings-only (no network), so the cache
+        # key can be computed before we touch yt-dlp. `requested_lang` is
+        # what this run ASKED for — see `unread/youtube/cache.py` for why
+        # the cache keys on that rather than on what came back.
+        preselect = _preferred_caption_langs(
+            settings,
+            content_language=source_language or None,
+            report_language=report_language or None,
+            ui_language=language or None,
+        )
+        requested_lang = resolve_requested_lang(
+            transcript_lang=transcript_lang,
+            preferred_langs=preselect,
+            source=youtube_source,
+        )
+
+        # Metadata row and transcript row are looked up separately now:
+        # one video has one metadata row but a transcript per requested
+        # language.
+        cached = await repo.get_youtube_video(video_id)
+        cached_tres = (
+            None
+            if no_cache
+            else await load_exact(
+                repo,
+                video_id=video_id,
+                requested_lang=requested_lang,
+                duration_sec=(cached or {}).get("duration_sec"),
+            )
+        )
         timed_cues: list[tuple[int, str]] | None = None
         transcript_lang_kind: str | None = None
         # Language of the transcript we actually end up with (the fetched
@@ -516,28 +544,25 @@ async def cmd_analyze_youtube(
         # `transcript_lang` PARAMETER, which carries the user's requested
         # `--transcript-lang` and must never be overwritten mid-run.
         fetched_lang: str | None = None
-        if cached and cached.get("transcript"):
+        if cached and cached_tres is not None:
             console.print(f"[grey70]Using cached YouTube metadata + transcript ({video_id})[/]")
             metadata = _restore_metadata_from_row(cached)
-            transcript_text = cached["transcript"] or ""
-            transcript_source: str = cached.get("transcript_source") or "captions"
-            transcript_cost = float(cached.get("transcript_cost_usd") or 0.0)
-            fetched_lang = cached.get("language")
-            transcript_lang_kind = cached.get("transcript_lang_kind")
-            timed_raw = cached.get("transcript_timed_json")
-            if timed_raw:
-                try:
-                    import json as _json
-
-                    timed_cues = [(int(s), str(t)) for s, t in _json.loads(timed_raw)]
-                except (TypeError, ValueError):
-                    timed_cues = None
+            transcript_text = cached_tres.text
+            transcript_source: str = cached_tres.source
+            transcript_cost = float(cached_tres.cost_usd or 0.0)
+            fetched_lang = cached_tres.language
+            transcript_lang_kind = (
+                None if cached_tres.is_auto is None else ("auto" if cached_tres.is_auto else "manual")
+            )
+            timed_cues = cached_tres.timed_cues
             # Match the fresh-fetch UX: render the metadata panel for
             # cached runs too. Audio cost estimate is meaningless on the
             # cached path (the transcript already exists, no Whisper
             # call coming) so we pass 0.0 — the panel still shows title /
             # channel / duration / language, which is the useful part.
             console.print(_render_metadata_panel(metadata, audio_estimate=0.0))
+            if notice := fallback_notice(requested=requested_lang, delivered=fetched_lang):
+                console.print(f"[yellow]{notice}[/]")
         else:
             console.print(f"[grey70]Fetching YouTube metadata for {video_id}…[/]")
             try:
@@ -555,13 +580,28 @@ async def cmd_analyze_youtube(
             )
             console.print(_render_metadata_panel(metadata, audio_estimate=audio_estimate))
 
+            # Second-chance lookup, now that we hold metadata with a real
+            # caption inventory. Catches the two cases the metadata-free
+            # lookup above can't judge: a Whisper transcript somebody else
+            # already paid for (when this request has no caption track to
+            # fetch either), and a pre-upgrade `youtube_videos` row. A hit
+            # here also means no pickers — asking the user to choose a
+            # transcript source we're not going to fetch is just noise.
+            reuse = (
+                None
+                if no_cache
+                else await load_cached(repo, video_id=video_id, requested_lang=requested_lang, meta=metadata)
+            )
+            if reuse is not None:
+                console.print(f"[grey70]Reusing a cached transcript ({reuse.source})[/]")
+
             # Interactive picker only when:
             #   - stdin is a TTY (not piped),
             #   - --yes wasn't passed (scripted runs skip prompts), and
             #   - --youtube-source was left at the default "auto".
             # Explicit `--youtube-source captions|audio` is honoured as-is.
             effective_source: TranscriptSource = youtube_source
-            if youtube_source == "auto" and not yes and _is_interactive():
+            if reuse is None and youtube_source == "auto" and not yes and _is_interactive():
                 picked = await _interactive_pick_source(metadata, audio_estimate=audio_estimate)
                 if picked is None:
                     console.print("[yellow]Cancelled.[/]")
@@ -591,18 +631,11 @@ async def cmd_analyze_youtube(
                     return
                 effective_source = picked
 
-            # Caption language preference list: CLI overrides (already
-            # resolved to their effective values by `cmd_analyze`) win
-            # over the saved `[locale]` settings. Feeds both the picker's
-            # preselect AND `get_transcript`'s fallback order, so a
-            # `--report-language` / `--content-language` override affects
-            # non-interactive runs too (previously a dead param here).
-            preselect = _preferred_caption_langs(
-                settings,
-                content_language=source_language or None,
-                report_language=report_language or None,
-                ui_language=language or None,
-            )
+            # `preselect` (the caption-language preference list, CLI
+            # overrides winning over saved `[locale]` settings) is
+            # computed once at the top of this repo block — it also feeds
+            # the cache key. It drives both the picker's preselect and
+            # `get_transcript`'s fallback order.
 
             # Caption-language picker: runs AFTER the source picker so a
             # user who picked "audio" (or was given --youtube-source
@@ -612,7 +645,13 @@ async def cmd_analyze_youtube(
             # ≤1 distinct caption language to choose from, or the
             # effective source is "audio".
             effective_transcript_lang: str | None = transcript_lang
-            if transcript_lang is None and not yes and _is_interactive() and effective_source != "audio":
+            if (
+                reuse is None
+                and transcript_lang is None
+                and not yes
+                and _is_interactive()
+                and effective_source != "audio"
+            ):
                 tracks = _dedup_display_tracks(metadata)
                 if len(tracks) > 1:
                     picked_lang = await _interactive_pick_caption_lang(metadata, preselect=preselect)
@@ -625,21 +664,24 @@ async def cmd_analyze_youtube(
                     else:
                         effective_transcript_lang = picked_lang
 
-            try:
-                tres = await get_transcript(
-                    metadata,
-                    source=effective_source,
-                    settings=settings,
-                    repo=repo,
-                    transcript_lang=effective_transcript_lang,
-                    preferred_langs=preselect,
-                )
-            except NoTranscriptAvailable as e:
-                raise typer.BadParameter(str(e)) from e
-            except YoutubeFetchError as e:
-                console.print(f"[red]{_t('youtube_fetch_failed').format(err=str(e)[:300])}[/]")
-                console.print(f"[grey70]{_t('youtube_fetch_failed_hint')}[/]")
-                raise typer.Exit(1) from e
+            if reuse is not None:
+                tres = reuse
+            else:
+                try:
+                    tres = await get_transcript(
+                        metadata,
+                        source=effective_source,
+                        settings=settings,
+                        repo=repo,
+                        transcript_lang=effective_transcript_lang,
+                        preferred_langs=preselect,
+                    )
+                except NoTranscriptAvailable as e:
+                    raise typer.BadParameter(str(e)) from e
+                except YoutubeFetchError as e:
+                    console.print(f"[red]{_t('youtube_fetch_failed').format(err=str(e)[:300])}[/]")
+                    console.print(f"[grey70]{_t('youtube_fetch_failed_hint')}[/]")
+                    raise typer.Exit(1) from e
             transcript_text = tres.text
             transcript_source = tres.source
             transcript_cost = tres.cost_usd
@@ -650,6 +692,21 @@ async def cmd_analyze_youtube(
             cost_str = f", ${transcript_cost:.4f}" if transcript_cost > 0 else ""
             console.print(
                 f"[green]Transcript ready[/] ({tres.source}, {len(transcript_text):,} chars{cost_str})"
+            )
+            if notice := fallback_notice(requested=requested_lang, delivered=fetched_lang):
+                console.print(f"[yellow]{notice}[/]")
+
+            # Per-requested-language cache. Written even on a `reuse` hit:
+            # cheap, and it means the next request for THIS language is an
+            # exact hit instead of re-deriving the reuse each time.
+            await save_transcript(
+                repo,
+                video_id=video_id,
+                requested_lang=requested_lang,
+                tres=tres,
+                transcript_model=(
+                    settings.openai.audio_model_default if transcript_source == "audio" else None
+                ),
             )
 
             await repo.put_youtube_video(

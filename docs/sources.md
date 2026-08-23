@@ -53,10 +53,21 @@ Greek, Arabic, Hebrew, Latin Extended) so searching for `биохакинг` or
 5. The bundled `video` preset runs over the time-stamped synthetic
    messages. Citations land as `[#754](https://www.youtube.com/watch?v=ID&t=754s)`
    — every citation in the report is a clickable jump to that moment.
-6. Re-runs hit the `youtube_videos` cache (metadata + transcript +
-   timed cues) — no yt-dlp, no Whisper, no LLM-side re-spend if cached.
-   A `--transcript-lang` that disagrees with the cached track's language
-   bypasses the cache and re-fetches in the requested language.
+6. Re-runs hit the cache — no yt-dlp, no Whisper, no LLM-side re-spend.
+   Metadata lives in `youtube_videos`; transcripts live in
+   `youtube_transcripts`, keyed by the language you **asked for** rather
+   than the one you got. That means:
+   - Two languages coexist for one video instead of evicting each other.
+   - Asking for a language the video doesn't have caches the fallback
+     under your request, so the second ask is a hit rather than an
+     endless re-fetch.
+   - A Whisper transcript is reused across languages when the requested
+     language has no captions either — nobody pays twice to transcribe
+     the same audio.
+7. When the delivered transcript isn't in the language you asked for, a
+   one-line warning says so (console for the CLI, a `⚠️` line at the top
+   of `transcript.md` for a dump). The analysis is still written in your
+   language; only the source text falls back.
 
 ```bash
 # Interactive default: shows metadata + asks for source.

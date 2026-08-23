@@ -627,3 +627,121 @@ async def test_prefetched_meta_skips_the_metadata_refetch(tmp_path) -> None:
         )
     fetch_mock.assert_not_called()
     assert (out / "transcript.md").exists()
+
+
+# --- fallback notice ---------------------------------------------------------
+
+
+async def test_transcript_md_warns_when_the_language_falls_back(tmp_path) -> None:
+    """Asked for Russian, video only has English: deliver the English text
+    but say so IN THE FILE — the bot uploads this and shows no console."""
+    meta = _meta("notice-vid01")
+    meta.subtitles = {"en": [{}]}
+    out = tmp_path / "out"
+    tres = TranscriptResult(
+        text="hello world",
+        source="captions",
+        language="en",
+        duration_sec=120,
+        cost_usd=0.0,
+        timed_cues=None,
+    )
+    with (
+        patch("unread.youtube.dump.fetch_metadata", new=AsyncMock(return_value=meta)),
+        patch("unread.youtube.dump.get_transcript", new=AsyncMock(return_value=tres)),
+    ):
+        await cmd_dump_youtube(
+            url=meta.url,
+            mode="transcript",
+            youtube_source="auto",
+            output=out,
+            console_out=False,
+            language="ru",
+            report_language="ru",
+            source_language="",
+            yes=True,
+        )
+    md = (out / "transcript.md").read_text(encoding="utf-8")
+    assert "⚠️" in md
+    assert "Russian" in md and "English" in md
+    assert "hello world" in md
+
+
+async def test_transcript_md_has_no_warning_when_the_language_matches(tmp_path) -> None:
+    meta = _meta("notice-vid02")
+    meta.subtitles = {"en": [{}]}
+    out = tmp_path / "out"
+    tres = TranscriptResult(
+        text="hello world",
+        source="captions",
+        language="en",
+        duration_sec=120,
+        cost_usd=0.0,
+        timed_cues=None,
+    )
+    with (
+        patch("unread.youtube.dump.fetch_metadata", new=AsyncMock(return_value=meta)),
+        patch("unread.youtube.dump.get_transcript", new=AsyncMock(return_value=tres)),
+    ):
+        await cmd_dump_youtube(
+            url=meta.url,
+            mode="transcript",
+            youtube_source="auto",
+            output=out,
+            console_out=False,
+            language="en",
+            report_language="en",
+            source_language="",
+            yes=True,
+        )
+    assert "⚠️" not in (out / "transcript.md").read_text(encoding="utf-8")
+
+
+async def test_dump_caches_per_requested_language(tmp_path) -> None:
+    """A second dump in a different language must fetch its own transcript
+    instead of reusing (or evicting) the first one."""
+    from unread.config import get_settings
+    from unread.db.repo import open_repo
+
+    meta = _meta("dumpcache001")
+    meta.subtitles = {"en": [{}], "ru": [{}]}
+
+    async def _run(lang, text, delivered):
+        tres = TranscriptResult(
+            text=text,
+            source="captions",
+            language=delivered,
+            duration_sec=120,
+            cost_usd=0.0,
+            timed_cues=None,
+        )
+        mock = AsyncMock(return_value=tres)
+        with (
+            patch("unread.youtube.dump.fetch_metadata", new=AsyncMock(return_value=meta)),
+            patch("unread.youtube.dump.get_transcript", new=mock),
+        ):
+            await cmd_dump_youtube(
+                url=meta.url,
+                mode="transcript",
+                youtube_source="auto",
+                output=tmp_path / lang,
+                console_out=False,
+                language=lang,
+                report_language=lang,
+                source_language="",
+                yes=True,
+            )
+        return mock
+
+    await _run("en", "hello world", "en")
+    await _run("ru", "привет мир", "ru")
+
+    async with open_repo(get_settings().storage.data_path) as repo:
+        en = await repo.get_youtube_transcript("dumpcache001", "en")
+        ru = await repo.get_youtube_transcript("dumpcache001", "ru")
+    assert en["transcript"] == "hello world"
+    assert ru["transcript"] == "привет мир"
+
+    # Re-running English now hits the cache — no fetch.
+    hit_mock = await _run("en", "SHOULD NOT BE USED", "en")
+    hit_mock.assert_not_called()

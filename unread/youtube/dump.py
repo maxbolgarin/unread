@@ -65,16 +65,24 @@ def _metadata_dict(meta: YoutubeMetadata) -> dict:
     return out
 
 
-def _build_transcript_md(meta: YoutubeMetadata, tres: TranscriptResult) -> str:
+def _build_transcript_md(meta: YoutubeMetadata, tres: TranscriptResult, *, notice: str = "") -> str:
     """Markdown body: meta header + plain transcript text (no per-cue timestamps).
 
     Per-cue timing is preserved in the DB (and used by the analyze / ask
     paths so the LLM can quote ``[HH:MM:SS]`` markers) but the dump
     artifact is plain reading copy.
+
+    `notice` carries the "you asked for English, this is Russian" warning.
+    It goes INTO the file rather than only to the console because the bot
+    uploads this file and never shows console output — without it a bot
+    user gets a transcript in an unexpected language with no explanation.
     """
     header = _meta_header(meta)
     body = (tres.text or "").strip()
-    parts = [header, "", "## Transcript", "", body]
+    parts = [header, ""]
+    if notice:
+        parts += [f"> ⚠️ {notice}", ""]
+    parts += ["## Transcript", "", body]
     return "\n".join(parts).rstrip() + "\n"
 
 
@@ -128,8 +136,14 @@ async def _do_transcript_mode(
     source_language: str = "",
     yes: bool = False,
 ) -> None:
+    from unread.youtube.cache import (
+        load_cached,
+        load_exact,
+        resolve_requested_lang,
+        save_transcript,
+    )
     from unread.youtube.commands import _require_audio_ffmpeg
-    from unread.youtube.transcript import _lang_base
+    from unread.youtube.transcript import _preferred_caption_langs
 
     # `meta` came from `_restore_metadata_from_row` iff `cmd_dump_youtube`
     # found a cache row (that helper hard-nulls the caption inventory — the
@@ -138,14 +152,6 @@ async def _do_transcript_mode(
     # runs the picker / `get_transcript`.
     meta_from_cache = cached_row is not None
 
-    # Explicit `--transcript-lang X` that disagrees with the cached row's
-    # language bypasses the cache entirely — mirrors `cmd_analyze_youtube`'s
-    # bypass so the same flag has the same effect across analyze/ask/dump.
-    if cached_row and transcript_lang:
-        cached_base = _lang_base(cached_row.get("language") or "")
-        if cached_base != _lang_base(transcript_lang):
-            cached_row = None
-
     # `--youtube-source audio` needs ffmpeg up front — mirrors
     # `cmd_analyze_youtube`'s early preflight so a missing binary surfaces
     # a friendly banner before any network work starts instead of failing
@@ -153,32 +159,43 @@ async def _do_transcript_mode(
     if youtube_source == "audio":
         _require_audio_ffmpeg()
 
-    if cached_row and cached_row.get("transcript"):
-        tres = TranscriptResult(
-            text=cached_row["transcript"] or "",
-            source=cached_row.get("transcript_source") or "captions",  # type: ignore[arg-type]
-            language=cached_row.get("language"),
-            duration_sec=meta.duration_sec,
-            cost_usd=float(cached_row.get("transcript_cost_usd") or 0.0),
-            timed_cues=None,
-        )
-    else:
+    # Caption preference doubles as the cache key — see
+    # `unread/youtube/cache.py`. Computed before any network work.
+    preselect = _preferred_caption_langs(
+        settings,
+        content_language=source_language or None,
+        report_language=report_language or None,
+        ui_language=language or None,
+    )
+    requested_lang = resolve_requested_lang(
+        transcript_lang=transcript_lang,
+        preferred_langs=preselect,
+        source=youtube_source,
+    )
+
+    tres = await load_exact(
+        repo,
+        video_id=meta.video_id,
+        requested_lang=requested_lang,
+        duration_sec=meta.duration_sec,
+    )
+    if tres is None:
         from unread.youtube.commands import (
             WHISPER_LANG_SENTINEL,
             _dedup_display_tracks,
             _interactive_pick_caption_lang,
             _is_interactive,
         )
-        from unread.youtube.transcript import _preferred_caption_langs
 
         # A cache-restored `meta` has no caption inventory. We're about to
-        # fetch a fresh transcript (either the bypass nulled `cached_row`, or
-        # the row had no transcript) so re-fetch metadata to repopulate
+        # fetch a fresh transcript, so re-fetch metadata to repopulate
         # `subtitles` / `automatic_captions` — otherwise the picker sees zero
         # tracks and `get_transcript` finds no candidates: under `auto` it
         # silently downloads audio and bills Whisper (ignoring the requested
         # caption language); under `captions` it falsely raises "no captions".
-        # Must happen before both the picker and `get_transcript` below.
+        # Must happen before the second-chance lookup, the picker, AND
+        # `get_transcript` below — the lookup's whisper-reuse rule reads the
+        # same inventory.
         if meta_from_cache and not (meta.subtitles or meta.automatic_captions):
             try:
                 meta = await fetch_metadata(meta.video_id)
@@ -187,17 +204,9 @@ async def _do_transcript_mode(
                 console.print(f"[grey70]{_t('youtube_fetch_failed_hint')}[/]")
                 raise typer.Exit(1) from e
 
-        # Caption language preference list: CLI overrides win over the
-        # saved `[locale]` settings. Feeds both the picker's preselect
-        # AND `get_transcript`'s fallback order — fixes the previously
-        # dead `report_language` / `source_language` params.
-        preselect = _preferred_caption_langs(
-            settings,
-            content_language=source_language or None,
-            report_language=report_language or None,
-            ui_language=language or None,
-        )
+        tres = await load_cached(repo, video_id=meta.video_id, requested_lang=requested_lang, meta=meta)
 
+    if tres is None:
         effective_source: TranscriptSource = youtube_source
         effective_transcript_lang: str | None = transcript_lang
         if transcript_lang is None and not yes and _is_interactive() and effective_source != "audio":
@@ -251,14 +260,27 @@ async def _do_transcript_mode(
             transcript_timed=tres.timed_cues,
             transcript_lang_kind=transcript_lang_kind,
         )
+        await save_transcript(
+            repo,
+            video_id=meta.video_id,
+            requested_lang=requested_lang,
+            tres=tres,
+            transcript_model=(settings.openai.audio_model_default if tres.source == "audio" else None),
+        )
 
     if not (tres.text or "").strip():
         console.print(f"[red]{_t('cli_error_prefix')}[/] {_t('err_files_empty_transcript')}")
         raise typer.Exit(2)
 
-    _write_metadata(meta, dump_dir / "metadata.json")
-    (dump_dir / "transcript.md").write_text(_build_transcript_md(meta, tres), encoding="utf-8")
+    from unread.youtube.cache import fallback_notice
 
+    notice = fallback_notice(requested=requested_lang, delivered=tres.language)
+
+    _write_metadata(meta, dump_dir / "metadata.json")
+    (dump_dir / "transcript.md").write_text(_build_transcript_md(meta, tres, notice=notice), encoding="utf-8")
+
+    if notice:
+        console.print(f"[yellow]{notice}[/]")
     console.print(f"[green]{_tf('dump_youtube_transcript_done', path=dump_dir)}[/]")
 
 

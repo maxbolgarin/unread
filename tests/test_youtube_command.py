@@ -803,3 +803,123 @@ async def test_analyze_youtube_dump_choice_forwards_languages_to_dump() -> None:
     assert kwargs["report_language"] == "ru"
     assert kwargs["source_language"] == "de"
     assert kwargs["transcript_lang"] == "fr"
+
+
+# --- per-language transcript cache ------------------------------------------
+
+
+async def test_analyze_youtube_two_languages_do_not_evict_each_other() -> None:
+    """Two admins, two languages, one video. The RU run must not make the
+    EN run re-fetch, and vice versa — with a single row per video they
+    used to evict each other on every alternating request."""
+    from unread.config import get_settings
+    from unread.db.repo import open_repo
+    from unread.youtube.cache import save_transcript
+    from unread.youtube.transcript import TranscriptResult
+
+    meta = _meta(video_id="twolangs001", url="https://www.youtube.com/watch?v=twolangs001")
+
+    def _tres(text, lang):
+        return TranscriptResult(
+            text=text,
+            source="captions",
+            language=lang,
+            duration_sec=900,
+            cost_usd=0.0,
+            timed_cues=[(0, text)],
+            is_auto=False,
+        )
+
+    s = get_settings()
+    async with open_repo(s.storage.data_path) as repo:
+        await save_transcript(
+            repo, video_id=meta.video_id, requested_lang="ru", tres=_tres("привет мир. " * 20, "ru")
+        )
+        await save_transcript(
+            repo, video_id=meta.video_id, requested_lang="en", tres=_tres("hello world. " * 20, "en")
+        )
+
+    for lang in ("ru", "en"):
+        get_transcript_mock = AsyncMock(side_effect=AssertionError(f"{lang} must hit the cache"))
+        with (
+            patch("unread.youtube.commands.fetch_metadata", new=AsyncMock(return_value=meta)),
+            patch("unread.youtube.commands.get_transcript", new=get_transcript_mock),
+        ):
+            await cmd_analyze_youtube(
+                url=meta.url,
+                preset=None,
+                prompt_file=None,
+                model=None,
+                filter_model=None,
+                output=None,
+                console_out=True,
+                dry_run=True,
+                yes=True,
+                language=lang,
+                report_language=lang,
+            )
+        get_transcript_mock.assert_not_called()
+
+
+async def test_analyze_youtube_refetches_for_an_uncached_language() -> None:
+    """Switching language must NOT serve the other language's cached text."""
+    from unread.config import get_settings
+    from unread.db.repo import open_repo
+    from unread.youtube.cache import save_transcript
+    from unread.youtube.transcript import TranscriptResult
+
+    meta = _meta(video_id="switchlang01", url="https://www.youtube.com/watch?v=switchlang01")
+    # Only EN is cached. The video also has RU captions, so a RU request
+    # has something of its own to fetch and must not inherit the EN text.
+    meta.subtitles = {"ru": [{}], "en": [{}]}
+    async with open_repo(get_settings().storage.data_path) as repo:
+        await save_transcript(
+            repo,
+            video_id=meta.video_id,
+            requested_lang="en",
+            tres=TranscriptResult(
+                text="hello world. " * 20,
+                source="captions",
+                language="en",
+                duration_sec=900,
+                cost_usd=0.0,
+                timed_cues=[(0, "hello")],
+                is_auto=False,
+            ),
+        )
+
+    fresh = TranscriptResult(
+        text="привет мир. " * 20,
+        source="captions",
+        language="ru",
+        duration_sec=900,
+        cost_usd=0.0,
+        timed_cues=[(0, "привет")],
+        is_auto=False,
+    )
+    get_transcript_mock = AsyncMock(return_value=fresh)
+    with (
+        patch("unread.youtube.commands.fetch_metadata", new=AsyncMock(return_value=meta)),
+        patch("unread.youtube.commands.get_transcript", new=get_transcript_mock),
+    ):
+        await cmd_analyze_youtube(
+            url=meta.url,
+            preset=None,
+            prompt_file=None,
+            model=None,
+            filter_model=None,
+            output=None,
+            console_out=True,
+            dry_run=True,
+            yes=True,
+            language="ru",
+            report_language="ru",
+        )
+    get_transcript_mock.assert_called_once()
+
+    # And the RU result is now cached under 'ru', leaving 'en' intact.
+    async with open_repo(get_settings().storage.data_path) as repo:
+        ru = await repo.get_youtube_transcript(meta.video_id, "ru")
+        en = await repo.get_youtube_transcript(meta.video_id, "en")
+    assert ru is not None and "привет" in ru["transcript"]
+    assert en is not None and "hello" in en["transcript"]

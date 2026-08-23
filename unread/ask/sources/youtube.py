@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import typer
@@ -76,7 +75,6 @@ async def cmd_ask_youtube(
         NoTranscriptAvailable,
         TranscriptSource,
         YoutubeFetchError,
-        _lang_base,
         _preferred_caption_langs,
         get_transcript,
     )
@@ -94,16 +92,38 @@ async def cmd_ask_youtube(
         _require_audio_ffmpeg()
 
     async with open_repo(settings.storage.data_path) as repo:
+        from unread.youtube.cache import (
+            fallback_notice,
+            load_cached,
+            load_exact,
+            resolve_requested_lang,
+            save_transcript,
+        )
+
+        # Caption preference doubles as the transcript cache key, and is
+        # settings-only — computed before any network work. See
+        # `unread/youtube/cache.py` for why the key is the REQUESTED
+        # language rather than the delivered one.
+        preselect = _preferred_caption_langs(
+            settings,
+            content_language=source_language or None,
+            report_language=report_language or None,
+            ui_language=language or None,
+        )
+        requested_lang = resolve_requested_lang(
+            transcript_lang=transcript_lang,
+            preferred_langs=preselect,
+            source=youtube_source,
+        )
+
         cached = await repo.get_youtube_video(video_id)
-        # Explicit `--transcript-lang X` that disagrees with the cached
-        # row's language bypasses the cache — mirrors
-        # `cmd_analyze_youtube`'s bypass so the same flag has the same
-        # effect across analyze / ask / dump.
-        if cached and transcript_lang:
-            cached_base = _lang_base(cached.get("language") or "")
-            if cached_base != _lang_base(transcript_lang):
-                cached = None
-        if cached and cached.get("transcript"):
+        cached_tres = await load_exact(
+            repo,
+            video_id=video_id,
+            requested_lang=requested_lang,
+            duration_sec=(cached or {}).get("duration_sec"),
+        )
+        if cached and cached_tres is not None:
             # Cached transcript path — read text directly from the row,
             # do NOT re-call get_transcript (which would re-download
             # captions / re-transcode audio even though we already have
@@ -111,19 +131,11 @@ async def cmd_ask_youtube(
             console.print(f"[grey70]Using cached YouTube metadata + transcript ({video_id})[/]")
             meta = _restore_metadata_from_row(cached)
             console.print(_render_metadata_panel(meta, audio_estimate=0.0))
-            cached_source = cached.get("transcript_source") or "captions"
-            timed_raw = cached.get("transcript_timed_json")
-            timed_cues: list[tuple[int, str]] | None = None
-            if timed_raw:
-                try:
-                    timed_cues = [(int(s), str(t)) for s, t in json.loads(timed_raw)]
-                except (TypeError, ValueError):
-                    timed_cues = None
-            if timed_cues:
-                text = _render_timed(timed_cues).strip()
-            else:
-                text = (cached.get("transcript") or "").strip()
-            console.print(f"[green]Transcript ready[/] ({cached_source}, {len(text):,} chars, cached)")
+            timed_cues = cached_tres.timed_cues
+            text = _render_timed(timed_cues).strip() if timed_cues else (cached_tres.text or "").strip()
+            console.print(f"[green]Transcript ready[/] ({cached_tres.source}, {len(text):,} chars, cached)")
+            if notice := fallback_notice(requested=requested_lang, delivered=cached_tres.language):
+                console.print(f"[yellow]{notice}[/]")
         else:
             if cached:
                 meta = _restore_metadata_from_row(cached)
@@ -138,28 +150,33 @@ async def cmd_ask_youtube(
             audio_estimate = float(audio_cost(settings.openai.audio_model_default, meta.duration_sec) or 0.0)
             console.print(_render_metadata_panel(meta, audio_estimate=audio_estimate))
 
+            # Second chance now that `meta` carries a real caption
+            # inventory: reuses a Whisper transcript somebody already paid
+            # for when this request has no caption track of its own.
+            reuse = await load_cached(repo, video_id=video_id, requested_lang=requested_lang, meta=meta)
+            if reuse is not None:
+                console.print(f"[grey70]Reusing a cached transcript ({reuse.source})[/]")
+
             effective_source: TranscriptSource = youtube_source  # type: ignore[assignment]
-            if youtube_source == "auto" and not yes and _is_interactive():
+            if reuse is None and youtube_source == "auto" and not yes and _is_interactive():
                 picked = await _interactive_pick_source(meta, audio_estimate=audio_estimate)
                 if picked is None:
                     console.print("[yellow]Cancelled.[/]")
                     raise typer.Exit(0)
                 effective_source = picked
 
-            # Caption language preference list: CLI overrides win over the
-            # saved `[locale]` settings. Feeds both the picker's preselect
-            # AND `get_transcript`'s fallback order.
-            preselect = _preferred_caption_langs(
-                settings,
-                content_language=source_language or None,
-                report_language=report_language or None,
-                ui_language=language or None,
-            )
-
             # Caption-language picker — identical skip guards / wiring as
-            # `cmd_analyze_youtube`'s fresh-fetch branch.
+            # `cmd_analyze_youtube`'s fresh-fetch branch. `preselect` is
+            # computed once at the top of this repo block (it also feeds
+            # the cache key).
             effective_transcript_lang: str | None = transcript_lang
-            if transcript_lang is None and not yes and _is_interactive() and effective_source != "audio":
+            if (
+                reuse is None
+                and transcript_lang is None
+                and not yes
+                and _is_interactive()
+                and effective_source != "audio"
+            ):
                 tracks = _dedup_display_tracks(meta)
                 if len(tracks) > 1:
                     picked_lang = await _interactive_pick_caption_lang(meta, preselect=preselect)
@@ -172,23 +189,39 @@ async def cmd_ask_youtube(
                     else:
                         effective_transcript_lang = picked_lang
 
-            try:
-                tres = await get_transcript(
-                    meta,
-                    source=effective_source,
-                    settings=settings,
-                    repo=repo,
-                    transcript_lang=effective_transcript_lang,
-                    preferred_langs=preselect,
-                )
-            except NoTranscriptAvailable as e:
-                raise typer.BadParameter(str(e)) from e
-            except YoutubeFetchError as e:
-                console.print(f"[red]YouTube fetch failed: {str(e)[:300]}[/]")
-                raise typer.Exit(1) from e
+            if reuse is not None:
+                tres = reuse
+            else:
+                try:
+                    tres = await get_transcript(
+                        meta,
+                        source=effective_source,
+                        settings=settings,
+                        repo=repo,
+                        transcript_lang=effective_transcript_lang,
+                        preferred_langs=preselect,
+                    )
+                except NoTranscriptAvailable as e:
+                    raise typer.BadParameter(str(e)) from e
+                except YoutubeFetchError as e:
+                    console.print(f"[red]YouTube fetch failed: {str(e)[:300]}[/]")
+                    raise typer.Exit(1) from e
             text = _render_timed(tres.timed_cues).strip() if tres.timed_cues else (tres.text or "").strip()
             cost_str = f", ${tres.cost_usd:.4f}" if tres.cost_usd > 0 else ""
             console.print(f"[green]Transcript ready[/] ({tres.source}, {len(text):,} chars{cost_str})")
+            if notice := fallback_notice(requested=requested_lang, delivered=tres.language):
+                console.print(f"[yellow]{notice}[/]")
+
+            # `ask` used to read the transcript cache without ever writing
+            # it, so an ask-first workflow re-fetched every time. Cheap to
+            # fix now that there is a per-language table to write into.
+            await save_transcript(
+                repo,
+                video_id=video_id,
+                requested_lang=requested_lang,
+                tres=tres,
+                transcript_model=(settings.openai.audio_model_default if tres.source == "audio" else None),
+            )
 
     if not text:
         console.print("[red]Transcript is empty — nothing to answer over.[/]")

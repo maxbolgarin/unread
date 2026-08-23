@@ -1400,6 +1400,86 @@ class Repo:
         await cur.close()
         return dict(row) if row else None
 
+    async def put_youtube_transcript(
+        self,
+        *,
+        video_id: str,
+        requested_lang: str,
+        language: str | None,
+        transcript: str,
+        transcript_source: str | None,
+        transcript_lang_kind: str | None,
+        transcript_model: str | None,
+        transcript_cost_usd: float | None,
+        transcript_timed: list[tuple[int, str]] | None,
+    ) -> None:
+        """Cache one transcript under the language the caller ASKED for.
+
+        See the table comment in `schema.sql` for why the key is the
+        request rather than the delivery.
+        """
+        timed_json = json.dumps(transcript_timed) if transcript_timed else None
+        await self._conn.execute(
+            """
+            INSERT INTO youtube_transcripts(
+                video_id, requested_lang, language, transcript, transcript_source,
+                transcript_lang_kind, transcript_model, transcript_cost_usd,
+                transcript_timed_json, transcribed_at
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(video_id, requested_lang) DO UPDATE SET
+                language=excluded.language,
+                transcript=excluded.transcript,
+                transcript_source=excluded.transcript_source,
+                transcript_lang_kind=excluded.transcript_lang_kind,
+                transcript_model=excluded.transcript_model,
+                transcript_cost_usd=excluded.transcript_cost_usd,
+                transcript_timed_json=excluded.transcript_timed_json,
+                transcribed_at=excluded.transcribed_at
+            """,
+            (
+                video_id,
+                (requested_lang or "").lower(),
+                language,
+                transcript,
+                transcript_source,
+                transcript_lang_kind,
+                transcript_model,
+                float(transcript_cost_usd or 0.0),
+                timed_json,
+                _utcnow(),
+            ),
+        )
+        await self._conn.commit()
+
+    async def get_youtube_transcript(self, video_id: str, requested_lang: str) -> dict[str, Any] | None:
+        """Cached transcript for this (video, requested language), or None."""
+        cur = await self._conn.execute(
+            "SELECT * FROM youtube_transcripts WHERE video_id=? AND requested_lang=?",
+            (video_id, (requested_lang or "").lower()),
+        )
+        row = await cur.fetchone()
+        await cur.close()
+        return dict(row) if row else None
+
+    async def find_youtube_transcript_by_source(self, video_id: str, source: str) -> dict[str, Any] | None:
+        """Any cached transcript for this video with the given source.
+
+        Used for the Whisper-reuse rule: a transcription doesn't depend on
+        which language the caller asked for, so once one admin has paid for
+        it nobody else should. Returns the most recent match.
+        """
+        cur = await self._conn.execute(
+            """
+            SELECT * FROM youtube_transcripts
+            WHERE video_id=? AND transcript_source=?
+            ORDER BY transcribed_at DESC LIMIT 1
+            """,
+            (video_id, source),
+        )
+        row = await cur.fetchone()
+        await cur.close()
+        return dict(row) if row else None
+
     async def put_youtube_video(
         self,
         *,
