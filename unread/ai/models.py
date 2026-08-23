@@ -100,7 +100,7 @@ _OPENAI_MODELS: tuple[ModelInfo, ...] = (
     ),
     ModelInfo(
         "gpt-5.6-sol",
-        "GPT-5.6 Sol — balanced flagship",
+        "GPT-5.6 Sol — flagship (preset default)",
         "chat",
         2.0,
         0.2,
@@ -111,7 +111,7 @@ _OPENAI_MODELS: tuple[ModelInfo, ...] = (
     ),
     ModelInfo(
         "gpt-5.6-terra",
-        "GPT-5.6 Terra — strongest",
+        "GPT-5.6 Terra — pricier sibling of Sol",
         "chat",
         2.0,
         0.2,
@@ -303,7 +303,7 @@ _OPENROUTER_MODELS: tuple[ModelInfo, ...] = (
     ),
     ModelInfo(
         "openai/gpt-5.6-sol",
-        "OpenRouter → GPT-5.6 Sol",
+        "OpenRouter → GPT-5.6 Sol (flagship)",
         "chat",
         2.0,
         0.2,

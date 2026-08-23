@@ -1,7 +1,7 @@
 """GPT-5.6 model family: catalog entries, defaults, and preset pins.
 
 `gpt-5.6-luna` is cheaper than the old nano tier with 2.6x the context,
-so it replaces both the chat and filter defaults. `gpt-5.6-terra` replaces
+so it replaces both the chat and filter defaults. `gpt-5.6-sol` replaces
 `gpt-5.4` where a preset pins the flagship.
 
 The load-bearing test here is the last one: every model a preset pins must
@@ -43,9 +43,16 @@ def test_terra_pricing_matches_the_published_rates(prefix) -> None:
 
 
 @pytest.mark.parametrize("prefix", ["", "openai/"])
+def test_sol_pricing_matches_the_published_rates(prefix) -> None:
+    m = find_model(prefix + SOL)
+    assert (m.input_price, m.output_price, m.cached_price) == (2.00, 10.00, 0.20)
+
+
+@pytest.mark.parametrize("prefix", ["", "openai/"])
 def test_new_models_are_reasoning_class(prefix) -> None:
     """The gpt-5 family rejects a custom `temperature` with a 400."""
     assert find_model(prefix + LUNA).reasoning is True
+    assert find_model(prefix + SOL).reasoning is True
     assert find_model(prefix + TERRA).reasoning is True
 
 
@@ -82,7 +89,7 @@ def test_no_preset_still_pins_a_gpt_5_4_model(language) -> None:
 def test_factcheck_uses_the_flagship(language) -> None:
     """Verdict quality is the whole point of this preset — it must not
     quietly land on the cheap tier."""
-    assert get_presets(language)["factcheck"].final_model == TERRA
+    assert get_presets(language)["factcheck"].final_model == SOL
 
 
 @pytest.mark.parametrize("language", ["en", "ru"])

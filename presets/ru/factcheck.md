@@ -5,7 +5,7 @@ description: Фактчек — вытащить проверяемые утве
 needs_reduce: true
 needs_web_search: true
 filter_model: gpt-5.6-luna
-final_model: gpt-5.6-terra
+final_model: gpt-5.6-sol
 output_budget_tokens: 6000
 map_output_tokens: 2000
 max_chunk_input_tokens: 300000

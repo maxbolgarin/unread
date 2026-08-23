@@ -7,8 +7,8 @@
 # Model picks (Chat Completions API, refreshed 2026-05-01):
 #   gpt-5.5       — newest flagship (1M ctx, $5/$30 per 1M); use for top-quality reduce.
 #   gpt-5.6-luna  — default; cheapest AND 1M context ($0.20/$1.20).
-#   gpt-5.6-sol   — mid flagship ($2.00/$10).
-#   gpt-5.6-terra — strongest; used where a preset pins the flagship ($2.00/$12).
+#   gpt-5.6-sol   — flagship; used where a preset pins one ($2.00/$10).
+#   gpt-5.6-terra — pricier sibling of sol ($2.00/$12); nothing defaults to it.
 #   gpt-4o / gpt-4o-mini — previous generation; gpt-4o-mini is the vision default.
 
 # ====================================================== AI provider (chat)

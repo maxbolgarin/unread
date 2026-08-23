@@ -215,7 +215,7 @@ async def test_openai_search_call_opts_out_of_server_side_storage():
 
         p._client = type("C", (), {"responses": _Responses()})()
         await p.chat(
-            model="gpt-5.6-terra",
+            model="gpt-5.6-sol",
             messages=[{"role": "user", "content": "check"}],
             max_tokens=10,
             temperature=0.2,
