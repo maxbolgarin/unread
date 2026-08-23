@@ -244,11 +244,14 @@ in the caption.
   <img src="https://raw.githubusercontent.com/maxbolgarin/unread/main/.github/examples/bot.jpg" alt="Bot replying with a voice-message summary, attaching the PDF report" width="320">
 </p>
 
-Single-user by design: the bot only answers ONE Telegram ID. The
-allowlist is auto-derived from the user session you give it (mounted
-or sent via `/upload_session`); `UNREAD_BOT_OWNER_ID` is only a
-bootstrap fallback for the case where no session is installed yet.
-Everyone else is silently dropped.
+Allowlisted by design: the bot answers only the Telegram IDs you list.
+The primary owner is auto-derived from the user session you give it
+(mounted or sent via `/upload_session`); `UNREAD_BOT_OWNER_ID` sets the
+bootstrap allowlist and accepts a comma-separated list
+(`111,222`) when you want a few people on it. Extra admins get files /
+web links / YouTube — `t.me` links and `/upload_session` stay
+primary-only, since every admin shares the primary owner's Telegram
+session. Everyone else is silently dropped.
 
 Three install paths — pick by environment:
 

@@ -104,9 +104,10 @@ async def cmd_bot_run() -> None:
             console.print(f"[red]{_t('bot_missing_token')}[/]\n[grey70]{_t('bot_missing_token_hint')}[/]")
             raise typer.Exit(1)
 
-        # Gate 3: there must be SOME path to a non-zero owner_id.
+        # Gate 3: there must be SOME path to a non-empty allowlist.
         # Acceptable shapes:
-        #   - `UNREAD_BOT_OWNER_ID` is set → use it directly.
+        #   - `UNREAD_BOT_OWNER_ID` is set (one id, or several separated
+        #     by commas) → use it directly.
         #   - A user session blob exists (on-disk SQLiteSession OR
         #     encrypted StringSession in the secrets DB) → BotApp
         #     derives owner_id from it during startup (via get_me()).
@@ -117,7 +118,7 @@ async def cmd_bot_run() -> None:
         # bootstrap allowlist for the upcoming `/upload_session`.
         from unread.bot.app import _has_session_blob
 
-        if not s.bot.owner_id and not _has_session_blob(s):
+        if not s.bot.owner_ids and not _has_session_blob(s):
             console.print(
                 f"[red]{_t('bot_missing_owner_id')}[/]\n[grey70]{_t('bot_missing_owner_id_hint')}[/]"
             )

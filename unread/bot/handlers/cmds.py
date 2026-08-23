@@ -179,6 +179,12 @@ async def handle(
         return
 
     if cmd == "upload_session":
+        # Replacing the session swaps the account every t.me analysis
+        # reads from — primary owner only, never an extra admin.
+        if not app.is_primary_owner(event.sender_id):
+            await event.reply("🔒 Only the session owner can replace the Telegram session.")
+            return
+
         from unread.bot import session_upload
 
         await session_upload.start_upload(event, app=app)

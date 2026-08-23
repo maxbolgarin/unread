@@ -5479,8 +5479,8 @@ def bot_run_cmd() -> None:
     """Start the self-hosted Telegram bot in long-polling mode.
 
     Blocks forever. The bot itself silently drops every message whose
-    sender isn't `settings.bot.owner_id`, so a missing or malformed
-    allowlist fails at startup (refuses to start with `owner_id == 0`)
+    sender isn't in `settings.bot.owner_ids`, so a missing or malformed
+    allowlist fails at startup (refuses to start with an empty allowlist)
     rather than serving the wrong person quietly.
     """
     from unread.bot.commands import cmd_bot_run

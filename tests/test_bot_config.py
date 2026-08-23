@@ -241,3 +241,86 @@ def test_cmd_bot_run_accepts_env_owner_id_without_session(monkeypatch, tmp_path)
             asyncio.run(bot_commands.cmd_bot_run())
     finally:
         reset_settings()
+
+
+# --- multi-admin allowlist ---------------------------------------------------
+
+
+def test_bot_owner_id_env_accepts_a_comma_separated_list(monkeypatch):
+    monkeypatch.setenv("UNREAD_BOT_OWNER_ID", "111,222,333")
+    reset_settings()
+    try:
+        s = load_settings()
+        assert s.bot.owner_ids == [111, 222, 333]
+        # The first id stays the primary — it's the one whose Telegram
+        # session the bot reads chats through.
+        assert s.bot.owner_id == 111
+    finally:
+        reset_settings()
+
+
+def test_bot_owner_id_env_tolerates_spaces_and_trailing_commas(monkeypatch):
+    monkeypatch.setenv("UNREAD_BOT_OWNER_ID", " 111 , 222 , ")
+    reset_settings()
+    try:
+        assert load_settings().bot.owner_ids == [111, 222]
+    finally:
+        reset_settings()
+
+
+def test_bot_owner_ids_env_plural_alias_works(monkeypatch):
+    monkeypatch.setenv("UNREAD_BOT_OWNER_IDS", "7,8")
+    reset_settings()
+    try:
+        assert load_settings().bot.owner_ids == [7, 8]
+    finally:
+        reset_settings()
+
+
+def test_bot_owner_id_env_rejects_a_bad_entry_in_the_list(monkeypatch):
+    import pytest
+
+    monkeypatch.setenv("UNREAD_BOT_OWNER_ID", "111,nope")
+    reset_settings()
+    try:
+        with pytest.raises(ValueError, match="UNREAD_BOT_OWNER_ID"):
+            load_settings()
+    finally:
+        reset_settings()
+
+
+def test_bot_owner_id_dedupes_while_keeping_order(monkeypatch):
+    monkeypatch.setenv("UNREAD_BOT_OWNER_ID", "5,9,5")
+    reset_settings()
+    try:
+        assert load_settings().bot.owner_ids == [5, 9]
+    finally:
+        reset_settings()
+
+
+def test_bot_owner_id_defaults_to_empty_list_and_zero_primary():
+    reset_settings()
+    try:
+        s = load_settings()
+        assert s.bot.owner_ids == []
+        assert s.bot.owner_id == 0
+    finally:
+        reset_settings()
+
+
+def test_bot_config_toml_legacy_singular_owner_id_still_loads():
+    """`[bot] owner_id = 123` in config.toml predates the list — it must
+    keep working, folded into `owner_ids`."""
+    from unread.config import BotCfg
+
+    cfg = BotCfg(owner_id=123)
+    assert cfg.owner_ids == [123]
+    assert cfg.owner_id == 123
+
+
+def test_bot_config_toml_accepts_an_owner_ids_list():
+    from unread.config import BotCfg
+
+    cfg = BotCfg(owner_ids=[1, 2, 3])
+    assert cfg.owner_ids == [1, 2, 3]
+    assert cfg.owner_id == 1

@@ -254,12 +254,12 @@ _STRINGS: dict[str, dict[str, str]] = {
         "ru": "Задай UNREAD_BOT_TOKEN (env) или [bot].token в ~/.unread/config.toml.",
     },
     "bot_missing_owner_id": {
-        "en": "No owner allowlist available. Either mount an authorized user session at settings.telegram.session_path OR set UNREAD_BOT_OWNER_ID.",
-        "ru": "Нет owner allowlist. Либо положи авторизованную user-session в settings.telegram.session_path, либо задай UNREAD_BOT_OWNER_ID.",
+        "en": "No owner allowlist available. Either mount an authorized user session at settings.telegram.session_path OR set UNREAD_BOT_OWNER_ID (one id, or several separated by commas).",
+        "ru": "Нет owner allowlist. Либо положи авторизованную user-session в settings.telegram.session_path, либо задай UNREAD_BOT_OWNER_ID (один id или несколько через запятую).",
     },
     "bot_missing_owner_id_hint": {
-        "en": "If you set UNREAD_BOT_OWNER_ID and then upload your session, the session-derived owner_id takes over (you'll see a warning if they differ).",
-        "ru": "Если задашь UNREAD_BOT_OWNER_ID и потом загрузишь session — owner_id из session перепишет env (будет warning при расхождении).",
+        "en": "The first id is the primary owner — only that account can analyze t.me links or run /upload_session. If you upload a session later, its account becomes primary and the previous one stays on as an admin.",
+        "ru": "Первый id — primary owner: только этот аккаунт может анализировать t.me-ссылки и делать /upload_session. Если позже загрузишь session, её аккаунт станет primary, а прежний останется админом.",
     },
     "cmd_folders": {
         "en": "List your Telegram folders (for use with `unread --folder NAME` / `unread dump --folder NAME`). Invoke as `unread tg describe folders`.",

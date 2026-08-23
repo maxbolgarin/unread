@@ -85,14 +85,34 @@ Tap **Run** and the analysis starts. The panel is there so an accidentally-tappe
 
 Sticky settings live in-memory per chat (`BotApp._chat_state`) and reset on bot restart by design — there's nothing about a single user worth persisting separately.
 
-## Single-user mode
+## Who can use the bot
 
-The bot answers exactly one Telegram ID:
+The bot answers an explicit allowlist of Telegram IDs — by default just you.
 
-- **At startup**, the bot probes `~/.unread/storage/session.sqlite` (the user session). If an authorized session is there, its owner's ID becomes the allowlist. Otherwise the bot falls back to `UNREAD_BOT_OWNER_ID` from the env, if set.
-- If neither is set, the bot refuses to start handling events — there's no safe allowlist.
-- After a successful `/upload_session`, the owner ID is re-derived from the just-installed session.
+```
+UNREAD_BOT_OWNER_ID=111222333              # solo
+UNREAD_BOT_OWNER_ID=111222333,444555666    # you + one more admin
+```
+
+- **At startup**, the bot probes `~/.unread/storage/session.sqlite` (the user session). If an authorized session is there, its account becomes the **primary owner**. Any ids from `UNREAD_BOT_OWNER_ID` stay on as extra admins.
+- If there's no session AND no `UNREAD_BOT_OWNER_ID`, the bot refuses to start handling events — there's no safe allowlist.
+- After a successful `/upload_session`, the primary owner is re-derived from the just-installed session; the previous primary stays on as an admin.
 - Every event is filtered by Telethon's `from_users=` AND a defense-in-depth `sender_id` check inside the handler. Anything else is silently dropped — no acknowledgement, no log noise to the sender.
+
+### Primary owner vs extra admins
+
+Every admin shares **one** Telegram user session — the primary owner's. So a `t.me/...` link sent by an extra admin would read the *primary owner's* chats. Three surfaces are therefore primary-only:
+
+| Surface | Primary owner | Extra admins |
+|---|---|---|
+| Files, voice, web links, YouTube | ✅ | ✅ |
+| `t.me/...` links (chats & channels) | ✅ | ❌ refused |
+| Forwarded msg → *analyze the source channel* | ✅ | ❌ refused (analyzing the forward itself is fine) |
+| `/upload_session` | ✅ | ❌ refused |
+
+Extra admins get their own sticky settings (`/preset`, `/lang`, …) — `_chat_state` is keyed by chat.
+
+Add someone only if you're fine with them spending your API budget. They can't read your Telegram, but every analysis they run bills your key.
 
 `/upload_session` is gated by the bootstrap allowlist so a fresh deploy with `UNREAD_BOT_OWNER_ID` set (but no session yet) lets only you upload the session; nobody else can install themselves as the bot's owner.
 
@@ -119,7 +139,7 @@ all work for the bot.
 cp .env.bot.example .env.bot
 # Edit .env.bot — at minimum:
 #   UNREAD_BOT_TOKEN=...            (from @BotFather)
-#   UNREAD_BOT_OWNER_ID=...         (your Telegram numeric ID; optional if a session is already mounted)
+#   UNREAD_BOT_OWNER_ID=...         (your Telegram numeric ID, or a comma-separated list; optional if a session is already mounted)
 #   OPENAI_API_KEY=...              (or whichever provider you configured)
 unread bot run
 ```

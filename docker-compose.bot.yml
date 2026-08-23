@@ -37,7 +37,9 @@ services:
       OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
 
       UNREAD_BOT_TOKEN: "${UNREAD_BOT_TOKEN:?UNREAD_BOT_TOKEN is required}"
-      UNREAD_BOT_OWNER_ID: "${UNREAD_BOT_OWNER_ID:-0}"
+      # One id, or several separated by commas ("111,222"). First =
+      # primary owner (the account whose TG session gets read).
+      UNREAD_BOT_OWNER_ID: "${UNREAD_BOT_OWNER_ID:-}"
       UNREAD_BOT_CONCURRENCY: "${UNREAD_BOT_CONCURRENCY:-2}"
       UNREAD_BOT_DEFAULT_PRESET: "${UNREAD_BOT_DEFAULT_PRESET:-}"
       UNREAD_BOT_MAX_FILE_MB: "${UNREAD_BOT_MAX_FILE_MB:-100}"

@@ -8,7 +8,7 @@ import tomllib
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from unread.core.paths import (
@@ -377,6 +377,35 @@ class LocaleCfg(_StrictCfg):
     content_language: str = ""
 
 
+def _parse_owner_ids(value: Any) -> list[int]:
+    """Coerce an owner-id config value into a list of positive ints.
+
+    Accepts `None`, a bare int, a comma-separated string
+    (``"111, 222,"``), or a list of either. Raises `ValueError` with the
+    offending token so the caller can wrap it in a friendly message.
+    """
+    if value is None:
+        return []
+    if isinstance(value, int) and not isinstance(value, bool):
+        return [value] if value > 0 else []
+    if isinstance(value, str):
+        out: list[int] = []
+        for part in value.split(","):
+            token = part.strip()
+            if not token:
+                continue
+            parsed = int(token)
+            if parsed > 0:
+                out.append(parsed)
+        return out
+    if isinstance(value, (list, tuple)):
+        out = []
+        for item in value:
+            out.extend(_parse_owner_ids(item))
+        return out
+    raise ValueError(f"cannot read owner id from {value!r}")
+
+
 class BotCfg(_StrictCfg):
     """Settings for `unread bot` — the self-hosted Telegram bot frontend.
 
@@ -403,9 +432,21 @@ class BotCfg(_StrictCfg):
     # Env var: `UNREAD_BOT_TOKEN`.
     token: str = ""
 
-    # Owner's Telegram numeric user ID. Find it by messaging
-    # @userinfobot once. Env var: `UNREAD_BOT_OWNER_ID`.
-    owner_id: int = 0
+    # Telegram numeric user IDs allowed to drive the bot. Find yours by
+    # messaging @userinfobot once. Env var: `UNREAD_BOT_OWNER_ID`
+    # (`UNREAD_BOT_OWNER_IDS` is an accepted alias), comma-separated for
+    # more than one: `UNREAD_BOT_OWNER_ID=111,222`.
+    #
+    # The FIRST id is the primary owner — the account whose Telegram
+    # session the bot reads chats through, and the only one allowed to
+    # analyze `t.me/...` links or replace the session via
+    # `/upload_session`. Extra ids are ordinary admins: files, URLs and
+    # YouTube links only. Without that split, any admin could read the
+    # primary owner's private chats through the shared session.
+    #
+    # A legacy singular `owner_id = 123` in `config.toml` still loads —
+    # the validator below folds it into `owner_ids`.
+    owner_ids: list[int] = Field(default_factory=list)
 
     # Max concurrent analyses. Each analyze pipeline already
     # parallelizes internally — 2 is plenty for a single user.
@@ -429,6 +470,38 @@ class BotCfg(_StrictCfg):
     # anyway if `weasyprint.HTML(...)` fails to import (see
     # `unread/bot/pdf.py:is_available`). Env: `UNREAD_BOT_REPORT_FORMAT`.
     report_format: Literal["pdf", "md"] = "pdf"
+
+    @model_validator(mode="before")
+    @classmethod
+    def _fold_owner_ids(cls, data: Any) -> Any:
+        """Accept `owner_id` (legacy singular), `owner_ids`, ints, or CSV strings.
+
+        Runs before field validation so `extra="forbid"` never sees the
+        legacy key. Non-positive ids are dropped — `owner_id = 0` was the
+        old "unset" default and must not become a real allowlist entry.
+        """
+        if not isinstance(data, dict):
+            return data
+        if "owner_id" not in data and "owner_ids" not in data:
+            return data
+        raw = dict(data)
+        legacy = raw.pop("owner_id", None)
+        merged = _parse_owner_ids(legacy) + _parse_owner_ids(raw.get("owner_ids"))
+        seen: dict[int, None] = {}
+        for i in merged:
+            seen.setdefault(i, None)
+        raw["owner_ids"] = list(seen)
+        return raw
+
+    @property
+    def owner_id(self) -> int:
+        """Primary owner — the session-backed account. 0 when unset.
+
+        Kept as a read-only view over `owner_ids[0]` so the many call
+        sites that only care about "who owns the Telegram session" don't
+        need to know the allowlist is a list now.
+        """
+        return self.owner_ids[0] if self.owner_ids else 0
 
 
 class InteractiveCfg(_StrictCfg):
@@ -745,11 +818,19 @@ def load_settings(config_path: Path | str | None = None) -> Settings:
         raw["bot"] = {}
     if bot_token := _env("UNREAD_BOT_TOKEN"):
         raw["bot"]["token"] = bot_token
-    if bot_owner := _env("UNREAD_BOT_OWNER_ID"):
+    if bot_owner := (_env("UNREAD_BOT_OWNER_ID") or _env("UNREAD_BOT_OWNER_IDS")):
         try:
-            raw["bot"]["owner_id"] = int(bot_owner)
+            parsed_owners = _parse_owner_ids(bot_owner)
         except ValueError as e:
-            raise ValueError(f"UNREAD_BOT_OWNER_ID must be an integer, got: {bot_owner!r}") from e
+            raise ValueError(
+                "UNREAD_BOT_OWNER_ID must be an integer or a comma-separated list of "
+                f"integers, got: {bot_owner!r}"
+            ) from e
+        # Env wins outright — drop a `config.toml` value instead of
+        # merging, so rotating the allowlist on a VM doesn't silently
+        # keep a stale id from the baked-in config.
+        raw["bot"].pop("owner_id", None)
+        raw["bot"]["owner_ids"] = parsed_owners
     if bot_concurrency := _env("UNREAD_BOT_CONCURRENCY"):
         try:
             raw["bot"]["concurrency"] = int(bot_concurrency)

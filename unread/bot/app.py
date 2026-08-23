@@ -27,6 +27,26 @@ log = structlog.get_logger(__name__)
 console = Console()
 
 
+# Shown when a non-primary admin tries a session-backed surface. Kept as
+# module constants so the message stays identical across the three call
+# sites (message gate, callback toast, /upload_session).
+_NOT_PRIMARY_OWNER_MSG = (
+    "🔒 Only the session owner can analyze Telegram chats. "
+    "This bot reads t.me links through one Telegram account, so the "
+    "restriction keeps that account's private chats private. "
+    "Send me a file, a web link, or a YouTube link instead."
+)
+_NOT_PRIMARY_OWNER_TOAST = "Only the session owner can read Telegram chats."
+
+
+def _extra_admins_suffix(owner_id: int, allowed_ids: set[int]) -> str:
+    """` · admins=[…]` fragment for the startup line, empty when solo."""
+    extras = sorted(i for i in allowed_ids if i != owner_id)
+    if not extras:
+        return ""
+    return " · admins=[cyan]" + ",".join(str(i) for i in extras) + "[/]"
+
+
 class BotApp:
     """Bot-mode Telegram client + per-message dispatcher.
 
@@ -54,12 +74,38 @@ class BotApp:
         #   - 0 → no allowlist resolved yet (bot will refuse to wire
         #     handlers and exit).
         #   - >0 → the single Telegram user ID we serve.
-        self.owner_id: int = settings.bot.owner_id
+        # Full allowlist. The primary owner (`self.owner_id`) is always a
+        # member; extra admins can drive everything EXCEPT the surfaces
+        # that read the primary owner's Telegram session (t.me links,
+        # forward→source-channel windows, /upload_session).
+        # Must be assigned BEFORE `owner_id` — its setter writes into it.
+        self.allowed_ids: set[int] = set(settings.bot.owner_ids)
+        self.owner_id = settings.bot.owner_id
         # Per-chat ephemeral state (sticky `/preset`, pending
         # `/upload_session`, etc.). Keyed by chat_id. Reset on restart.
         self._chat_state: dict[int, dict] = {}
         # In-flight task set so a graceful shutdown can await them.
         self._tasks: set[asyncio.Task] = set()
+
+    @property
+    def owner_id(self) -> int:
+        """Primary owner — the account whose Telegram session gets read."""
+        return self._owner_id
+
+    @owner_id.setter
+    def owner_id(self, value: int) -> None:
+        """Set the primary owner, keeping the allowlist consistent.
+
+        A property rather than a plain attribute because three places
+        reassign the primary owner (startup probe, `/upload_session`
+        re-derive, tests) and every one of them must also land in
+        `allowed_ids` — otherwise the bot adopts a session whose owner it
+        then refuses to answer. The previous primary stays in the
+        allowlist as an ordinary admin.
+        """
+        self._owner_id = value
+        if value:
+            self.allowed_ids.add(value)
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -87,10 +133,11 @@ class BotApp:
             owner_id=self.owner_id,
         )
 
-        if self.owner_id == 0:
+        if not self.allowed_ids:
             console.print(
                 "[red]Bot has no owner allowlist.[/] Set UNREAD_BOT_OWNER_ID "
-                "or mount/upload an authorized user session before starting."
+                "(one id, or several separated by commas) or mount/upload an "
+                "authorized user session before starting."
             )
             log.error("bot.no_owner_allowlist")
             raise RuntimeError("no owner allowlist")
@@ -102,6 +149,7 @@ class BotApp:
         )
         console.print(
             f"[green]✓ bot ready[/] · owner=[cyan]{self.owner_id}[/]"
+            f"{_extra_admins_suffix(self.owner_id, self.allowed_ids)}"
             f" · session={session_state}"
             f" · concurrency={self.settings.bot.concurrency}"
         )
@@ -109,6 +157,7 @@ class BotApp:
         log.info(
             "bot.ready",
             owner_id=self.owner_id,
+            allowed_ids=sorted(self.allowed_ids),
             user_session_ready=self.user_session_ready,
             concurrency=self.settings.bot.concurrency,
         )
@@ -187,8 +236,16 @@ class BotApp:
                 session_owner_id=derived,
                 action="using session owner_id; ignoring env override",
             )
+        # The session's own account becomes the primary owner — it IS
+        # the account whose chats get read. Configured extra admins are
+        # kept: the override only decides who's primary, not who's
+        # allowed in.
         self.owner_id = derived
-        log.info("bot.user_session.ready", owner_id=self.owner_id)
+        log.info(
+            "bot.user_session.ready",
+            owner_id=self.owner_id,
+            allowed_ids=sorted(self.allowed_ids),
+        )
 
     async def _shutdown(self) -> None:
         """Cancel in-flight tasks and disconnect the bot client cleanly."""
@@ -205,36 +262,36 @@ class BotApp:
     # ------------------------------------------------------------------
 
     def _wire_handlers(self) -> None:
-        """Attach the single allowlisted-owner dispatch handler.
+        """Attach the allowlisted dispatch handlers.
 
-        Uses the resolved `self.owner_id` (env var OR session-derived,
-        with session winning when both are present). `run_forever`
-        already refuses to call this when `owner_id == 0`.
+        Uses the resolved `self.allowed_ids` (env var list, plus the
+        session-derived id when a session is present). `run_forever`
+        already refuses to call this when the allowlist is empty.
         """
         assert self.bot_client is not None
-        assert self.owner_id != 0, "wire_handlers called without owner_id"
-        owner_id = self.owner_id
+        assert self.allowed_ids, "wire_handlers called without an allowlist"
+        allowed = sorted(self.allowed_ids)
 
-        @self.bot_client.on(events.NewMessage(from_users=[owner_id]))
+        @self.bot_client.on(events.NewMessage(from_users=allowed))
         async def _on_owner_message(event: events.NewMessage.Event) -> None:
-            # Defense in depth — never serve a non-owner under any
+            # Defense in depth — never serve a non-admin under any
             # circumstance, even if a future filter change lets one
             # past the `from_users` gate above.
-            if event.sender_id != owner_id:
+            if event.sender_id not in self.allowed_ids:
                 return
             task = asyncio.create_task(self._handle(event))
             self._tasks.add(task)
             task.add_done_callback(self._tasks.discard)
 
         # `events.CallbackQuery` has no `from_users=` (unlike NewMessage)
-        # — it accepts `chats=` only. For a single-owner private bot the
-        # owner's user_id IS the chat_id of the 1:1 conversation, so
-        # `chats=[owner_id]` filters out callbacks from any other chat
-        # (groups, other DMs). The `event.sender_id != owner_id` check
-        # inside `_handle_callback` is the defense-in-depth fallback.
-        @self.bot_client.on(events.CallbackQuery(chats=[owner_id]))
+        # — it accepts `chats=` only. Each admin's user_id IS the chat_id
+        # of their 1:1 conversation with the bot, so `chats=allowed`
+        # filters out callbacks from any other chat (groups, other DMs).
+        # The `sender_id not in allowed_ids` check inside
+        # `_handle_callback` is the defense-in-depth fallback.
+        @self.bot_client.on(events.CallbackQuery(chats=allowed))
         async def _on_owner_callback(event: events.CallbackQuery.Event) -> None:
-            if event.sender_id != owner_id:
+            if event.sender_id not in self.allowed_ids:
                 return
             task = asyncio.create_task(self._handle_callback(event))
             self._tasks.add(task)
@@ -289,6 +346,15 @@ class BotApp:
             await self._handle_cmd(event, payload)
             return
 
+        # Telegram-chat analysis reads the PRIMARY owner's account through
+        # the shared user session at `settings.telegram.session_path`.
+        # Extra admins keep the file / URL / YouTube surface but must not
+        # be able to pull the primary owner's private chats.
+        if kind == "tg" and not self.is_primary_owner(event.sender_id):
+            await _safe_reply(event, _NOT_PRIMARY_OWNER_MSG)
+            log.info("bot.tg_link.refused_non_primary", sender_id=event.sender_id)
+            return
+
         if chat_state.get("confirm_disabled"):
             # No panel — straight to execute. Same path the original
             # pre-confirm bot took. Semaphore gates the analyze work.
@@ -316,6 +382,16 @@ class BotApp:
         except Exception:
             log.exception("bot.add_to_burst_failed", kind=kind)
             await _safe_reply(event, "⚠️ Couldn't queue the message.")
+
+    def is_primary_owner(self, sender_id: int) -> bool:
+        """True when `sender_id` owns the Telegram session the bot reads.
+
+        Every session-backed surface gates on this rather than on plain
+        allowlist membership — extra admins share the primary owner's
+        session, so letting them drive it would hand them the primary
+        owner's private chats.
+        """
+        return bool(self.owner_id) and sender_id == self.owner_id
 
     async def _handle_cmd(self, event: events.NewMessage.Event, payload: dict) -> None:
         """Trivial-reply slash commands. Imported lazily."""
@@ -368,7 +444,7 @@ class BotApp:
         """
         from unread.bot.confirm import parse_callback, prune_pending_runs
 
-        if event.sender_id != self.owner_id:
+        if event.sender_id not in self.allowed_ids:
             return
         chat_state = self._chat_state.setdefault(event.chat_id, {})
         prune_pending_runs(chat_state)
@@ -395,6 +471,19 @@ class BotApp:
 
         is_tg_window = tg_window_for_action(action) is not None
         is_forward = action in ("F_FULL", "F_TXT", "F_FROM", "F_DAY", "F_WK", "F_MO")
+
+        # Same restriction as a bare t.me link, enforced at the tap: these
+        # actions open the primary owner's user session to read a chat or
+        # channel. Checked BEFORE the pop below so a refused tap leaves
+        # the panel usable — an extra admin can still hit F_FULL / F_TXT.
+        if (is_tg_window or action in ("F_FROM", "F_DAY", "F_WK", "F_MO")) and not self.is_primary_owner(
+            event.sender_id
+        ):
+            with contextlib.suppress(Exception):
+                await event.answer(_NOT_PRIMARY_OWNER_TOAST, alert=True)
+            log.info("bot.callback.refused_non_primary", action=action, sender_id=event.sender_id)
+            return
+
         if action in ("R", "A", "M") or is_tg_window or is_forward:
             pending_runs.pop(panel_msg_id, None)
             with contextlib.suppress(Exception):
