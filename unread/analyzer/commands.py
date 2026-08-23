@@ -2292,14 +2292,14 @@ def _fmt_cost_precise(value: float) -> str:
     return f"${value:.2f}"
 
 
-def _fmt_period_header(period: tuple[datetime | None, datetime | None] | None) -> str:
+def _fmt_period_header(period: tuple[datetime | None, datetime | None] | None, *, language: str = "") -> str:
     """Human-readable period for the report header.
 
     (None, None) → localised "unread / full history" string. Concrete
     datetimes render as YYYY-MM-DD HH:MM, leaving ambiguity off the page.
     """
     if period is None or (period[0] is None and period[1] is None):
-        return _t("report_meta_period_unread")
+        return _t("report_meta_period_unread", language or None)
     a = period[0].strftime("%Y-%m-%d %H:%M") if period[0] else "…"
     b = period[1].strftime("%Y-%m-%d %H:%M") if period[1] else "…"
     return f"{a} → {b}"
@@ -2311,7 +2311,7 @@ def _fmt_period_header(period: tuple[datetime | None, datetime | None] | None) -
 _BREAKDOWN_ORDER = ("text", "voice", "videonote", "video", "photo", "doc")
 
 
-def _format_breakdown_line(result: AnalysisResult) -> str:
+def _format_breakdown_line(result: AnalysisResult, *, language: str = "") -> str:
     """Render the per-kind breakdown line for the report header.
 
     Returns an empty string when nothing interesting to show — i.e. when
@@ -2329,14 +2329,14 @@ def _format_breakdown_line(result: AnalysisResult) -> str:
     for kind in _BREAKDOWN_ORDER:
         n = counts.get(kind, 0)
         if n:
-            parts.append(f"{_t(f'report_meta_kind_{kind}')} {n}")
-    line = f"{_t('report_meta_breakdown')} {', '.join(parts)}"
+            parts.append(f"{_t(f'report_meta_kind_{kind}', language or None)} {n}")
+    line = f"{_t('report_meta_breakdown', language or None)} {', '.join(parts)}"
     if result.link_count:
-        line += " — " + _tf("report_meta_breakdown_links", n=result.link_count)
+        line += " — " + _tf("report_meta_breakdown_links", language or None, n=result.link_count)
     return line
 
 
-def _format_transcript_provenance(result: AnalysisResult) -> str:
+def _format_transcript_provenance(result: AnalysisResult, *, language: str = "") -> str:
     """Render the `Transcript:` value (e.g. "ru (auto-captions)") for YouTube runs.
 
     Returns "" for non-YouTube runs (where neither field is set). Falls
@@ -2353,7 +2353,7 @@ def _format_transcript_provenance(result: AnalysisResult) -> str:
         "auto": "report_meta_transcript_kind_auto",
         "audio": "report_meta_transcript_kind_audio",
     }.get(kind)
-    kind_label = _t(kind_key) if kind_key else ""
+    kind_label = _t(kind_key, language or None) if kind_key else ""
     if lang and kind_label:
         return f"{lang} ({kind_label})"
     return lang or kind_label
@@ -2369,13 +2369,17 @@ def _analyze_meta_rows(result: AnalysisResult, *, title: str | None) -> list[tup
     """
     from unread.analyzer.formatter import build_chat_link
 
+    # `None` makes `_t` resolve from the process-global settings, which is
+    # the right fallback for callers that never set `ui_language`.
+    lang = result.ui_language or None
+
     rows: list[tuple[str, str]] = []
-    rows.append((_t("report_meta_chat"), str(title or result.chat_id)))
+    rows.append((_t("report_meta_chat", lang), str(title or result.chat_id)))
     is_tg = result.chat_username is not None or result.chat_internal_id is not None
     if is_tg:
-        rows.append((_t("report_meta_chat_id"), str(result.chat_id)))
+        rows.append((_t("report_meta_chat_id", lang), str(result.chat_id)))
     if result.thread_id:
-        rows.append((_t("report_meta_thread_id"), str(result.thread_id)))
+        rows.append((_t("report_meta_thread_id", lang), str(result.thread_id)))
     if is_tg:
         chat_link = build_chat_link(
             chat_username=result.chat_username,
@@ -2383,18 +2387,18 @@ def _analyze_meta_rows(result: AnalysisResult, *, title: str | None) -> list[tup
             thread_id=result.thread_id or None,
         )
         if chat_link:
-            rows.append((_t("report_meta_link"), chat_link))
-    rows.append((_t("report_meta_period"), _fmt_period_header(result.period)))
+            rows.append((_t("report_meta_link", lang), chat_link))
+    rows.append((_t("report_meta_period", lang), _fmt_period_header(result.period, language=lang)))
 
     msg_value = str(result.msg_count)
     if result.raw_msg_count and result.raw_msg_count != result.msg_count:
         dropped = result.raw_msg_count - result.msg_count
         msg_value += (
-            " (" + _tf("report_meta_messages_filtered", raw=result.raw_msg_count, dropped=dropped) + ")"
+            " (" + _tf("report_meta_messages_filtered", lang, raw=result.raw_msg_count, dropped=dropped) + ")"
         )
-    rows.append((_t("report_meta_messages"), msg_value))
+    rows.append((_t("report_meta_messages", lang), msg_value))
 
-    breakdown_line = _format_breakdown_line(result)
+    breakdown_line = _format_breakdown_line(result, language=lang)
     if breakdown_line:
         # `_format_breakdown_line` returns "**Breakdown:** text 5, voice 2 — 1 with links".
         # Split off the bold label so the row tuple matches the other entries.
@@ -2404,38 +2408,38 @@ def _analyze_meta_rows(result: AnalysisResult, *, title: str | None) -> list[tup
     preset_value = f"`{result.preset}`"
     if result.prompt_version:
         preset_value += f" (v={result.prompt_version})"
-    rows.append((_t("report_meta_preset"), preset_value))
+    rows.append((_t("report_meta_preset", lang), preset_value))
 
     model_value = f"`{result.model}`"
     if result.chunk_count > 1 and result.filter_model and result.filter_model != result.model:
-        model_value += f" (+ `{result.filter_model}` {_t('report_meta_model_map_phase')})"
-    rows.append((_t("report_meta_model"), model_value))
+        model_value += f" (+ `{result.filter_model}` {_t('report_meta_model_map_phase', lang)})"
+    rows.append((_t("report_meta_model", lang), model_value))
 
     if result.chunk_count:
-        rows.append((_t("report_meta_chunks"), str(result.chunk_count)))
+        rows.append((_t("report_meta_chunks", lang), str(result.chunk_count)))
 
     total_calls = result.cache_hits + result.cache_misses
     if total_calls:
         rows.append(
             (
-                _t("report_meta_cache"),
-                _tf("report_meta_cache_hits_of", hits=result.cache_hits, total=total_calls),
+                _t("report_meta_cache", lang),
+                _tf("report_meta_cache_hits_of", lang, hits=result.cache_hits, total=total_calls),
             )
         )
 
     if result.enrich_kinds:
-        rows.append((_t("report_meta_enrichment"), ", ".join(result.enrich_kinds)))
+        rows.append((_t("report_meta_enrichment", lang), ", ".join(result.enrich_kinds)))
     if result.enrich_summary:
-        rows.append((_t("report_meta_enrichment_detail"), result.enrich_summary))
-    transcript_value = _format_transcript_provenance(result)
+        rows.append((_t("report_meta_enrichment_detail", lang), result.enrich_summary))
+    transcript_value = _format_transcript_provenance(result, language=lang)
     if transcript_value:
-        rows.append((_t("report_meta_transcript"), transcript_value))
+        rows.append((_t("report_meta_transcript", lang), transcript_value))
     # Visibility for the user that PII was scrubbed before sending: shows
     # what kinds (and how many of each) so an operator can sanity-check
     # the redactor caught what they expected.
     if result.redact_counts:
         bits = ", ".join(f"{k}: {v}" for k, v in sorted(result.redact_counts.items()))
-        rows.append((_t("report_meta_redact"), bits))
+        rows.append((_t("report_meta_redact", lang), bits))
 
     analysis_cost = result.total_cost_usd
     if result.enrich_cost_usd:
@@ -2447,9 +2451,9 @@ def _analyze_meta_rows(result: AnalysisResult, *, title: str | None) -> list[tup
         )
     else:
         cost_value = _fmt_cost_precise(analysis_cost)
-    rows.append((_t("report_meta_cost"), cost_value))
+    rows.append((_t("report_meta_cost", lang), cost_value))
 
-    rows.append((_t("report_meta_generated"), datetime.now().strftime("%Y-%m-%d %H:%M")))
+    rows.append((_t("report_meta_generated", lang), datetime.now().strftime("%Y-%m-%d %H:%M")))
     return rows
 
 

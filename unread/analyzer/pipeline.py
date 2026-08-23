@@ -266,6 +266,14 @@ class AnalysisResult:
     # English in the cited quotes if the wrong track was picked).
     transcript_lang: str = ""
     transcript_lang_kind: str = ""
+    # UI language this run rendered in — drives the saved report's
+    # metadata-table labels. Carried on the result rather than threaded
+    # through the eight `_print_and_write` call sites, and because the
+    # process-global `locale.language` is wrong for a multi-admin bot
+    # where two concurrent runs can want different languages. Empty
+    # falls back to that global, so callers that build an AnalysisResult
+    # directly keep their old behavior.
+    ui_language: str = ""
     # Identifiers used to build a clickable chat link in the report
     # header. `chat_username` is set for public chats / channels;
     # `chat_internal_id` is the t.me/c/<id>/ form (chat_id stripped of
@@ -658,6 +666,7 @@ async def run_analysis(
 
     if not msgs:
         return AnalysisResult(
+            ui_language=language or "",
             preset=preset.name,
             model=final_model,
             chat_id=chat_id,
@@ -860,6 +869,7 @@ async def run_analysis(
             total_cost,
         )
         return AnalysisResult(
+            ui_language=language or "",
             preset=preset.name,
             model=final_model,
             chat_id=chat_id,
@@ -1040,6 +1050,7 @@ async def run_analysis(
         total_cost,
     )
     return AnalysisResult(
+        ui_language=language or "",
         preset=preset.name,
         model=final_model,
         chat_id=chat_id,
