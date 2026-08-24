@@ -86,3 +86,31 @@ async def test_saved_report_on_disk_is_not_given_a_bom(tmp_path) -> None:
     report = _report(tmp_path)
     await _send_full_report(event, report=report, md_text=report.read_text(encoding="utf-8"), caption="✓ 1s")
     assert not report.read_bytes().startswith(b"\xef\xbb\xbf")
+
+
+async def test_transcript_upload_also_declares_utf8(tmp_path) -> None:
+    """The transcript is markdown too, and hits the same iOS viewer that
+    mangled the report."""
+    from unread.bot.reply import send_transcript_dump
+
+    transcript = tmp_path / "transcript.md"
+    transcript.write_text("# Т\n\nПодождите, мы не можем начать.\n", encoding="utf-8")
+    event = _Event()
+    await send_transcript_dump(event, transcript=transcript, started=0.0, title="Т")
+
+    sent = event.client.sent[0]
+    assert "charset=utf-8" in (sent.get("mime_type") or "").lower()
+    payload = sent["file"]
+    data = payload.getvalue() if hasattr(payload, "getvalue") else Path(payload).read_bytes()
+    assert data.startswith(b"\xef\xbb\xbf")
+
+
+async def test_transcript_upload_keeps_the_md_name(tmp_path) -> None:
+    from unread.bot.reply import send_transcript_dump
+
+    transcript = tmp_path / "transcript.md"
+    transcript.write_text("x", encoding="utf-8")
+    event = _Event()
+    await send_transcript_dump(event, transcript=transcript, started=0.0, title="Т")
+    attrs = event.client.sent[0].get("attributes") or []
+    assert any(getattr(a, "file_name", "").endswith(".md") for a in attrs)

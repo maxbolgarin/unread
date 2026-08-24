@@ -79,7 +79,11 @@ async def test_send_transcript_dump_uploads_the_markdown_file(tmp_path) -> None:
 
     assert len(event.client.sent) == 1
     sent = event.client.sent[0]
-    assert sent["file"] == str(transcript)
+    # Uploaded as an in-memory BOM-prefixed copy, not the path — see
+    # `test_md_upload_encoding.py` for why.
+    data = sent["file"].getvalue()
+    assert data.startswith(b"\xef\xbb\xbf")
+    assert "hello world" in data.decode("utf-8")
     assert sent["force_document"] is True
     assert "✓" in sent["caption"]
 

@@ -106,3 +106,52 @@ def test_stop_is_listed_in_help(app) -> None:
     from unread.bot.handlers.cmds import _build_help_text
 
     assert "/stop" in _build_help_text(app)
+
+
+# --- stale panel state -------------------------------------------------------
+
+
+async def test_ignored_panel_is_pruned_on_the_next_message(app) -> None:
+    """Send a video, delete the confirm panel, never tap. Pruning only ran
+    on a CALLBACK, so an ignored panel sat in memory until the process
+    restarted."""
+    import time as _time
+
+    from unread.bot.confirm import PendingRun, RunOptions
+
+    chat_state = app._chat_state.setdefault(7, {})
+    chat_state["pending_runs"] = {
+        5: PendingRun(
+            kind="batch",
+            payload={"items": []},
+            options=RunOptions(),
+            created_at=_time.time() - 7200,
+        )
+    }
+
+    from unittest.mock import AsyncMock, patch
+
+    event = _FakeEvent()
+    with (
+        patch("unread.bot.dispatcher.classify", return_value=("youtube", {"url": "x"})),
+        patch("unread.bot.burst.add_to_burst", new=AsyncMock()),
+    ):
+        await app._handle(event)
+
+    assert 5 not in app._chat_state[7]["pending_runs"]
+
+
+async def test_a_fresh_panel_is_not_pruned(app) -> None:
+    from unittest.mock import AsyncMock, patch
+
+    from unread.bot.confirm import PendingRun, RunOptions
+
+    chat_state = app._chat_state.setdefault(7, {})
+    chat_state["pending_runs"] = {5: PendingRun(kind="batch", payload={"items": []}, options=RunOptions())}
+    event = _FakeEvent()
+    with (
+        patch("unread.bot.dispatcher.classify", return_value=("youtube", {"url": "x"})),
+        patch("unread.bot.burst.add_to_burst", new=AsyncMock()),
+    ):
+        await app._handle(event)
+    assert 5 in app._chat_state[7]["pending_runs"]

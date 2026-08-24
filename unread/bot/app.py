@@ -432,6 +432,14 @@ class BotApp:
                 await _safe_reply(event, "⚠️ Couldn't store that key; see the bot logs.")
                 return
 
+        # Prune panels the user never answered. Pruning used to run only
+        # on a CALLBACK, so a panel that was ignored or deleted stayed in
+        # memory until the process restarted — there was nothing to tap
+        # that would clean it up.
+        from unread.bot.confirm import prune_pending_runs
+
+        prune_pending_runs(chat_state)
+
         from unread.bot.dispatcher import classify
 
         try:

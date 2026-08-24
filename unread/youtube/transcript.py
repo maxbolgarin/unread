@@ -23,6 +23,7 @@ import random
 import re
 import tempfile
 import time
+from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -88,17 +89,40 @@ _VTT_TIMING = re.compile(r"(\d{2}):(\d{2}):(\d{2})\.\d{3}\s+-->\s+\d{2}:\d{2}:\d
 _VTT_TAG = re.compile(r"<[^>]+>")
 
 
+# How many recently emitted caption lines to remember when suppressing
+# the auto-caption scroll overlap. Big enough to cover the 2-3 line
+# rolling window YouTube uses, small enough that a sentence genuinely
+# repeated later in the video survives.
+_ROLLING_WINDOW_LINES = 4
+
+
+def _norm_caption_line(line: str) -> str:
+    """Comparison form for caption dedup: case- and spacing-insensitive."""
+    return " ".join(line.split()).casefold()
+
+
 def _parse_vtt_timed(text: str) -> list[tuple[int, str]]:
     """Parse a WEBVTT body into `[(start_sec, text), …]`.
 
     Each entry's `start_sec` is the cue's start offset in whole seconds.
-    Lines from the same cue are joined with " ". Adjacent duplicates
-    (the rolling-overlap pattern auto-captions emit, where the same
-    payload appears 3-5 times across consecutive cues) are dropped —
-    only the *first* occurrence of a given text body is kept.
+    Lines from the same cue are joined with " ".
+
+    Auto-captions scroll, so consecutive cues overlap: cue N+1 re-emits
+    the last line of cue N and appends a new one. Dedup therefore works
+    per LINE against a short rolling window — comparing whole cue bodies
+    never matches, because the JOINED bodies differ, which is how every
+    line ended up in the transcript two or three times. Deduping matters
+    beyond tidiness: the repeated text is paid for as input tokens and
+    dilutes what the model reads.
     """
     out: list[tuple[int, str]] = []
-    seen: set[str] = set()
+    # Rolling window of recently emitted lines, normalized. Auto-captions
+    # scroll: cue N+1 re-emits the last line of cue N and appends a new
+    # one, so dedup has to work at LINE level — the joined cue bodies
+    # differ and whole-body dedup never fires. The window is deliberately
+    # short so a speaker genuinely repeating a sentence later still gets
+    # both occurrences; only the scroll-overlap is suppressed.
+    recent: deque[str] = deque(maxlen=_ROLLING_WINDOW_LINES)
     cur_start: int | None = None
     cur_lines: list[str] = []
 
@@ -107,11 +131,16 @@ def _parse_vtt_timed(text: str) -> list[tuple[int, str]]:
         if cur_start is None or not cur_lines:
             cur_start, cur_lines = None, []
             return
-        body = " ".join(cur_lines).strip()
-        cur_start, cur_lines = None, []
-        if not body or body in seen:
+        lines, cur_lines = cur_lines, []
+        cur_start = None
+        fresh = [ln for ln in lines if _norm_caption_line(ln) not in recent]
+        if not fresh:
             return
-        seen.add(body)
+        for ln in fresh:
+            recent.append(_norm_caption_line(ln))
+        body = " ".join(fresh).strip()
+        if not body:
+            return
         out.append((cur_start_local, body))
 
     cur_start_local: int = 0

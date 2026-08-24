@@ -236,9 +236,16 @@ async def send_transcript_dump(
         head = head[:97] + "…"
 
     try:
+        # Same UTF-8 declaration as the report upload: a transcript is
+        # markdown too and hits the same iOS viewer, which guesses
+        # Latin-1 and renders Cyrillic as mojibake without a signal.
+        body = transcript.read_text(encoding="utf-8", errors="replace")
+        buf = io.BytesIO(b"\xef\xbb\xbf" + body.encode("utf-8"))
         await event.client.send_file(
             event.chat_id,
-            file=str(transcript),
+            file=buf,
+            attributes=[DocumentAttributeFilename(file_name=transcript.name)],
+            mime_type="text/markdown; charset=utf-8",
             caption=f"📝 {head}\n{caption}",
             reply_to=event.message.id,
             force_document=True,
