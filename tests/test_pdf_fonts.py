@@ -67,3 +67,55 @@ def test_headings_are_not_stranded_at_a_page_break() -> None:
     from unread.bot.pdf import _PDF_CSS
 
     assert "break-after: avoid" in _PDF_CSS or "page-break-after: avoid" in _PDF_CSS
+
+
+# --- pagination ---------------------------------------------------------------
+
+
+def test_paragraphs_and_list_items_set_orphans_and_widows() -> None:
+    """A page break left one dangling word ("…быстрее света. В") at the
+    foot of a page. Orphans/widows force at least a few lines to travel
+    together, so a break lands somewhere readable."""
+    import re
+
+    from unread.bot.pdf import _PDF_CSS
+
+    for prop in ("orphans", "widows"):
+        m = re.search(rf"{prop}:\s*(\d+)", _PDF_CSS)
+        assert m, f"{prop} not set"
+        assert int(m.group(1)) >= 2, f"{prop} too low to prevent a fragment"
+
+
+def test_table_rows_are_not_split_across_pages() -> None:
+    """A verdict row cut in half is unreadable — and a table row is short
+    enough that moving it whole always fits."""
+    from unread.bot.pdf import _PDF_CSS
+
+    assert "tr" in _PDF_CSS
+    assert "break-inside: avoid" in _PDF_CSS
+
+
+def test_long_list_items_are_still_allowed_to_break() -> None:
+    """`break-inside: avoid` on `li` would be worse than the problem: a
+    multi-page claim can't fit anywhere, so the renderer leaves most of a
+    page blank and breaks it anyway."""
+    import re
+
+    from unread.bot.pdf import _PDF_CSS
+
+    li_block = re.search(r"(?<!\w)li\s*\{(.*?)\}", _PDF_CSS, re.S)
+    assert li_block
+    assert "break-inside: avoid" not in li_block.group(1)
+
+
+def test_page_margins_are_not_wasteful() -> None:
+    """The blank band at a page change is the bottom+top margin. Every
+    extra centimetre is both a bigger gap and an extra page break to hit."""
+    import re
+
+    from unread.bot.pdf import _PDF_CSS
+
+    m = re.search(r"margin:\s*([\d.]+)cm\s+([\d.]+)cm", _PDF_CSS)
+    assert m, _PDF_CSS
+    vertical = float(m.group(1))
+    assert vertical <= 1.3, f"vertical margin {vertical}cm"

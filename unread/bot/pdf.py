@@ -31,7 +31,11 @@ log = structlog.get_logger(__name__)
 _PDF_CSS = """
 @page {
     size: A4;
-    margin: 1.6cm 1.8cm;
+    /* Tighter than the 1.6/1.8 default. The blank band a reader sees at a
+       page change IS the bottom+top margin, so trimming it both shrinks
+       every gap and fits more lines per page — measured at 5 pages → 4 on
+       a long fact-check, i.e. one fewer break to look at. */
+    margin: 1.2cm 1.6cm;
 }
 body {
     /* `-apple-system` / `Segoe UI` don't exist on the Linux box that
@@ -64,6 +68,14 @@ h4 { font-size: 1.02em; margin-top: 1.1em; }
 a { color: #0a64c2; text-decoration: none; }
 a:hover { text-decoration: underline; }
 ul, ol { margin: 0.4em 0 0.8em 1.4em; padding: 0; }
+/* Pagination. A long claim WILL span a page boundary — that's inherent to
+   a paginated format — but it should never leave one dangling word at the
+   foot of a page. orphans/widows force at least three lines to travel
+   together, so the break lands somewhere readable.
+   Deliberately NOT `break-inside: avoid` on `li`: a claim can be longer
+   than a page, and then the renderer leaves most of a page blank and
+   breaks it anyway — worse than the problem. */
+p, li { orphans: 3; widows: 3; }
 li { margin: 0.2em 0; }
 code {
     font-family: "SF Mono", Menlo, Consolas, "DejaVu Sans Mono",
@@ -85,6 +97,10 @@ pre code { background: transparent; padding: 0; }
 hr { border: 0; border-top: 1px solid #ddd; margin: 1em 0; }
 table { border-collapse: collapse; width: 100%; margin: 0.6em 0; }
 th, td { border: 1px solid #ddd; padding: 0.35em 0.55em; text-align: left; }
+/* A verdict row cut in half is unreadable, and a row is short enough that
+   moving it whole always fits on the next page. */
+tr { break-inside: avoid; page-break-inside: avoid; }
+thead { break-after: avoid; }
 th { background: #f5f5f7; }
 blockquote {
     border-left: 3px solid #ccc;
