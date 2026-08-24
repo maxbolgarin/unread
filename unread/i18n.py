@@ -1523,6 +1523,29 @@ _STRINGS: dict[str, dict[str, str]] = {
     # ---- Saved-report metadata block (analyzer/commands.py) ------------
     # The bold-prefix style stays language-neutral; only the label text
     # flips per locale.
+    # Per-source variants of the two chat-centric labels. Analyze started
+    # as a Telegram tool, so a YouTube report used to say "Chat:" and
+    # "Messages analyzed" for a transcript cut into segments.
+    "report_meta_source_chat": {"en": "**Chat:**", "ru": "**Чат:**"},
+    "report_meta_source_video": {"en": "**Video:**", "ru": "**Видео:**"},
+    "report_meta_source_website": {"en": "**Page:**", "ru": "**Страница:**"},
+    "report_meta_source_file": {"en": "**File:**", "ru": "**Файл:**"},
+    "report_meta_units_chat": {
+        "en": "**Messages analyzed:**",
+        "ru": "**Сообщений проанализировано:**",
+    },
+    "report_meta_units_video": {
+        "en": "**Segments analyzed:**",
+        "ru": "**Сегментов проанализировано:**",
+    },
+    "report_meta_units_website": {
+        "en": "**Sections analyzed:**",
+        "ru": "**Разделов проанализировано:**",
+    },
+    "report_meta_units_file": {
+        "en": "**Segments analyzed:**",
+        "ru": "**Фрагментов проанализировано:**",
+    },
     "report_meta_chat": {"en": "**Chat:**", "ru": "**Чат:**"},
     "report_meta_chat_id": {"en": "**Chat ID:**", "ru": "**ID чата:**"},
     "report_meta_thread": {"en": "**Topic:**", "ru": "**Топик:**"},

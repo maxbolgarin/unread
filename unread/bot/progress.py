@@ -19,7 +19,7 @@ import time
 from typing import Any
 
 
-def run_status_line(*, preset: str, settings: Any, source: str) -> str:
+def run_status_line(*, preset: str, settings: Any, source: str, kind: str = "") -> str:
     """The "what's happening right now" line shown while a run is in flight.
 
     Carries the three facts worth knowing while you wait: what kind of run
@@ -32,6 +32,15 @@ def run_status_line(*, preset: str, settings: Any, source: str) -> str:
     """
     from unread.ai.providers import resolve_chat_model
     from unread.analyzer.prompts import get_presets
+
+    # `_effective_preset` returns "" when the chat has no sticky `/preset`
+    # and no `bot.default_preset`; the analyze command then falls back to
+    # its kind's default. Mirror that, or the line shows an empty backtick
+    # pair and resolves the wrong model alongside it.
+    if not preset and kind:
+        from unread.bot.confirm import default_preset_for_kind
+
+        preset = default_preset_for_kind(kind)
 
     try:
         preset_obj = get_presets(_report_lang(settings)).get(preset)
@@ -48,7 +57,14 @@ def run_status_line(*, preset: str, settings: Any, source: str) -> str:
     # routed id (`openai/gpt-5.6-luna`) while the run actually sends the
     # preset's bare `gpt-5.6-luna` — a progress line naming the wrong
     # model is worse than one naming none.
-    model = getattr(preset_obj, "final_model", "") or ""
+    # Precedence, mirroring `run_analysis`:
+    #   model_override or preset.final_model or config default
+    # The bot passes `ai.chat_model` as the override, so it comes FIRST —
+    # otherwise the line names the preset's pin while the run uses the
+    # override, which is the same wrong-model bug in a new place.
+    model = getattr(settings.ai, "chat_model", "") or ""
+    if not model:
+        model = getattr(preset_obj, "final_model", "") or ""
     if not model:
         try:
             model = resolve_chat_model(settings)

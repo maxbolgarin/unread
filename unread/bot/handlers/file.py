@@ -88,7 +88,8 @@ async def execute(
         from unread.bot.progress import run_status_line
 
         await edit_progress(
-            progress_msg, run_status_line(preset=preset, settings=s, source=f"`{local_path.name}`")
+            progress_msg,
+            run_status_line(kind="file", preset=preset, settings=s, source=f"`{local_path.name}`"),
         )
         await _dispatch_analyze_file(local_path, preset=preset, s=s, chat_state=chat_state)
         await edit_progress(progress_msg, "📄 Sending report…")

@@ -500,6 +500,12 @@ async def _send_rich(event: Any, *, md_text: str, caption: str) -> None:
     losing the report to a formatting error would be far worse than
     losing the formatting.
     """
+    from unread.bot.tg_markdown import to_telegram_markdown
+
+    # Telegram's md parse mode has no headings, rules or tables, so the
+    # report body has to be flattened before it's sent — otherwise the
+    # user reads literal `---`, `## TL;DR` and pipe-delimited rows.
+    md_text = to_telegram_markdown(md_text)
     limit = telegram_message_limit(getattr(event, "client", None))
     # Leave room for the part counter appended below.
     parts = split_for_telegram(md_text, limit=max(256, limit - 32))

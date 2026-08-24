@@ -104,3 +104,45 @@ def test_line_names_the_real_default_provider_when_unset() -> None:
         assert "openai" in line.lower()
     finally:
         reset_settings()
+
+
+def test_line_resolves_the_kind_default_when_no_preset_is_set() -> None:
+    """`_effective_preset` returns "" with no sticky `/preset` and no
+    `bot.default_preset`, so the line rendered ``preset ` ` `` — an empty
+    backtick pair — and fell back to the wrong model with it."""
+    from unread.analyzer.prompts import get_presets
+
+    s = _fresh()
+    line = run_status_line(preset="", settings=s, source="video", kind="youtube")
+    assert "preset ``" not in line
+    assert "video" in line
+    assert get_presets("en")["video"].final_model in line
+
+
+def test_kind_default_matches_what_the_run_will_pick() -> None:
+    """The fallback must be the SAME table the analyze commands use."""
+    from unread.bot.confirm import default_preset_for_kind
+
+    s = _fresh()
+    for kind in ("youtube", "url", "file", "tg"):
+        line = run_status_line(preset="", settings=s, source="x", kind=kind)
+        assert default_preset_for_kind(kind) in line
+
+
+def _fresh():
+    from unread.config import load_settings, reset_settings
+
+    reset_settings()
+    s = load_settings()
+    s.ai.chat_provider = "openrouter"
+    return s
+
+
+def test_line_prefers_the_model_override_over_the_preset_pin() -> None:
+    """`final_model = model_override or preset.final_model or config`, and
+    the bot now passes `ai.chat_model` AS the override — so the header
+    said `gpt-5.6-luna` while the run used `openai/gpt-5.6-luna`."""
+    s = _fresh()
+    s.ai.chat_model = "openai/gpt-5.6-luna"
+    line = run_status_line(preset="factcheck", settings=s, source="video", kind="youtube")
+    assert "openai/gpt-5.6-luna" in line

@@ -40,7 +40,7 @@ def _msg(msg_id: int) -> Message:
     )
 
 
-async def _run(repo, msgs, chunks, **kw):
+async def _run(repo, msgs, chunks, *, opts_kw=None, **kw):
     events: list[str] = []
 
     async def _on_progress(text: str) -> None:
@@ -59,7 +59,7 @@ async def _run(repo, msgs, chunks, **kw):
             chat_id=1,
             thread_id=None,
             title="Chat",
-            opts=AnalysisOptions(preset="summary", use_cache=False),
+            opts=AnalysisOptions(preset="summary", use_cache=False, **(opts_kw or {})),
             messages=msgs,
             on_progress=_on_progress,
             **kw,
@@ -144,3 +144,20 @@ async def test_a_failing_callback_does_not_kill_the_run(repo: Repo) -> None:
     finally:
         pipeline.chat_complete, pipeline.make_client, pipeline.build_chunks = old
     assert result.final_result
+
+
+async def test_progress_wording_matches_the_source(repo: Repo) -> None:
+    """ "Analyzing 54 messages" for a YouTube video — the pipeline's
+    progress text leaked the Telegram-first vocabulary the same way the
+    report labels did."""
+    msgs = [_msg(10)]
+    events = await _run(repo, msgs, [Chunk(messages=msgs)], opts_kw={"source_kind": "video"})
+    joined = " ".join(events).lower()
+    assert "message" not in joined
+    assert "segment" in joined
+
+
+async def test_chat_runs_still_say_messages(repo: Repo) -> None:
+    msgs = [_msg(10)]
+    events = await _run(repo, msgs, [Chunk(messages=msgs)], opts_kw={"source_kind": "chat"})
+    assert any("message" in e.lower() for e in events)

@@ -301,6 +301,11 @@ class AnalysisResult:
     # look identical, and because per-search fees are billed separately
     # from the tokens the cost line is computed from.
     web_search: bool | None = None
+    # What was analyzed: "chat" | "video" | "website" | "file". Drives the
+    # report's own labels — a transcript is cut into SEGMENTS, not
+    # messages, and calling a video a chat leaks the Telegram-first
+    # internals into every YouTube report.
+    source_kind: str = "chat"
     # Identifiers used to build a clickable chat link in the report
     # header. `chat_username` is set for public chats / channels;
     # `chat_internal_id` is the t.me/c/<id>/ form (chat_id stripped of
@@ -604,6 +609,16 @@ async def run_analysis(
     if source_language is None:
         source_language = _resolve_source_hint(settings)
 
+    # What the source is cut into. A transcript has segments, a page has
+    # sections; "messages" is Telegram vocabulary that leaked into every
+    # other source's progress text.
+    _units = {
+        "chat": "messages",
+        "video": "segments",
+        "website": "sections",
+        "file": "fragments",
+    }.get(opts.source_kind, "messages")
+
     async def _emit(text: str) -> None:
         """Best-effort progress notification for a non-terminal caller.
 
@@ -728,6 +743,7 @@ async def run_analysis(
         # constructed, hence None rather than the resolved flag.
         return AnalysisResult(
             ui_language=language or "",
+            source_kind=opts.source_kind,
             web_search=None,
             preset=preset.name,
             model=final_model,
@@ -911,7 +927,7 @@ async def run_analysis(
         )
         bhash = batch_hash(preset.name, preset.prompt_version, final_model, chunk.msg_ids, call_options)
         batch_hashes.append(bhash)
-        await _emit(f"Analyzing {len(msgs)} messages in one pass ({final_model})…")
+        await _emit(f"Analyzing {len(msgs)} {_units} in one pass ({final_model})…")
         text, cost, hit, truncated = await _progress_single(
             label=f"Analyzing ({len(msgs)} msgs, {preset.name}/{final_model})",
             coro=_call_cached(
@@ -948,6 +964,7 @@ async def run_analysis(
         )
         return AnalysisResult(
             ui_language=language or "",
+            source_kind=opts.source_kind,
             web_search=web_search_on if preset.needs_web_search else None,
             preset=preset.name,
             model=final_model,
@@ -1137,6 +1154,7 @@ async def run_analysis(
     )
     return AnalysisResult(
         ui_language=language or "",
+        source_kind=opts.source_kind,
         web_search=web_search_on if preset.needs_web_search else None,
         preset=preset.name,
         model=final_model,

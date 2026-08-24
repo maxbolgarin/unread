@@ -63,7 +63,7 @@ async def execute(
         from unread.bot.progress import LiveProgress, run_status_line
         from unread.util.flood import status_sink
 
-        header = run_status_line(preset=preset, settings=s, source="video")
+        header = run_status_line(kind="youtube", preset=preset, settings=s, source="video")
         await edit_progress(progress_msg, header)
         live = LiveProgress(progress_msg)
 

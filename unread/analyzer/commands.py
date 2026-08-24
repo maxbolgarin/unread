@@ -2385,8 +2385,15 @@ def _analyze_meta_rows(result: AnalysisResult, *, title: str | None) -> list[tup
     # the right fallback for callers that never set `ui_language`.
     lang = result.ui_language or None
 
+    # Label the source for what it IS. `report_meta_chat` /
+    # `report_meta_messages` remain for back-compat with any external
+    # caller, but nothing here uses them now.
+    kind = getattr(result, "source_kind", "") or "chat"
+    if kind not in ("chat", "video", "website", "file"):
+        kind = "chat"
+
     rows: list[tuple[str, str]] = []
-    rows.append((_t("report_meta_chat", lang), str(title or result.chat_id)))
+    rows.append((_t(f"report_meta_source_{kind}", lang), str(title or result.chat_id)))
     is_tg = result.chat_username is not None or result.chat_internal_id is not None
     if is_tg:
         rows.append((_t("report_meta_chat_id", lang), str(result.chat_id)))
@@ -2408,7 +2415,7 @@ def _analyze_meta_rows(result: AnalysisResult, *, title: str | None) -> list[tup
         msg_value += (
             " (" + _tf("report_meta_messages_filtered", lang, raw=result.raw_msg_count, dropped=dropped) + ")"
         )
-    rows.append((_t("report_meta_messages", lang), msg_value))
+    rows.append((_t(f"report_meta_units_{kind}", lang), msg_value))
 
     breakdown_line = _format_breakdown_line(result, language=lang)
     if breakdown_line:
