@@ -174,10 +174,21 @@ def render_md_header(rows: list[tuple[str, str]]) -> str:
 
     Labels arrive already wrapped in `**…**` so the saved file renders
     bold. Trailing blank line separates the header from the answer body.
+
+    Each row ends with markdown's two-space HARD break. A bare newline is
+    a soft break in CommonMark and collapses to a space, which turned the
+    whole metadata block into one run-on paragraph — in the PDF and in
+    every other markdown viewer, since the flaw is in the saved file
+    rather than in one renderer.
     """
-    lines: list[str] = ["---"]
+    lines: list[str] = ["---", ""]
     for label, value in rows:
-        lines.append(f"{label} {value}")
+        lines.append(f"{label} {value}  ")
+    # Blank line before the closing rule. Without it, a `---` on the line
+    # directly after text is a SETEXT HEADING UNDERLINE in CommonMark, not
+    # a horizontal rule — so the whole metadata block was parsed as one
+    # giant `<h2>` and rendered oversized in the PDF.
+    lines.append("")
     lines.append("---")
     lines.append("")
     return "\n".join(lines)

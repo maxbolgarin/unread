@@ -34,7 +34,13 @@ _PDF_CSS = """
     margin: 1.6cm 1.8cm;
 }
 body {
-    font-family: -apple-system, "Helvetica Neue", "Segoe UI", "Liberation Sans", sans-serif;
+    /* `-apple-system` / `Segoe UI` don't exist on the Linux box that
+       actually renders these; DejaVu does. The emoji families are the
+       fallback for the verdict icons — without one, ✅/❌ render as
+       tofu boxes. */
+    font-family: -apple-system, "Helvetica Neue", "Segoe UI", "DejaVu Sans",
+                 "Liberation Sans", sans-serif, "Noto Color Emoji",
+                 "Apple Color Emoji", "Segoe UI Emoji";
     font-size: 11pt;
     line-height: 1.45;
     color: #222;
@@ -48,7 +54,8 @@ a:hover { text-decoration: underline; }
 ul, ol { margin: 0.4em 0 0.8em 1.4em; padding: 0; }
 li { margin: 0.2em 0; }
 code {
-    font-family: "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    font-family: "SF Mono", Menlo, Consolas, "DejaVu Sans Mono",
+                 "Liberation Mono", monospace;
     font-size: 0.92em;
     background: #f4f4f5;
     padding: 0 0.25em;
