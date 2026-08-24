@@ -60,7 +60,9 @@ async def execute(
     else:
         await edit_progress(progress_msg, f"⏳ Pulling transcript for `{video_id}`…")
     try:
-        await edit_progress(progress_msg, "⏳ Analyzing video…")
+        from unread.bot.progress import run_status_line
+
+        await edit_progress(progress_msg, run_status_line(preset=preset, settings=s, source="video"))
         language = effective_language(chat_state, s)
         report_language = effective_report_language(chat_state, s)
         await cmd_analyze_youtube(

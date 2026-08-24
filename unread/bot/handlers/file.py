@@ -85,7 +85,11 @@ async def execute(
         # discussion — fall through to `single_msg` instead of "summary"
         # when no sticky / config preset is set.
         preset = effective_preset_for_kind(chat_state, s, "file")
-        await edit_progress(progress_msg, f"⏳ Analyzing `{local_path.name}`…")
+        from unread.bot.progress import run_status_line
+
+        await edit_progress(
+            progress_msg, run_status_line(preset=preset, settings=s, source=f"`{local_path.name}`")
+        )
         await _dispatch_analyze_file(local_path, preset=preset, s=s, chat_state=chat_state)
         await edit_progress(progress_msg, "📄 Sending report…")
         from unread.bot import reply

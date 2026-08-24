@@ -47,7 +47,9 @@ async def execute(
     else:
         await edit_progress(progress_msg, f"⏳ Fetching `{url}`…")
     try:
-        await edit_progress(progress_msg, "⏳ Analyzing page…")
+        from unread.bot.progress import run_status_line
+
+        await edit_progress(progress_msg, run_status_line(preset=preset, settings=s, source="page"))
         language = effective_language(chat_state, s)
         report_language = effective_report_language(chat_state, s)
         await cmd_analyze_website(
