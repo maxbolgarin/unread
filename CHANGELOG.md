@@ -1,3 +1,13 @@
+## [1.5.1](https://github.com/maxbolgarin/unread/compare/v1.5.0...v1.5.1) (2026-08-24)
+
+### 🐛 Bug Fixes
+
+* **bot:** declare UTF-8 on the .md upload; make PDF headings look like headings ([677ee12](https://github.com/maxbolgarin/unread/commit/677ee12590c5975c5dcad75fff6189bcfaea659b))
+* **youtube:** drop the auto-caption scroll overlap from transcripts ([4d3a9fb](https://github.com/maxbolgarin/unread/commit/4d3a9fb64eb30e737bded97968db2d7039eeab84))
+* **report:** PDF emoji fonts and a header that was one run-on heading ([c88c944](https://github.com/maxbolgarin/unread/commit/c88c944900c024dc680559159d97eef85a537c12))
+* **pdf:** reduce page breaks and stop them stranding single lines ([cb80f84](https://github.com/maxbolgarin/unread/commit/cb80f8426dd2c974afde9016cda35a2613b8683d))
+* **bot:** source-aware wording, resolved preset, and real Telegram markdown ([707e697](https://github.com/maxbolgarin/unread/commit/707e6973c3691ab530c8dc983ea8976b597cee79))
+
 ## [1.5.0](https://github.com/maxbolgarin/unread/compare/v1.4.2...v1.5.0) (2026-08-24)
 
 ### 🚀 Features
