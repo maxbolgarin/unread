@@ -19,9 +19,9 @@ from pathlib import Path
 import structlog
 from rich.console import Console
 from telethon import TelegramClient, events
-from telethon.sessions import StringSession
 
 from unread.config import Settings
+from unread.core.paths import default_bot_session_path
 
 log = structlog.get_logger(__name__)
 console = Console()
@@ -182,19 +182,46 @@ class BotApp:
     async def _start_bot_client(self) -> None:
         """Authenticate the bot-mode Telethon client.
 
-        Uses an in-memory `StringSession()` — the bot's session is
-        regenerable from the token alone, so persisting it would just
-        be one more file to mount.
+        The session is PERSISTED to `storage/bot_session.sqlite`. It used
+        to be an in-memory `StringSession()` on the reasoning that a bot
+        session is regenerable from the token — true, but regenerating it
+        costs an `ImportBotAuthorization` call, and Telegram rate-limits
+        that. Combined with `restart: unless-stopped`, one crash became a
+        loop: restart, re-authorize, earn a longer flood wait, crash,
+        repeat. Reusing the stored session means a restart re-authorizes
+        nothing.
         """
+        from telethon.errors import FloodWaitError
+
         s = self.settings
+        session_path = default_bot_session_path()
+        session_path.parent.mkdir(parents=True, exist_ok=True)
         client = TelegramClient(
-            StringSession(),
+            str(session_path),
             api_id=s.telegram.api_id,
             api_hash=s.telegram.api_hash,
         )
-        await client.start(bot_token=s.bot.token)
+        try:
+            await client.start(bot_token=s.bot.token)
+        except FloodWaitError as e:
+            wait = int(getattr(e, "seconds", 0) or 0)
+            mins = max(1, round(wait / 60))
+            console.print(
+                f"[red]Telegram is rate-limiting this bot token:[/] it wants "
+                f"{wait}s (~{mins} min) before the next sign-in.\n"
+                "[yellow]Do NOT restart the container in a loop[/] — every attempt "
+                "re-triggers the same limit and can extend it. Stop the container, "
+                f"wait ~{mins} minutes, then start it once:\n"
+                "  docker compose -f docker-compose.bot.yml --env-file .env.bot stop\n"
+                f"  sleep {wait}\n"
+                "  docker compose -f docker-compose.bot.yml --env-file .env.bot up -d\n"
+                "Once it signs in, the session is saved and restarts no longer "
+                "re-authorize."
+            )
+            log.error("bot.client.flood_wait", seconds=wait)
+            raise SystemExit(1) from e
         self.bot_client = client
-        log.info("bot.client.started")
+        log.info("bot.client.started", session=str(session_path))
 
     async def _verify_user_session(self) -> None:
         """One-shot probe of the owner's user-mode session.

@@ -174,6 +174,22 @@ def default_session_path() -> Path:
     return storage_dir() / "session.sqlite"
 
 
+def default_bot_session_path() -> Path:
+    """Telethon session for the BOT-mode client (`unread bot run`).
+
+    Separate file from the user session, and persisted rather than held
+    in memory: re-authorizing costs an `ImportBotAuthorization` call,
+    which Telegram rate-limits. With an in-memory session every restart
+    paid that cost, so under `restart: unless-stopped` a single crash
+    became self-sustaining — crash, restart, re-authorize, earn a longer
+    flood wait, crash again.
+
+    Lives in `storage/` so the container's `~/.unread` volume already
+    covers it.
+    """
+    return storage_dir() / "bot_session.sqlite"
+
+
 def default_data_path() -> Path:
     return storage_dir() / "data.sqlite"
 
