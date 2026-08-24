@@ -75,6 +75,16 @@ def telegram_message_limit(client: Any) -> int:
     return limit if limit > 0 else _FALLBACK_MESSAGE_LIMIT
 
 
+def _italic(text: str) -> str:
+    """Wrap `text` for Telethon's markdown italic.
+
+    Telethon's delimiter table is `**` bold / `__` italic — a SINGLE
+    underscore is not a delimiter, so `_(1/4)_` was displayed verbatim,
+    underscores and all.
+    """
+    return f"__{text}__"
+
+
 def split_for_telegram(body: str, *, limit: int) -> list[str]:
     """Split a report into messages, preferring section boundaries.
 
@@ -509,17 +519,36 @@ def _effective_format(event: Any) -> str:
     return effective_report_format(chat_state, settings)
 
 
+async def _send_rich_native(event: Any, markdown_text: str) -> bool:
+    """Indirection so tests can force the fallback path. See rich.py."""
+    from unread.bot.rich import send_rich_markdown
+
+    return await send_rich_markdown(event, markdown_text)
+
+
 async def _send_rich(event: Any, *, md_text: str, caption: str) -> None:
     """Send the report as Telegram message(s), split at the server limit.
+
+    Two paths. Telegram's own rich messages (Bot API 10.1, June 2026)
+    render GFM directly — tables, headings, lists — in one message of up
+    to 32768 characters, so the report goes out exactly as written. When
+    that isn't available the report is flattened by `tg_markdown` into
+    the handful of things Telethon's delimiter markdown can express, and
+    split across messages.
 
     Falls back to plain text per part if Markdown parsing fails — an LLM
     report can contain stray characters Telegram's parser rejects, and
     losing the report to a formatting error would be far worse than
     losing the formatting.
     """
+    if await _send_rich_native(event, md_text):
+        with contextlib.suppress(Exception):
+            await event.reply(_italic(caption), parse_mode="md")
+        return
+
     from unread.bot.tg_markdown import to_telegram_markdown
 
-    # Telegram's md parse mode has no headings, rules or tables, so the
+    # Telethon's md parse mode has no headings, rules or tables, so the
     # report body has to be flattened before it's sent — otherwise the
     # user reads literal `---`, `## TL;DR` and pipe-delimited rows.
     md_text = to_telegram_markdown(md_text)
@@ -528,7 +557,7 @@ async def _send_rich(event: Any, *, md_text: str, caption: str) -> None:
     parts = split_for_telegram(md_text, limit=max(256, limit - 32))
     total = len(parts)
     for idx, part in enumerate(parts, start=1):
-        suffix = f"\n\n_({idx}/{total})_" if total > 1 else ""
+        suffix = f"\n\n{_italic(f'({idx}/{total})')}" if total > 1 else ""
         try:
             await event.reply(part + suffix, parse_mode="md")
         except Exception:
@@ -536,7 +565,7 @@ async def _send_rich(event: Any, *, md_text: str, caption: str) -> None:
             with contextlib.suppress(Exception):
                 await event.reply(part + suffix)
     with contextlib.suppress(Exception):
-        await event.reply(f"_{caption}_", parse_mode="md")
+        await event.reply(_italic(caption), parse_mode="md")
 
 
 async def _build_caption(started: float, elapsed: float) -> str:

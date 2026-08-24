@@ -49,7 +49,7 @@ dependencies = [
     # widening either bound.
     "typer>=0.24,<0.25",
     "click>=8.1,<8.4",
-    "telethon>=1.36",
+    "telethon>=1.44",
     "openai>=1.50",
     "pydantic>=2.7",
     "pydantic-settings>=2.3",

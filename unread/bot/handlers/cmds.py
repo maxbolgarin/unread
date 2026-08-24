@@ -32,7 +32,7 @@ Slash commands:
 `/format <pdf|md|rich>` — how reports come back:
    • `pdf` — rendered document, best on phones (default)
    • `md` — the raw Markdown file
-   • `rich` — the report as Telegram messages, nothing to download
+   • `rich` — the report in the chat itself, tables and all, nothing to download
    bare `/format` restores the default
 `/confirm on|off` — toggle the pre-run confirm panel (default: on)
 `/upload_session` — install your Telegram user session (one-time)

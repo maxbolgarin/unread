@@ -34,6 +34,11 @@ _TABLE_SEP_RE = re.compile(r"^\s*\|?[\s:\-|]+\|[\s:\-|]*$")
 
 _FENCE_RE = re.compile(r"^\s*(```|~~~)")
 
+# An unordered list marker at the start of a line, indentation kept.
+# Telegram renders no lists at all, so the marker reaches the reader as
+# a literal `-`; a bullet at least looks deliberate.
+_BULLET_RE = re.compile(r"^(\s*)[-*+]\s+")
+
 
 def _split_row(line: str) -> list[str]:
     inner = _TABLE_ROW_RE.match(line)
@@ -42,12 +47,17 @@ def _split_row(line: str) -> list[str]:
 
 
 def _render_table(rows: list[list[str]]) -> list[str]:
-    """One line per data row: `**first** — rest · joined`.
+    """Render each data row as a small block rather than a grid.
 
-    Reads as a list rather than a grid, which is the best a chat client
-    can do. The first column is usually an index or the claim, so it
-    leads and is emboldened; empty cells are dropped rather than leaving
-    stray separators.
+    A chat client can't draw a table, so the columns have to become
+    lines. Joining all of them with `·` — the first attempt — produced
+    three wrapped lines of prose per row with the verdict buried in the
+    middle, which is precisely the column a reader is scanning for.
+
+    So: the leading cell and the subject share the first line, and every
+    remaining column goes underneath. Two-column rows have nothing to
+    separate and stay on one line. Empty cells are dropped rather than
+    leaving stray separators behind.
     """
     if not rows:
         return []
@@ -60,7 +70,14 @@ def _render_table(rows: list[list[str]]) -> list[str]:
         if len(parts) == 1:
             out.append(parts[0])
             continue
-        out.append(f"**{parts[0]}** — " + " · ".join(parts[1:]))
+        if len(parts) == 2:
+            out.append(f"**{parts[0]}** — {parts[1]}")
+            continue
+        out.append(f"**{parts[0]}.** {parts[1]}")
+        out.append(" · ".join(parts[2:]))
+        out.append("")
+    while out and not out[-1]:
+        out.pop()
     return out
 
 
@@ -109,7 +126,7 @@ def to_telegram_markdown(text: str) -> str:
             title = heading.group(2).strip()
             out.append(f"**{title}**" if title else "")
             continue
-        out.append(line)
+        out.append(_BULLET_RE.sub(r"\1• ", line))
 
     _flush_table()
 

@@ -1709,15 +1709,15 @@ wheels = [
 
 [[package]]
 name = "telethon"
-version = "1.43.1"
+version = "1.44.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pyaes" },
     { name = "rsa" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e3/f6/2d87c0cef931ec04ffacf7bb565c9279542870d4f1fac7d5631386159b7d/telethon-1.43.1.tar.gz", hash = "sha256:d10e87ca557ba2a1a169c7008386cef2e92ffcbe9bf97983b187b1da5042e50d", size = 687140, upload-time = "2026-04-13T19:52:22.648Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/49/e2/d4137e598db0ba50e4cf9bf32f2e26d016b2c4bb0e9763e3d5a07007d780/telethon-1.44.0.tar.gz", hash = "sha256:7de1473e9e412e20bd57b102d8f50d48372712462be9ff6c003bb81c50ad7e98", size = 701463, upload-time = "2026-06-15T15:47:39.44Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/9a/98/f6efcb5b1e11d671d6b7dfd0f15b8c2290d66338fc4da1c8f359a2ce8177/telethon-1.43.1-py3-none-any.whl", hash = "sha256:d00388163c312c513fee30077f6357fd0b5c3382ee8d0e558c06aef499568bff", size = 773592, upload-time = "2026-04-13T19:52:20.559Z" },
+    { url = "https://files.pythonhosted.org/packages/82/fd/4ad621d7a4b8655dfc964ee1c1267407496ec6fd10c91901a64ea29c16c8/telethon-1.44.0-py3-none-any.whl", hash = "sha256:52fc49efb67a4916c2aedcb295ad286f4afa2aba9bf15d83ed2acdc64af0c718", size = 789786, upload-time = "2026-06-15T15:47:41.534Z" },
 ]
 
 [[package]]
@@ -1969,7 +1969,7 @@ requires-dist = [
     { name = "rich", specifier = ">=13.7" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.5" },
     { name = "structlog", specifier = ">=24.1" },
-    { name = "telethon", specifier = ">=1.36" },
+    { name = "telethon", specifier = ">=1.44" },
     { name = "tenacity", specifier = ">=8.5" },
     { name = "tiktoken", specifier = ">=0.7" },
     { name = "trafilatura", specifier = ">=1.12" },

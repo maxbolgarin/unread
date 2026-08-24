@@ -49,11 +49,48 @@ def test_tables_become_readable_lines() -> None:
         assert not line.strip().startswith("|")
 
 
-def test_table_row_keeps_its_columns_readable() -> None:
-    table = "| # | Claim | Verdict |\n|---|---|---|\n| 1 | Something | ✅ True |\n"
+def test_a_verdict_gets_its_own_line() -> None:
+    """A four-column row joined with `·` ran to three wrapped lines of
+    prose, and the verdict — the one thing being looked up — landed in
+    the middle of it. Claim on top, verdict under it."""
+    table = (
+        "| # | Claim | Verdict | Confidence |\n"
+        "|---|---|---|---|\n"
+        "| 1 | Something long enough to wrap | ✅ True | High |\n"
+    )
     out = to_telegram_markdown(table)
-    row = next(ln for ln in out.splitlines() if "Something" in ln)
-    assert "Something" in row and "True" in row
+    claim_line = next(ln for ln in out.splitlines() if "Something long" in ln)
+    assert "True" not in claim_line, claim_line
+    verdict_line = next(ln for ln in out.splitlines() if "True" in ln)
+    assert "High" in verdict_line
+
+
+def test_a_two_column_table_stays_on_one_line() -> None:
+    """Nothing to separate — a second line would just be padding."""
+    table = "| Key | Value |\n|---|---|\n| Model | luna |\n"
+    out = to_telegram_markdown(table)
+    row = next(ln for ln in out.splitlines() if "Model" in ln)
+    assert "luna" in row
+
+
+def test_list_markers_become_bullets() -> None:
+    """Telegram renders no lists, so a literal `-` is what the reader
+    sees. A bullet at least looks deliberate."""
+    out = to_telegram_markdown("- one\n* two\n+ three")
+    for line in out.splitlines():
+        assert not line.startswith(("- ", "* ", "+ ")), line
+    assert out.count("•") == 3
+
+
+def test_nested_list_indentation_survives() -> None:
+    out = to_telegram_markdown("- top\n  - nested")
+    nested = next(ln for ln in out.splitlines() if "nested" in ln)
+    assert nested.startswith("  ")
+
+
+def test_numbered_lists_keep_their_numbers() -> None:
+    out = to_telegram_markdown("1. first\n2. second")
+    assert "1. first" in out and "2. second" in out
 
 
 def test_bullets_are_preserved() -> None:
