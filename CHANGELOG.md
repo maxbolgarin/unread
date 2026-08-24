@@ -1,3 +1,9 @@
+## [1.4.2](https://github.com/maxbolgarin/unread/compare/v1.4.1...v1.4.2) (2026-08-24)
+
+### 🐛 Bug Fixes
+
+* **bot:** sleep through a startup flood wait instead of exiting ([40a631c](https://github.com/maxbolgarin/unread/commit/40a631ce0e9528627213865e84b6f53ff447a536))
+
 ## [1.4.1](https://github.com/maxbolgarin/unread/compare/v1.4.0...v1.4.1) (2026-08-24)
 
 ### 🐛 Bug Fixes
