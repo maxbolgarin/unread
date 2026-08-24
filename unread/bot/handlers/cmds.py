@@ -6,9 +6,13 @@ semaphore and reply immediately.
 
 from __future__ import annotations
 
+import contextlib
 from typing import TYPE_CHECKING
 
+import structlog
 from telethon import events
+
+log = structlog.get_logger(__name__)
 
 if TYPE_CHECKING:
     from unread.bot.app import BotApp
@@ -64,6 +68,65 @@ until you run `/upload_session` and send me your `session.sqlite` file.
 def _build_help_text(app: BotApp) -> str:
     base = _HELP_TEXT_FULL if app.user_session_ready else _HELP_TEXT_NO_SESSION
     return base + _SLASH_COMMANDS
+
+
+async def maybe_consume_api_key(event: events.NewMessage.Event, *, app: BotApp) -> bool:
+    """Consume this message as an API key when the key flow is armed.
+
+    Returns True when it swallowed the message. The message is deleted as
+    soon as the key is stored: it still crossed Telegram's servers on the
+    way here, which is unavoidable, but it must not sit in the chat's
+    history afterwards. The confirmation shows only a masked tail —
+    echoing the key would defeat the deletion.
+    """
+    chat_state = app._chat_state.get(event.chat_id) or {}
+    provider = chat_state.get("pending_api_key")
+    if not provider:
+        return False
+
+    from unread.bot.settings_menu import mask_secret, secret_key_for_provider
+    from unread.db.repo import open_repo
+
+    chat_state.pop("pending_api_key", None)
+    raw = (getattr(event, "raw_text", None) or getattr(event, "text", "") or "").strip()
+
+    # Delete FIRST: if storing fails we still don't want the key sitting
+    # in the history while somebody debugs.
+    with contextlib.suppress(Exception):
+        await event.message.delete()
+
+    if not raw or raw.startswith("/"):
+        await event.reply("Cancelled — no key stored.")
+        return True
+
+    key_name = secret_key_for_provider(provider)
+    if not key_name:
+        await event.reply(f"`{provider}` takes no API key.", parse_mode="md")
+        return True
+
+    try:
+        async with open_repo(app.settings.storage.data_path) as repo:
+            await repo.put_secrets({key_name: raw})
+    except Exception:
+        log.exception("bot.settings.key_store_failed", provider=provider)
+        await event.reply("⚠️ Couldn't store the key; see the bot logs.")
+        return True
+
+    # Apply to the live settings so the next run uses it without a restart.
+    from unread.config import get_settings
+
+    section, _, field = key_name.partition(".")
+    live = get_settings()
+    targets = [app.settings] if app.settings is live else [app.settings, live]
+    for target in targets:
+        with contextlib.suppress(Exception):
+            setattr(getattr(target, section), field, raw)
+
+    await event.reply(
+        f"🔑 Stored the **{provider}** key (`{mask_secret(raw)}`) and deleted your message.",
+        parse_mode="md",
+    )
+    return True
 
 
 async def handle(
@@ -197,12 +260,22 @@ async def handle(
         return
 
     if cmd == "settings":
-        from unread.bot.runtime import render_settings_overview
+        from unread.bot.settings_menu import build_settings_menu
         from unread.config import get_settings
 
         chat_state = app._chat_state.get(event.chat_id) or {}
-        text = render_settings_overview(chat_state, get_settings())
-        await event.reply(text, parse_mode="md")
+        # Sent with a placeholder id, then edited with the real one — the
+        # buttons must exist before Telethon hands back the message id.
+        # Same two-step as the confirm panel.
+        text, buttons = build_settings_menu(chat_state=chat_state, settings=get_settings(), panel_msg_id=0)
+        sent = await event.reply(text, buttons=buttons, parse_mode="md")
+        panel_id = getattr(sent, "id", 0) or 0
+        if panel_id:
+            text, buttons = build_settings_menu(
+                chat_state=chat_state, settings=get_settings(), panel_msg_id=panel_id
+            )
+            with contextlib.suppress(Exception):
+                await sent.edit(text, buttons=buttons, parse_mode="md")
         return
 
     if cmd == "cancel":

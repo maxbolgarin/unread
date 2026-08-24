@@ -391,6 +391,20 @@ class BotApp:
                 await _safe_reply(event, "⚠️ Session install failed; see bot logs.")
             return
 
+        # An armed `/settings` → API key prompt consumes the next message
+        # whole. Checked before classification so a key is never routed to
+        # the analyze path (and so never reaches a log line or a report).
+        if chat_state.get("pending_api_key"):
+            from unread.bot.handlers import cmds as _cmds
+
+            try:
+                if await _cmds.maybe_consume_api_key(event, app=self):
+                    return
+            except Exception:
+                log.exception("bot.api_key_capture_failed")
+                await _safe_reply(event, "⚠️ Couldn't store that key; see the bot logs.")
+                return
+
         from unread.bot.dispatcher import classify
 
         try:
@@ -525,6 +539,12 @@ class BotApp:
         from unread.bot.confirm import parse_callback, prune_pending_runs
 
         if event.sender_id not in self.allowed_ids:
+            return
+
+        # Settings taps use their own action namespace and carry no
+        # PendingRun, so they're handled before the run-panel bookkeeping
+        # below (which would reject them as an expired session).
+        if await self._maybe_handle_settings_callback(event):
             return
         chat_state = self._chat_state.setdefault(event.chat_id, {})
         prune_pending_runs(chat_state)
@@ -700,6 +720,95 @@ class BotApp:
                     log.exception("bot.batch.item_failed", kind=item.kind, idx=idx)
                     await _safe_reply(item.event, f"⚠️ Item {idx}/{total} failed: {type(e).__name__}: {e}")
         await edit_progress(panel_msg, f"✓ Finished {total} items.")
+
+    async def _maybe_handle_settings_callback(self, event) -> bool:
+        """Apply a `/settings` menu tap. False when it isn't one."""
+        from unread.bot.settings_menu import (
+            build_model_menu,
+            build_provider_menu,
+            build_settings_menu,
+            key_prompt_text,
+            parse_settings_callback,
+        )
+
+        try:
+            action, panel_id, value = parse_settings_callback(event.data)
+        except ValueError:
+            return False
+
+        chat_state = self._chat_state.setdefault(event.chat_id, {})
+        settings = self.settings
+
+        if action == "S_PROVS":
+            text, buttons = build_provider_menu(settings=settings, panel_msg_id=panel_id)
+        elif action == "S_MODELS":
+            text, buttons = build_model_menu(settings=settings, panel_msg_id=panel_id)
+        elif action == "S_PROV":
+            await self._apply_ai_setting("ai.chat_provider", value or "")
+            await self._apply_ai_setting("ai.filter_provider", value or "")
+            text, buttons = build_settings_menu(
+                chat_state=chat_state, settings=settings, panel_msg_id=panel_id
+            )
+        elif action == "S_MODEL":
+            await self._apply_ai_setting("ai.chat_model", value or "")
+            text, buttons = build_settings_menu(
+                chat_state=chat_state, settings=settings, panel_msg_id=panel_id
+            )
+        elif action == "S_KEY":
+            # Credentials are bot-wide, not per-chat: a second admin
+            # rotating the key would silently change every admin's runs.
+            if not self.is_primary_owner(event.sender_id):
+                with contextlib.suppress(Exception):
+                    await event.answer(_NOT_PRIMARY_OWNER_TOAST, alert=True)
+                return True
+            provider = (
+                getattr(settings.ai, "chat_provider", "") or getattr(settings.ai, "provider", "") or "openai"
+            )
+            chat_state["pending_api_key"] = provider
+            with contextlib.suppress(Exception):
+                await event.answer()
+            with contextlib.suppress(Exception):
+                await event.edit(key_prompt_text(provider), buttons=None)
+            return True
+        else:  # S_ROOT
+            text, buttons = build_settings_menu(
+                chat_state=chat_state, settings=settings, panel_msg_id=panel_id
+            )
+
+        with contextlib.suppress(Exception):
+            await event.answer()
+        with contextlib.suppress(Exception):
+            await event.edit(text, buttons=buttons, parse_mode="md")
+        return True
+
+    async def _apply_ai_setting(self, key: str, value: str) -> None:
+        """Persist an `app_settings` override AND apply it to the live
+        settings object.
+
+        Persisting alone would leave the bot on the old provider until
+        somebody restarted the container — which is the exact friction
+        this menu exists to remove.
+        """
+        from unread.config import get_settings
+        from unread.db.repo import open_repo
+
+        try:
+            async with open_repo(self.settings.storage.data_path) as repo:
+                if value:
+                    await repo.set_app_setting(key, value)
+                else:
+                    await repo.delete_app_setting(key)
+        except Exception:
+            log.exception("bot.settings.persist_failed", key=key)
+
+        section, _, field = key.partition(".")
+        # Dedupe by identity: `Settings` is a pydantic model and isn't
+        # hashable, so a set literal raises.
+        live = get_settings()
+        targets = [self.settings] if self.settings is live else [self.settings, live]
+        for target in targets:
+            with contextlib.suppress(Exception):
+                setattr(getattr(target, section), field, value)
 
     async def _run_youtube_dump(self, pending, panel_msg) -> None:
         """Transcript-dump path for the burst's single YouTube item.

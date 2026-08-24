@@ -94,6 +94,7 @@ Fact-check isn't YouTube-only — `/preset factcheck` makes it the default for e
 | `/enrich <list\|all\|none>` | Sticky extra enrichments for Telegram chat analyses. `/enrich image,link` turns those two on; `/enrich all` enables every kind; `/enrich none` strips even the defaults. |
 | `/window <day\|week\|month\|msg\|from_msg\|none>` | Sticky default time window for TG-chat analyses. |
 | `/format <pdf\|md\|rich>` | How reports come back. `pdf` — rendered document, best on phones (default). `md` — the raw Markdown file. `rich` — the report as Telegram messages, nothing to download; long reports are split at the server's message limit, never mid-heading. Bare `/format` restores the default. |
+| `/settings` | Show this chat's settings, and change the AI provider, model and API key from an inline menu. Model rows show prices so you don't land on a flagship by accident. |
 | `/stop` | Cancel the run in progress in this chat. Only yours — another admin's run is untouched. |
 | `/confirm on\|off` | Toggle the pre-run confirm panel (default: on). |
 | `/upload_session` | Install your Telegram user session (one-time). The bot waits for you to send `~/.unread/storage/session.sqlite` as a Telegram document. |
@@ -146,6 +147,27 @@ Extra admins get their own sticky settings (`/preset`, `/lang`, …) — `_chat_
 Add someone only if you're fine with them spending your API budget. They can't read your Telegram, but every analysis they run bills your key.
 
 `/upload_session` is gated by the bootstrap allowlist so a fresh deploy with `UNREAD_BOT_OWNER_ID` set (but no session yet) lets only you upload the session; nobody else can install themselves as the bot's owner.
+
+### Changing provider, model and keys from the bot
+
+A container has its own `~/.unread`, so `unread settings` on your laptop
+does **not** reach a deployed bot. `/settings` gives you an inline menu:
+
+- **🔀 Provider** — openai / openrouter / anthropic / google / local. Applies
+  immediately, no restart, and is persisted so it survives one.
+- **🧠 Model** — the chat-capable models for that provider, with prices per
+  1M tokens. **preset default** hands control back to each preset's pin,
+  which is the right choice unless you have a reason.
+- **🔑 API key** — the bot asks for the key as your next message, stores it
+  in the secrets DB, and **deletes your message**. The confirmation shows
+  only a masked tail.
+
+On the key: deleting the message removes it from the chat history, but it
+still travelled through Telegram's servers to get there. If that's not
+acceptable for your threat model, set the key in `.env.bot` on the host
+instead — the bot never asks for one you've already provided that way.
+Only the **primary owner** can rotate keys; credentials are bot-wide, so a
+second admin changing them would silently change everyone's runs.
 
 ## Privacy & data flow
 
