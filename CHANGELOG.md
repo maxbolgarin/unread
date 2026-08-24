@@ -1,3 +1,13 @@
+## [1.4.1](https://github.com/maxbolgarin/unread/compare/v1.4.0...v1.4.1) (2026-08-24)
+
+### 🐛 Bug Fixes
+
+* **bot:** persist the bot-mode session so restarts stop re-authorizing ([d5d979f](https://github.com/maxbolgarin/unread/commit/d5d979ffcf521eb035f3326191810e86c3e70bce))
+
+### 📚 Documentation
+
+* **bot:** every compose subcommand needs --env-file, not just `up` ([2111227](https://github.com/maxbolgarin/unread/commit/21112277d8ca1aa150fbee74fb33ac387d7bda37))
+
 ## [1.4.0](https://github.com/maxbolgarin/unread/compare/v1.3.0...v1.4.0) (2026-08-24)
 
 ### 🚀 Features

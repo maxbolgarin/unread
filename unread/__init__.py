@@ -1,3 +1,3 @@
 """unread — local CLI for Telegram chat analysis via OpenAI."""
 
-__version__ = "1.4.0"
+__version__ = "1.4.1"
