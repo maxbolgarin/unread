@@ -18,6 +18,7 @@ import time
 from collections.abc import Iterable
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import structlog
 from telethon import events
@@ -48,6 +49,80 @@ _ANALYZE_PHASES: tuple[str, ...] = (
     "enrich_doc",
     "enrich_link",
 )
+
+
+# Only used when the live client can't tell us. Telegram sends the real
+# value in `Config.message_length_max` at connect (see the MTProto
+# `config` constructor) and it is NOT fixed at 4096 for every account.
+_FALLBACK_MESSAGE_LIMIT = 4096
+
+
+def telegram_message_limit(client: Any) -> int:
+    """Max characters per message, as reported by the connected server.
+
+    Read from the live client rather than hardcoded: `message_length_max`
+    is a server-provided config field, so a hardcoded 4096 would split
+    more than necessary on accounts allowed longer messages. Falls back
+    when the client isn't connected or the value is nonsense — a zero or
+    negative limit would make the splitter loop forever.
+    """
+    value = getattr(getattr(client, "_config", None), "message_length_max", None)
+    try:
+        limit = int(value)
+    except (TypeError, ValueError):
+        return _FALLBACK_MESSAGE_LIMIT
+    return limit if limit > 0 else _FALLBACK_MESSAGE_LIMIT
+
+
+def split_for_telegram(body: str, *, limit: int) -> list[str]:
+    """Split a report into messages, preferring section boundaries.
+
+    A fact-check verdict cut in half mid-sentence is worse than an extra
+    message, so this breaks on blank lines (and markdown headings) first
+    and only chops mid-block when a single block exceeds the limit on its
+    own.
+    """
+    body = (body or "").strip()
+    if not body:
+        return []
+    if len(body) <= limit:
+        return [body]
+
+    parts: list[str] = []
+    current = ""
+    for block in body.split("\n\n"):
+        candidate = f"{current}\n\n{block}" if current else block
+        if len(candidate) <= limit:
+            current = candidate
+            continue
+        if current:
+            parts.append(current)
+            current = ""
+        # A single block bigger than the limit has no boundary to use.
+        rest = block
+        while len(rest) > limit:
+            parts.append(rest[:limit])
+            rest = rest[limit:]
+        current = rest
+    if current:
+        parts.append(current)
+    return _unorphan_headings(parts)
+
+
+def _unorphan_headings(parts: list[str]) -> list[str]:
+    """Move a trailing heading to the part that carries its content.
+
+    Greedy packing happily ends a message with `## Claim 7` and starts the
+    next with the body, which reads as a bug to anyone scrolling. A
+    heading belongs with what it introduces.
+    """
+    for i in range(len(parts) - 1):
+        lines = parts[i].rstrip().split("\n")
+        while lines and lines[-1].lstrip().startswith("#"):
+            heading = lines.pop()
+            parts[i + 1] = f"{heading}\n\n{parts[i + 1]}"
+        parts[i] = "\n".join(lines).rstrip()
+    return [p for p in parts if p.strip()]
 
 
 async def send_file_report(

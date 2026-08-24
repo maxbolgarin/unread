@@ -40,10 +40,19 @@ def run_status_line(*, preset: str, settings: Any, source: str) -> str:
     searching = bool(getattr(preset_obj, "needs_web_search", False))
     verb = "🔎 Fact-checking" if searching else "⏳ Analyzing"
 
-    try:
-        model = resolve_chat_model(settings)
-    except Exception:  # unconfigured provider
-        model = "?"
+    # Mirror `run_analysis`'s precedence exactly:
+    #   final_model = model_override or preset.final_model or config default
+    # A preset's pin WINS over `ai.chat_model`, and every shipped preset
+    # pins one. Showing `resolve_chat_model` advertised the provider-
+    # routed id (`openai/gpt-5.6-luna`) while the run actually sends the
+    # preset's bare `gpt-5.6-luna` — a progress line naming the wrong
+    # model is worse than one naming none.
+    model = getattr(preset_obj, "final_model", "") or ""
+    if not model:
+        try:
+            model = resolve_chat_model(settings)
+        except Exception:  # unconfigured provider
+            model = "?"
     provider = getattr(settings.ai, "chat_provider", "") or getattr(settings.ai, "provider", "") or "?"
 
     bits = [f"{verb} {source}…", f"preset `{preset}`", f"`{provider}`/`{model}`"]

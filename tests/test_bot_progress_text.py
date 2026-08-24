@@ -62,3 +62,27 @@ def test_unknown_preset_does_not_crash(settings) -> None:
 def test_source_label_is_included(settings) -> None:
     assert "video" in run_status_line(preset="summary", settings=settings, source="video")
     assert "page" in run_status_line(preset="website", settings=settings, source="page")
+
+
+def test_line_shows_the_model_the_run_will_actually_use(settings) -> None:
+    """`final_model = model_override or preset.final_model or config`, so a
+    preset's pin WINS over `ai.chat_model`. Showing `resolve_chat_model`
+    advertised `openai/gpt-5.6-luna` while the run sent bare
+    `gpt-5.6-luna` — a progress line that names the wrong model is worse
+    than one that names none."""
+    from unread.analyzer.prompts import get_presets
+
+    pinned = get_presets("en")["factcheck"].final_model
+    line = run_status_line(preset="factcheck", settings=settings, source="video")
+    assert pinned in line
+    # The provider-resolved id is a SUPERSTRING of the pinned one
+    # (`openai/gpt-5.6-luna` vs `gpt-5.6-luna`), so a plain `in` check
+    # passes either way. Assert the prefixed form is absent.
+    assert "openai/" not in line
+
+
+def test_line_falls_back_to_the_configured_model_for_an_unpinned_preset(settings) -> None:
+    from unread.ai.providers import resolve_chat_model
+
+    line = run_status_line(preset="nonesuch", settings=settings, source="video")
+    assert resolve_chat_model(settings) in line

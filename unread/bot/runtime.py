@@ -32,6 +32,7 @@ STICKY_REPORT_LANGUAGE = "report_language"
 STICKY_ENRICH_EXTRAS = "enrich_extras"  # set[str] ⊆ {image, doc, link, video}
 STICKY_TG_WINDOW = "tg_window"  # one of: 1d, 7d, 30d, msg, from_msg
 STICKY_CONFIRM_DISABLED = "confirm_disabled"
+STICKY_REPORT_FORMAT = "report_format"  # one of: pdf, md, rich
 
 # Names users type into the slash commands.
 ENRICH_NAMES = ("image", "doc", "link", "video")
@@ -220,6 +221,38 @@ def parse_window_value(arg: str) -> tuple[str | None, str]:
         valid = "day | week | month | msg | from_msg | none"
         return (None, f"Unknown window: {arg!r}. Valid: {valid}.")
     return (canonical[arg], f"Window set → {canonical[arg]}.")
+
+
+# `/format` accepts a couple of obvious synonyms per value — people type
+# what they mean, not what the config key is called.
+_FORMAT_ALIASES: dict[str, str] = {
+    "pdf": "pdf",
+    "md": "md",
+    "markdown": "md",
+    "rich": "rich",
+    "text": "rich",
+    "msg": "rich",
+    "message": "rich",
+    "telegram": "rich",
+}
+
+
+def parse_format_value(arg: str) -> tuple[str | None, str]:
+    """Parse `/format <pdf|md|rich>`. Empty/none clears the override."""
+    arg = (arg or "").strip().lower()
+    if arg in ("", "none", "off", "clear", "default"):
+        return ("", "Report format cleared — using the bot's configured default.")
+    value = _FORMAT_ALIASES.get(arg)
+    if value is None:
+        return (
+            None,
+            "Usage: /format <pdf|md|rich>\n"
+            "• `pdf` — rendered document, best on phones\n"
+            "• `md` — the raw Markdown file\n"
+            "• `rich` — the report as Telegram messages, no download\n"
+            "`/format none` restores the default.",
+        )
+    return (value, f"Report format → {value}.")
 
 
 def parse_lang_value(arg: str) -> tuple[str | None, str]:
