@@ -483,6 +483,12 @@ class BotApp:
         progress_msg=None,
     ) -> None:
         """Dispatch to the kind-specific `execute`. Lazy-imports the module."""
+        # Stash the app on the event so the reply layer can read this
+        # chat's sticky `/format` without threading `app` through every
+        # send_* signature. Set here rather than in `_handle` so every
+        # execution path (panel tap, /confirm off, burst) is covered.
+        with contextlib.suppress(Exception):
+            event._unread_app = self
         if kind == "file":
             from unread.bot.handlers import file as file_handler
 

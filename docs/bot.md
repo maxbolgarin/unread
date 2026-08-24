@@ -93,6 +93,8 @@ Fact-check isn't YouTube-only — `/preset factcheck` makes it the default for e
 | `/lang <code>` | Sticky report language (e.g. `/lang en`, `/lang ru`). Bare clears. |
 | `/enrich <list\|all\|none>` | Sticky extra enrichments for Telegram chat analyses. `/enrich image,link` turns those two on; `/enrich all` enables every kind; `/enrich none` strips even the defaults. |
 | `/window <day\|week\|month\|msg\|from_msg\|none>` | Sticky default time window for TG-chat analyses. |
+| `/format <pdf\|md\|rich>` | How reports come back. `pdf` — rendered document, best on phones (default). `md` — the raw Markdown file. `rich` — the report as Telegram messages, nothing to download; long reports are split at the server's message limit, never mid-heading. Bare `/format` restores the default. |
+| `/stop` | Cancel the run in progress in this chat. Only yours — another admin's run is untouched. |
 | `/confirm on\|off` | Toggle the pre-run confirm panel (default: on). |
 | `/upload_session` | Install your Telegram user session (one-time). The bot waits for you to send `~/.unread/storage/session.sqlite` as a Telegram document. |
 | `/cancel` | Drop any pending `/upload_session` state. |

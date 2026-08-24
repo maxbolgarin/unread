@@ -63,6 +63,7 @@ BOT_CHAT_SETTING_KEYS: frozenset[str] = frozenset(
         "enrich_extras",
         "tg_window",
         "confirm_disabled",
+        "report_format",
     }
 )
 

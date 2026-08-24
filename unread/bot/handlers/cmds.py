@@ -23,6 +23,11 @@ Slash commands:
 `/lang <code>` — your language for analyses, report headings and transcripts (e.g. `/lang en`); bare clears
 `/enrich <list|all|none>` — sticky extra enrichments for TG chats (e.g. `image,link`)
 `/window <day|week|month|msg|from_msg|none>` — sticky default TG window
+`/format <pdf|md|rich>` — how reports come back:
+   • `pdf` — rendered document, best on phones (default)
+   • `md` — the raw Markdown file
+   • `rich` — the report as Telegram messages, nothing to download
+   bare `/format` restores the default
 `/confirm on|off` — toggle the pre-run confirm panel (default: on)
 `/upload_session` — install your Telegram user session (one-time)
 `/stop` — cancel the run currently in progress in this chat
@@ -126,6 +131,21 @@ async def handle(
             )
         else:
             await event.reply("Usage: `/confirm on` or `/confirm off`.", parse_mode="md")
+        return
+
+    if cmd == "format":
+        from unread.bot import prefs
+        from unread.bot.runtime import STICKY_REPORT_FORMAT, parse_format_value
+
+        value, msg = parse_format_value(args[0] if args else "")
+        if value is None:
+            await event.reply(msg, parse_mode="md")
+            return
+        if value:
+            await prefs.set_sticky(app, chat_id=event.chat_id, key=STICKY_REPORT_FORMAT, value=value)
+        else:
+            await prefs.clear_sticky(app, chat_id=event.chat_id, key=STICKY_REPORT_FORMAT)
+        await event.reply(msg)
         return
 
     if cmd == "lang":

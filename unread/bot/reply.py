@@ -13,6 +13,7 @@ Locates the report that the analyze pipeline just wrote, then:
 
 from __future__ import annotations
 
+import contextlib
 import io
 import time
 from collections.abc import Iterable
@@ -413,8 +414,16 @@ async def _send_full_report(
     """
     from unread.bot import pdf as pdf_helper
 
+    fmt = _effective_format(event)
+    if fmt == "rich":
+        # Deliver as Telegram messages instead of a file. Nothing to
+        # download, at the cost of a burst for a long report — which the
+        # splitter bounds by the server-reported message limit.
+        await _send_rich(event, md_text=md_text, caption=caption)
+        return
+
     pdf_bytes: bytes | None = None
-    if get_settings().bot.report_format == "pdf" and pdf_helper.is_available():
+    if fmt == "pdf" and pdf_helper.is_available():
         try:
             pdf_bytes = pdf_helper.markdown_to_pdf_bytes(md_text, title=report.stem)
         except Exception:
@@ -451,6 +460,46 @@ async def _send_full_report(
         # Last-resort: inline text (capped under the 4096 limit).
         chunk = md_text[:3500]
         await event.reply(chunk + ("\n…(truncated)" if len(md_text) > 3500 else ""))
+
+
+def _effective_format(event: Any) -> str:
+    """Sticky `/format` for this chat, else the configured default.
+
+    Read off the app when the event carries one (every bot handlerdoes)
+    so a per-admin `/format` beats the bot-wide config.
+    """
+    settings = get_settings()
+    app = getattr(event, "_unread_app", None)
+    chat_state = {}
+    if app is not None:
+        chat_state = getattr(app, "_chat_state", {}).get(getattr(event, "chat_id", None)) or {}
+    from unread.bot.runtime import effective_report_format
+
+    return effective_report_format(chat_state, settings)
+
+
+async def _send_rich(event: Any, *, md_text: str, caption: str) -> None:
+    """Send the report as Telegram message(s), split at the server limit.
+
+    Falls back to plain text per part if Markdown parsing fails — an LLM
+    report can contain stray characters Telegram's parser rejects, and
+    losing the report to a formatting error would be far worse than
+    losing the formatting.
+    """
+    limit = telegram_message_limit(getattr(event, "client", None))
+    # Leave room for the part counter appended below.
+    parts = split_for_telegram(md_text, limit=max(256, limit - 32))
+    total = len(parts)
+    for idx, part in enumerate(parts, start=1):
+        suffix = f"\n\n_({idx}/{total})_" if total > 1 else ""
+        try:
+            await event.reply(part + suffix, parse_mode="md")
+        except Exception:
+            log.warning("bot.rich_md_failed", part=idx, exc_info=True)
+            with contextlib.suppress(Exception):
+                await event.reply(part + suffix)
+    with contextlib.suppress(Exception):
+        await event.reply(f"_{caption}_", parse_mode="md")
 
 
 async def _build_caption(started: float, elapsed: float) -> str:

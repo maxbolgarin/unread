@@ -9,6 +9,8 @@ falls back to 4096 when it can't.
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 import pytest
 
 from unread.bot.reply import split_for_telegram, telegram_message_limit
@@ -107,3 +109,101 @@ def test_nothing_is_lost_in_the_split() -> None:
 
 def test_empty_body_yields_nothing() -> None:
     assert split_for_telegram("", limit=100) == []
+
+
+# --- /format wiring -----------------------------------------------------------
+
+
+async def test_format_command_persists_the_choice(tmp_path, monkeypatch) -> None:
+    from unread.bot.app import BotApp
+    from unread.bot.handlers import cmds
+    from unread.config import load_settings, reset_settings
+    from unread.db.repo import open_repo
+
+    monkeypatch.setenv("UNREAD_BOT_OWNER_ID", "111")
+    reset_settings()
+    try:
+        s = load_settings()
+        s.storage.data_path = tmp_path / "d.sqlite"
+        app = BotApp(s)
+
+        class _E:
+            chat_id = 7
+            sender_id = 111
+
+            def __init__(self):
+                self.replies = []
+
+            async def reply(self, text, **_kw):
+                self.replies.append(text)
+
+        await cmds.handle(_E(), {"name": "format", "args": ["rich"]}, app=app)
+        async with open_repo(s.storage.data_path) as repo:
+            stored = await repo.get_bot_chat_settings(7)
+        assert stored.get("report_format") == "rich"
+    finally:
+        reset_settings()
+
+
+def test_effective_format_prefers_the_sticky_value() -> None:
+    from unread.bot.runtime import STICKY_REPORT_FORMAT, effective_report_format
+    from unread.config import load_settings, reset_settings
+
+    reset_settings()
+    try:
+        s = load_settings()
+        s.bot.report_format = "pdf"
+        assert effective_report_format({}, s) == "pdf"
+        assert effective_report_format({STICKY_REPORT_FORMAT: "rich"}, s) == "rich"
+    finally:
+        reset_settings()
+
+
+def test_help_lists_the_available_formats() -> None:
+    from unread.bot.handlers.cmds import _SLASH_COMMANDS
+
+    assert "/format" in _SLASH_COMMANDS
+    for fmt in ("pdf", "md", "rich"):
+        assert fmt in _SLASH_COMMANDS
+
+
+def test_effective_format_reads_the_app_off_the_event(monkeypatch) -> None:
+    """`_run_execute` stashes the app on the event so the reply layer can
+    honour a per-admin `/format` without threading `app` through every
+    send_* signature."""
+    from unread.bot.reply import _effective_format
+    from unread.bot.runtime import STICKY_REPORT_FORMAT
+    from unread.config import load_settings, reset_settings
+
+    reset_settings()
+    try:
+        load_settings()
+
+        class _App:
+            _chat_state: ClassVar[dict] = {7: {STICKY_REPORT_FORMAT: "rich"}}
+
+        class _Event:
+            chat_id = 7
+            _unread_app = _App()
+
+        assert _effective_format(_Event()) == "rich"
+    finally:
+        reset_settings()
+
+
+def test_effective_format_without_an_app_uses_the_config_default() -> None:
+    from unread.bot.reply import _effective_format
+    from unread.config import get_settings, reset_settings
+
+    reset_settings()
+    try:
+        # Mutate the SINGLETON — `_effective_format` reads `get_settings()`,
+        # and `load_settings()` hands back a fresh object.
+        get_settings().bot.report_format = "md"
+
+        class _Event:
+            chat_id = 7
+
+        assert _effective_format(_Event()) == "md"
+    finally:
+        reset_settings()

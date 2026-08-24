@@ -128,6 +128,14 @@ def effective_source_language(chat_state: dict, settings: Settings) -> str:
     return (settings.locale.content_language or "").strip()
 
 
+def effective_report_format(chat_state: dict, settings: Settings) -> str:
+    """Sticky `/format` → `bot.report_format` config → "pdf"."""
+    sticky = (chat_state.get(STICKY_REPORT_FORMAT) or "").strip()
+    if sticky:
+        return sticky
+    return (getattr(settings.bot, "report_format", "") or "pdf").strip()
+
+
 def effective_preset(chat_state: dict, settings: Settings) -> str:
     """Sticky `/preset <name>` → `bot.default_preset` → empty (kind-specific fallback)."""
     sticky = (chat_state.get(STICKY_PRESET) or "").strip()
