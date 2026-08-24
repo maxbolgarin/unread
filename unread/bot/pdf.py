@@ -45,10 +45,22 @@ body {
     line-height: 1.45;
     color: #222;
 }
-h1, h2, h3 { color: #111; }
+h1, h2, h3, h4 { color: #111; page-break-after: avoid; break-after: avoid; }
 h1 { font-size: 1.5em; margin-top: 0.2em; }
-h2 { font-size: 1.2em; margin-top: 1.2em; border-bottom: 1px solid #ddd; padding-bottom: 0.2em; }
-h3 { font-size: 1.05em; margin-top: 1em; }
+h2 { font-size: 1.25em; margin-top: 1.4em; border-bottom: 1px solid #ddd; padding-bottom: 0.2em; }
+/* A fact-check makes every claim an h3, so it has to read as a heading
+   and not as one more bold line among the `**Said:**` labels it sits
+   above — at 1.05em it was indistinguishable from body bold. The
+   break-after rule keeps a heading from being stranded at the foot of a
+   page, separated from the claim it introduces. */
+h3 {
+    font-size: 1.12em;
+    margin-top: 1.5em;
+    margin-bottom: 0.35em;
+    padding-left: 0.5em;
+    border-left: 3px solid #b9c6d4;
+}
+h4 { font-size: 1.02em; margin-top: 1.1em; }
 a { color: #0a64c2; text-decoration: none; }
 a:hover { text-decoration: underline; }
 ul, ol { margin: 0.4em 0 0.8em 1.4em; padding: 0; }

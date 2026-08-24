@@ -462,9 +462,19 @@ async def _send_full_report(
                 force_document=True,
             )
         else:
+            # Upload a BOM-prefixed copy rather than the file on disk.
+            # Telegram's in-app text viewer on iOS guessed Latin-1 for a
+            # UTF-8 Russian report and rendered the whole thing as
+            # mojibake; a BOM is the in-band signal that survives being
+            # saved and reopened, and the MIME charset covers viewers
+            # that read headers instead. The on-disk report stays clean —
+            # a stray \ufeff would trip anything reading it back.
+            buf = io.BytesIO(b"\xef\xbb\xbf" + md_text.encode("utf-8"))
             await event.client.send_file(
                 event.chat_id,
-                file=str(report),
+                file=buf,
+                attributes=[DocumentAttributeFilename(file_name=report.name)],
+                mime_type="text/markdown; charset=utf-8",
                 caption=caption,
                 reply_to=event.message.id,
                 force_document=True,

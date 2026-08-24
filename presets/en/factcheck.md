@@ -72,6 +72,9 @@ Use exactly one of these five, and use the emoji:
   "widely known". Unverifiable.
 - Never invent a URL, a study, an author, or a publication date. A
   fabricated citation in a fact-check is worse than no fact-check.
+- Write each source as ONE plain markdown link: `[title](https://url)`.
+  Never nest a link inside a link (`[title]([site](https://url))`) and
+  never put a bare domain inside the label — both render as broken text.
 - Prefer primary sources: the study itself over a news article about it,
   the official statistics agency over a blog quoting it, the full
   transcript over a clip.
