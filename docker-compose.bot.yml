@@ -13,8 +13,15 @@
 #   docker compose -f docker-compose.bot.yml --env-file .env.bot pull
 #   docker compose -f docker-compose.bot.yml --env-file .env.bot up -d
 #
-# Logs:    docker compose -f docker-compose.bot.yml logs -f
-# Stop:    docker compose -f docker-compose.bot.yml down
+# NOTE: `UNREAD_BOT_TOKEN` below uses the `:?` required-variable form, so
+# EVERY compose subcommand needs `--env-file .env.bot` — not just `up`.
+# Without it even `logs` fails with "required variable ... is missing a
+# value". `docker logs <container>` sidesteps compose entirely.
+#
+# Logs:    docker compose -f docker-compose.bot.yml --env-file .env.bot logs -f
+#          docker logs unread-unread-bot-1 --tail 30
+# Status:  docker compose -f docker-compose.bot.yml --env-file .env.bot ps
+# Stop:    docker compose -f docker-compose.bot.yml --env-file .env.bot down
 
 services:
   unread-bot:

@@ -160,11 +160,31 @@ Or directly on the VM, no laptop helper:
 cp .env.bot.example .env.bot && $EDITOR .env.bot
 docker compose -f docker-compose.bot.yml --env-file .env.bot pull
 docker compose -f docker-compose.bot.yml --env-file .env.bot up -d
-docker compose -f docker-compose.bot.yml logs -f
+docker compose -f docker-compose.bot.yml --env-file .env.bot logs -f
 ```
 
 The compose file specifies `command: ["unread", "bot", "run"]` since
 the image has no entrypoint.
+
+**Pass `--env-file .env.bot` to every compose subcommand**, not just
+`up`. `UNREAD_BOT_TOKEN` uses the `:?` required-variable form, which
+compose resolves for *any* command — so a bare
+`docker compose -f docker-compose.bot.yml logs` fails with
+`required variable UNREAD_BOT_TOKEN is missing a value` before it shows
+you anything. `docker logs unread-unread-bot-1` skips compose entirely.
+
+**A started container is not a working bot.** With
+`restart: unless-stopped`, a misconfigured bot crash-loops while
+`up -d` still prints "Started". The signal to look for in the logs is:
+
+```
+✓ bot ready · owner=123456789 · session=ready
+```
+
+If instead you see `No owner allowlist available`, set
+`UNREAD_BOT_OWNER_ID` in `.env.bot` (your numeric id from
+[@userinfobot](https://t.me/userinfobot)) or mount an authorized
+session — the bot refuses to serve anyone until it knows who you are.
 
 ### Bot service without compose
 
