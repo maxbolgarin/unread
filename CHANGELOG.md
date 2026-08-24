@@ -1,3 +1,9 @@
+## [1.5.2](https://github.com/maxbolgarin/unread/compare/v1.5.1...v1.5.2) (2026-08-24)
+
+### 🐛 Bug Fixes
+
+* **pdf:** stop the emoji font from blanking every digit in a report ([1255a47](https://github.com/maxbolgarin/unread/commit/1255a47e3030e0d8bfccc610e604f6bf10842028))
+
 ## [1.5.1](https://github.com/maxbolgarin/unread/compare/v1.5.0...v1.5.1) (2026-08-24)
 
 ### 🐛 Bug Fixes
