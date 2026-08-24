@@ -132,3 +132,39 @@ async def test_backoff_still_exponential_without_a_hint(monkeypatch) -> None:
 
     assert await _flaky() == "ok"
     assert slept and slept[0] < 5, "no hint means the usual short backoff"
+
+
+async def test_hint_is_ignored_for_non_rate_limit_errors(monkeypatch) -> None:
+    """`x-ratelimit-reset-*` describes bucket refill and rides along on
+    ordinary and 5xx responses too. Applying it to a transient 500 turned
+    a 1.2s backoff into up to 60s of dead time."""
+    from unread.util import flood
+
+    slept: list[float] = []
+
+    async def _fake_sleep(seconds):
+        slept.append(seconds)
+
+    monkeypatch.setattr(flood.asyncio, "sleep", _fake_sleep)
+
+    from openai import APIStatusError
+
+    class _R:
+        status_code = 500
+        headers: ClassVar[dict] = {"x-ratelimit-reset-tokens": "60s"}
+        request = None
+
+        def json(self):
+            return {}
+
+    calls: list[int] = []
+
+    @flood.retry_on_429(max_retries=3)
+    async def _flaky():
+        calls.append(1)
+        if len(calls) < 2:
+            raise APIStatusError("server error", response=_R(), body=None)
+        return "ok"
+
+    assert await _flaky() == "ok"
+    assert slept and slept[0] < 5, f"5xx backed off {slept[0]}s from a rate-limit header"

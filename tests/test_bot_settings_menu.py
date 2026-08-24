@@ -116,3 +116,37 @@ def test_mask_shows_at_most_the_last_four(raw, expect_visible) -> None:
 def test_mask_never_leaks_a_short_key_entirely() -> None:
     """A short string must not round-trip through the mask unchanged."""
     assert mask_secret("abcd") != "abcd"
+
+
+# --- no drift between the provider tables ------------------------------------
+
+
+def test_menu_providers_match_the_config_allowlist() -> None:
+    """Four copies of this list existed. Adding a sixth provider and
+    missing one leaves the menu offering a provider whose key it can't
+    store, or the CLI and bot disagreeing about what's valid."""
+    from unread.bot.settings_menu import _PROVIDERS
+    from unread.config import _VALID_AI_PROVIDERS
+
+    assert set(_PROVIDERS) == set(_VALID_AI_PROVIDERS)
+
+
+def test_every_menu_provider_has_a_known_secret_field() -> None:
+    from unread.bot.settings_menu import _PROVIDERS, secret_key_for_provider
+
+    for name in _PROVIDERS:
+        field = secret_key_for_provider(name)
+        # "local" legitimately has none; everything else must resolve.
+        assert field or name == "local", name
+
+
+def test_secret_fields_match_the_secrets_allowlist() -> None:
+    """A key the secrets table would refuse can't be stored, so offering
+    it in the menu is a dead button."""
+    from unread.bot.settings_menu import _PROVIDERS, secret_key_for_provider
+    from unread.db._keys import SECRET_KEYS
+
+    for name in _PROVIDERS:
+        field = secret_key_for_provider(name)
+        if field:
+            assert field in SECRET_KEYS, f"{name} → {field} is not an allowlisted secret"

@@ -2077,6 +2077,25 @@ class Repo:
             out.setdefault(int(r["chat_id"]), {})[r["key"]] = r["value"]
         return out
 
+    async def _env_pinned_override_keys(self) -> set[str]:
+        """Override keys the operator pinned via environment variables.
+
+        `_apply_db_overrides` runs on EVERY `open_repo`, so without this a
+        stored `ai.chat_provider` (from one `/settings` tap) silently beat
+        the `UNREAD_AI_CHAT_PROVIDER` the deployment documents — and
+        redeploying with a changed value did nothing, with no warning.
+        Environment is the operator's channel; it wins.
+        """
+        import os
+
+        pinned: set[str] = set()
+        for slot in ("chat", "filter", "audio", "vision"):
+            if os.environ.get(f"UNREAD_AI_{slot.upper()}_PROVIDER"):
+                pinned.add(f"ai.{slot}_provider")
+            if os.environ.get(f"UNREAD_AI_{slot.upper()}_MODEL"):
+                pinned.add(f"ai.{slot}_model")
+        return pinned
+
     async def get_all_app_settings(self) -> dict[str, str]:
         """Return all saved user overrides as a `{key: value}` dict.
 
@@ -3115,6 +3134,15 @@ async def _apply_db_overrides(repo: Repo) -> None:
         # Pre-migration DB or transient error — don't take down the whole
         # CLI just because the overrides table isn't ready yet.
         return
+    # An `UNREAD_AI_*` env var is the operator's channel and outranks a
+    # stored row. Without this, one `/settings → Provider` tap pinned the
+    # DB value forever and a redeploy with a different env var silently
+    # did nothing.
+    try:
+        for key in await repo._env_pinned_override_keys():
+            rows.pop(key, None)
+    except Exception:
+        pass
     if not rows:
         return
     from unread.config import get_settings

@@ -30,8 +30,23 @@ from telethon import Button
 #   S_KEY   = start the API-key prompt
 SETTINGS_ACTIONS = frozenset({"S_ROOT", "S_PROVS", "S_PROV", "S_MODELS", "S_MODEL", "S_KEY"})
 
-# Providers offered in the menu. Mirrors `make_chat_provider`'s dispatch.
-_PROVIDERS: tuple[str, ...] = ("openai", "openrouter", "anthropic", "google", "local")
+
+# Providers offered in the menu. Derived from the config allowlist rather
+# than retyped: this list previously existed in four places (here,
+# `config._VALID_AI_PROVIDERS`, `settings/commands._SLOT_PROVIDERS`, and
+# `providers.make_chat_provider`'s dispatch), and a missed edit leaves the
+# menu offering a provider whose key it can't store. Sorted for a stable
+# button order, with openai/openrouter first since they're the common
+# picks. `tests/test_bot_settings_menu.py` pins the two lists together.
+def _provider_list() -> tuple[str, ...]:
+    from unread.config import _VALID_AI_PROVIDERS
+
+    preferred = ("openai", "openrouter")
+    rest = sorted(set(_VALID_AI_PROVIDERS) - set(preferred))
+    return tuple(p for p in preferred if p in _VALID_AI_PROVIDERS) + tuple(rest)
+
+
+_PROVIDERS: tuple[str, ...] = _provider_list()
 
 # Per-provider key field, for the "which key am I setting?" copy.
 _KEY_FIELD: dict[str, str] = {

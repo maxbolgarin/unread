@@ -242,7 +242,12 @@ def retry_on_429(
                     # again in 12.953s" with 1.2s just burns an attempt:
                     # the limit window hasn't moved, so the retry fails
                     # exactly the same way.
-                    hinted = retry_after_hint(e)
+                    # Only for an actual rate limit. `x-ratelimit-reset-*`
+                    # describes bucket refill and rides along on ordinary
+                    # and 5xx responses too, so honouring it for a
+                    # transient 500 turned a 1.2s backoff into up to 60s
+                    # of dead time.
+                    hinted = retry_after_hint(e) if is_rate_limit else None
                     if hinted is not None and hinted > delay:
                         delay = hinted + random.uniform(0, 1)
                     log.warning(

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import time
 from pathlib import Path
 
 import structlog
@@ -37,6 +38,32 @@ _NOT_PRIMARY_OWNER_MSG = (
     "Send me a file, a web link, or a YouTube link instead."
 )
 _NOT_PRIMARY_OWNER_TOAST = "Only the session owner can read Telegram chats."
+
+
+def _default_model_for(provider: str) -> str:
+    """The adapter's own default chat model, from its class attributes.
+
+    Read off the class rather than by constructing the adapter, so this
+    works for a provider whose credentials aren't configured yet — which
+    is the normal case when you're switching TO it.
+    """
+    from unread.ai.providers import _provider_class_defaults
+
+    try:
+        chat, _filter = _provider_class_defaults((provider or "").lower())
+    except Exception:
+        return ""
+    return chat or ""
+
+
+def _default_filter_model_for(provider: str) -> str:
+    from unread.ai.providers import _provider_class_defaults
+
+    try:
+        _chat, filt = _provider_class_defaults((provider or "").lower())
+    except Exception:
+        return ""
+    return filt or ""
 
 
 def _extra_admins_suffix(owner_id: int, allowed_ids: set[int]) -> str:
@@ -435,6 +462,8 @@ class BotApp:
 
             options = default_options(kind, self.settings)
             async with self._semaphore:
+                # Registered so `/stop` can reach this run; see `register_running`.
+                self.register_running(event.chat_id, asyncio.current_task())
                 try:
                     await self._run_execute(event, kind, payload, options, progress_msg=None)
                 except Exception as e:
@@ -459,7 +488,15 @@ class BotApp:
     def register_running(self, chat_id: int, task: asyncio.Task) -> None:
         """Mark `task` as this chat's in-flight run, for `/stop`."""
         self._running[chat_id] = task
-        task.add_done_callback(lambda _t: self._running.pop(chat_id, None))
+
+        # Identity-checked: a cancelled task's done-callback fires a tick
+        # later, and popping by chat_id alone deleted the entry of the run
+        # started in between — leaving `/stop` blind to a live run.
+        def _clear(done: asyncio.Task, _chat_id: int = chat_id) -> None:
+            if self._running.get(_chat_id) is done:
+                self._running.pop(_chat_id, None)
+
+        task.add_done_callback(_clear)
 
     def stop_running(self, chat_id: int) -> bool:
         """Cancel this chat's in-flight run. True if there was one."""
@@ -706,6 +743,8 @@ class BotApp:
                 panel=pending.options,
             )
             async with self._semaphore:
+                # Registered so `/stop` can reach this run; see `register_running`.
+                self.register_running(item.event.chat_id, asyncio.current_task())
                 try:
                     await self._run_execute(
                         item.event,
@@ -739,6 +778,17 @@ class BotApp:
         chat_state = self._chat_state.setdefault(event.chat_id, {})
         settings = self.settings
 
+        # Provider and model are BOT-WIDE and persisted: a second admin
+        # changing them silently changes the primary owner's runs and
+        # spends their budget. Same reasoning as the key button, which was
+        # the only one gated before.
+        if action in ("S_PROVS", "S_MODELS", "S_PROV", "S_MODEL") and not self.is_primary_owner(
+            event.sender_id
+        ):
+            with contextlib.suppress(Exception):
+                await event.answer(_NOT_PRIMARY_OWNER_TOAST, alert=True)
+            return True
+
         if action == "S_PROVS":
             text, buttons = build_provider_menu(settings=settings, panel_msg_id=panel_id)
         elif action == "S_MODELS":
@@ -746,6 +796,13 @@ class BotApp:
         elif action == "S_PROV":
             await self._apply_ai_setting("ai.chat_provider", value or "")
             await self._apply_ai_setting("ai.filter_provider", value or "")
+            # Every preset pins an OpenAI model id, and a pin beats config
+            # — so switching provider without also switching the model
+            # sent `gpt-5.6-luna` to Anthropic and 4xx'd every later run.
+            # Pin the new provider's own default; the model menu can
+            # change it from there.
+            await self._apply_ai_setting("ai.chat_model", _default_model_for(value or ""))
+            await self._apply_ai_setting("ai.filter_model", _default_filter_model_for(value or ""))
             text, buttons = build_settings_menu(
                 chat_state=chat_state, settings=settings, panel_msg_id=panel_id
             )
@@ -765,6 +822,7 @@ class BotApp:
                 getattr(settings.ai, "chat_provider", "") or getattr(settings.ai, "provider", "") or "openai"
             )
             chat_state["pending_api_key"] = provider
+            chat_state["pending_api_key_at"] = time.time()
             with contextlib.suppress(Exception):
                 await event.answer()
             with contextlib.suppress(Exception):
@@ -827,7 +885,11 @@ class BotApp:
             return
         item = items[0]
         async with self._semaphore:
+            # Registered so `/stop` can reach this run; see `register_running`.
+            self.register_running(item.event.chat_id, asyncio.current_task())
             try:
+                with contextlib.suppress(Exception):
+                    item.event._unread_app = self
                 await yt_handler.execute_dump(
                     item.event,
                     item.payload,
@@ -885,6 +947,8 @@ class BotApp:
             text_item = BurstItem(kind="file", payload=text_payload, event=item.event)
             options = RunOptions()
             async with self._semaphore:
+                # Registered so `/stop` can reach this run; see `register_running`.
+                self.register_running(text_item.event.chat_id, asyncio.current_task())
                 try:
                     await self._run_execute(
                         text_item.event,
@@ -933,6 +997,8 @@ class BotApp:
             options = RunOptions(tg_window=window_by_action[action])
 
         async with self._semaphore:
+            # Registered so `/stop` can reach this run; see `register_running`.
+            self.register_running(item.event.chat_id, asyncio.current_task())
             try:
                 await self._run_execute(
                     item.event,
@@ -956,7 +1022,14 @@ class BotApp:
         if not items:
             return
         async with self._semaphore:
+            # Registered so `/stop` can reach this run; see `register_running`.
+            self.register_running(items[0].event.chat_id, asyncio.current_task())
             try:
+                # Stamp the app for the reply layer's sticky `/format`
+                # lookup. `_run_execute` does this for every other path;
+                # the combined and dump paths bypass it.
+                with contextlib.suppress(Exception):
+                    pending.event._unread_app = self
                 await run_combined(self, items=items, panel_msg=panel_msg, original_event=pending.event)
             except Exception as e:
                 if _is_clean_exit(e):

@@ -57,3 +57,40 @@ def test_provider_value_is_validated(monkeypatch) -> None:
 def test_provider_is_case_insensitive(monkeypatch) -> None:
     monkeypatch.setenv("UNREAD_AI_CHAT_PROVIDER", "OpenRouter")
     assert load_settings().ai.chat_provider == "openrouter"
+
+
+async def test_env_beats_a_stored_app_setting(tmp_path, monkeypatch) -> None:
+    """`_apply_db_overrides` runs on EVERY `open_repo`, so a row written by
+    one `/settings` tap silently outranked the documented env var — and a
+    redeploy with a changed value did nothing."""
+    from unread.config import get_settings
+    from unread.db.repo import open_repo
+
+    monkeypatch.setenv("UNREAD_AI_CHAT_PROVIDER", "openrouter")
+    reset_settings()
+    load_settings()
+
+    db = tmp_path / "d.sqlite"
+    async with open_repo(db) as repo:
+        await repo.set_app_setting("ai.chat_provider", "anthropic")
+
+    # Re-open: overrides are re-applied here.
+    async with open_repo(db):
+        pass
+    assert get_settings().ai.chat_provider == "openrouter"
+
+
+async def test_stored_value_still_applies_without_the_env_var(tmp_path, monkeypatch) -> None:
+    from unread.config import get_settings
+    from unread.db.repo import open_repo
+
+    monkeypatch.delenv("UNREAD_AI_CHAT_PROVIDER", raising=False)
+    reset_settings()
+    load_settings()
+
+    db = tmp_path / "d.sqlite"
+    async with open_repo(db) as repo:
+        await repo.set_app_setting("ai.chat_provider", "anthropic")
+    async with open_repo(db):
+        pass
+    assert get_settings().ai.chat_provider == "anthropic"

@@ -7,6 +7,8 @@ semaphore and reply immediately.
 from __future__ import annotations
 
 import contextlib
+import os
+import time
 from typing import TYPE_CHECKING
 
 import structlog
@@ -70,6 +72,37 @@ def _build_help_text(app: BotApp) -> str:
     return base + _SLASH_COMMANDS
 
 
+# How long a 🔑 prompt stays armed. Long enough to fetch a key from a
+# password manager, short enough that a forgotten prompt doesn't swallow
+# tomorrow's first message.
+_API_KEY_PROMPT_TTL_SECONDS = 300.0
+
+# Environment variable that outranks each stored secret at load time.
+# Mirrors the overlay in `config.load_settings`.
+_ENV_NAME_FOR_SECRET: dict[str, str] = {
+    "openai.api_key": "OPENAI_API_KEY",
+    "openrouter.api_key": "OPENROUTER_API_KEY",
+    "anthropic.api_key": "ANTHROPIC_API_KEY",
+    "google.api_key": "GOOGLE_API_KEY",
+}
+
+
+def _looks_like_api_key(raw: str) -> bool:
+    """Cheap sanity check on a pasted secret.
+
+    Deliberately permissive about FORMAT (providers differ, and new ones
+    appear) but strict about the shapes that are obviously not keys: a
+    URL, whitespace in the middle, or something far too short. The cost
+    of a false accept is a destroyed credential.
+    """
+    if len(raw) < 16 or len(raw) > 400:
+        return False
+    if any(ch.isspace() for ch in raw):
+        return False
+    lowered = raw.lower()
+    return not lowered.startswith(("http://", "https://", "t.me/", "www."))
+
+
 async def maybe_consume_api_key(event: events.NewMessage.Event, *, app: BotApp) -> bool:
     """Consume this message as an API key when the key flow is armed.
 
@@ -84,10 +117,26 @@ async def maybe_consume_api_key(event: events.NewMessage.Event, *, app: BotApp) 
     if not provider:
         return False
 
+    # The prompt expires. Without a TTL, tapping 🔑 and then getting
+    # distracted meant the next ordinary message — a pasted link, say —
+    # was stored AS THE API KEY, silently clobbering a working
+    # credential and 401-ing every later run.
+    armed_at = float(chat_state.get("pending_api_key_at") or 0.0)
+    if armed_at and (time.time() - armed_at) > _API_KEY_PROMPT_TTL_SECONDS:
+        chat_state.pop("pending_api_key", None)
+        chat_state.pop("pending_api_key_at", None)
+        await event.reply(
+            "The API-key prompt expired (it lasts "
+            f"{int(_API_KEY_PROMPT_TTL_SECONDS // 60)} min). Nothing was stored — "
+            "tap 🔑 in /settings again if you still want to set one."
+        )
+        return False
+
     from unread.bot.settings_menu import mask_secret, secret_key_for_provider
     from unread.db.repo import open_repo
 
     chat_state.pop("pending_api_key", None)
+    chat_state.pop("pending_api_key_at", None)
     raw = (getattr(event, "raw_text", None) or getattr(event, "text", "") or "").strip()
 
     # Delete FIRST: if storing fails we still don't want the key sitting
@@ -97,6 +146,15 @@ async def maybe_consume_api_key(event: events.NewMessage.Event, *, app: BotApp) 
 
     if not raw or raw.startswith("/"):
         await event.reply("Cancelled — no key stored.")
+        return True
+
+    if not _looks_like_api_key(raw):
+        # Deleted above, so the stray message is gone either way — but a
+        # URL or a sentence is not a key, and storing it would destroy a
+        # working credential.
+        await event.reply(
+            "That doesn't look like an API key, so nothing was stored. Tap 🔑 in /settings to try again."
+        )
         return True
 
     key_name = secret_key_for_provider(provider)
@@ -122,8 +180,21 @@ async def maybe_consume_api_key(event: events.NewMessage.Event, *, app: BotApp) 
         with contextlib.suppress(Exception):
             setattr(getattr(target, section), field, raw)
 
+    # A stored secret only fills fields the higher layers left EMPTY, so
+    # if the same key is set in the environment the rotation works now and
+    # silently reverts on the next restart. Say so rather than let it
+    # 401 later.
+    env_name = _ENV_NAME_FOR_SECRET.get(key_name, "")
+    warning = ""
+    if env_name and os.environ.get(env_name):
+        warning = (
+            f"\n\n⚠️ `{env_name}` is also set in the environment and outranks "
+            "this on startup — the bot will revert to it after a restart. "
+            "Update `.env.bot` too, or remove it there."
+        )
+
     await event.reply(
-        f"🔑 Stored the **{provider}** key (`{mask_secret(raw)}`) and deleted your message.",
+        f"🔑 Stored the **{provider}** key (`{mask_secret(raw)}`) and deleted your message." + warning,
         parse_mode="md",
     )
     return True

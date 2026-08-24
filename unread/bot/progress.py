@@ -90,9 +90,27 @@ class LiveProgress:
 
     async def __call__(self, text: str) -> None:
         now = time.monotonic()
-        if self._last_at and (now - self._last_at) < self._min_interval:
+        throttled = self._last_at and (now - self._last_at) < self._min_interval
+        # A PHASE change always goes through. Per-chunk ticks are noise
+        # worth throttling, but "Analyzing 20 chunks… 14/20" → "Merging
+        # 20 fragments…" is the difference between a live message and one
+        # frozen at 14/20 for the whole reduce phase.
+        if throttled and self._same_phase(text):
             return
         await self._write(text, now)
+
+    def _same_phase(self, text: str) -> bool:
+        """True when `text` continues the phase already displayed.
+
+        Compared on the last line's leading word, which is what the
+        pipeline varies between phases ("Analyzing" / "Merging").
+        """
+
+        def _phase(value: str) -> str:
+            last = (value or "").strip().split("\n")[-1].strip()
+            return last.split(" ")[0] if last else ""
+
+        return _phase(text) == _phase(self._last_text)
 
     async def flush(self, text: str) -> None:
         """Write unconditionally — for the final line of a run.

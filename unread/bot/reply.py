@@ -107,20 +107,29 @@ def split_for_telegram(body: str, *, limit: int) -> list[str]:
         current = rest
     if current:
         parts.append(current)
-    return _unorphan_headings(parts)
+    return _unorphan_headings(parts, limit=limit)
 
 
-def _unorphan_headings(parts: list[str]) -> list[str]:
+def _unorphan_headings(parts: list[str], *, limit: int) -> list[str]:
     """Move a trailing heading to the part that carries its content.
 
     Greedy packing happily ends a message with `## Claim 7` and starts the
     next with the body, which reads as a bug to anyone scrolling. A
     heading belongs with what it introduces.
+
+    `limit` is enforced on the RECEIVING part: moving a heading grows it,
+    and an over-limit part fails BOTH the markdown and the plain-text
+    send, so the section disappears from the report with no error. When
+    the move wouldn't fit, the heading stays where it is — a heading at
+    the bottom of a message is ugly; a missing section is data loss.
     """
     for i in range(len(parts) - 1):
         lines = parts[i].rstrip().split("\n")
         while lines and lines[-1].lstrip().startswith("#"):
-            heading = lines.pop()
+            heading = lines[-1]
+            if len(parts[i + 1]) + len(heading) + 2 > limit:
+                break
+            lines.pop()
             parts[i + 1] = f"{heading}\n\n{parts[i + 1]}"
         parts[i] = "\n".join(lines).rstrip()
     return [p for p in parts if p.strip()]
@@ -339,7 +348,12 @@ async def _upload_with_caption(
     # Step 1: TL;DR inline. Phone clients render Telegram MarkdownV1
     # natively — `**bold**`, `[text](url)` citations, etc. — so the
     # user sees the summary without downloading anything.
-    await _send_tldr(event, md_text)
+    #
+    # Skipped for `rich`, where the whole report (TL;DR included) is
+    # about to be sent as messages — the user would otherwise read the
+    # same paragraph twice in a row.
+    if _effective_format(event) != "rich":
+        await _send_tldr(event, md_text)
 
     # Step 2: full report as a document. PDF when the optional
     # `[bot]` extras are present; raw `.md` otherwise so the operator
