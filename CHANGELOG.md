@@ -1,3 +1,25 @@
+## [1.4.0](https://github.com/maxbolgarin/unread/compare/v1.3.0...v1.4.0) (2026-08-24)
+
+### 🚀 Features
+
+* **analyze:** add a fact-check preset with provider-native web search ([150b0d6](https://github.com/maxbolgarin/unread/commit/150b0d6025bb5347148f5e3d7edb1ddd44e9d31e))
+* **youtube:** cache transcripts per requested language ([4272eb5](https://github.com/maxbolgarin/unread/commit/4272eb5c4093e4eedc868ab05391e94f4389f83e))
+* **bot:** give each admin their own persistent language ([86c8010](https://github.com/maxbolgarin/unread/commit/86c80107c4081ff13287597e137bd507ab1b2001))
+
+### 🐛 Bug Fixes
+
+* **analyze:** correct the fact-check bugs found in review; refresh models ([a5db174](https://github.com/maxbolgarin/unread/commit/a5db1746d57480c7e305bb2669dc932ba1358e78))
+* **youtube:** order the caption picker by name, pin English and Russian ([d58ac5a](https://github.com/maxbolgarin/unread/commit/d58ac5a2a25faade06ec35d449527541161e95e2))
+* **ai:** pin the fact-check flagship to gpt-5.6-sol, not terra ([3cf625b](https://github.com/maxbolgarin/unread/commit/3cf625bc8de58b9258ed1d631ab58ff4a48fed52))
+* **youtube:** quieten yt-dlp probes, add a cost confirm, cheapen factcheck ([570b9d5](https://github.com/maxbolgarin/unread/commit/570b9d5122bc194619bf106fd92eeb19a54f0791))
+* **presets:** remove the fact-check claim cap, order claims chronologically ([af2c1ab](https://github.com/maxbolgarin/unread/commit/af2c1ab6b643efa8e982844c040c41e225c63978))
+* **report:** render the metadata table in the run's language ([f9657a7](https://github.com/maxbolgarin/unread/commit/f9657a7b2223d31522a961d347deffb9e814c879))
+* **youtube:** stop the cached panel claiming "no captions", widen factcheck budget ([3aa3f6f](https://github.com/maxbolgarin/unread/commit/3aa3f6f46fc94424d10cda7e1ec8ac50ce7768ba))
+
+### 🚨 Tests
+
+* **bot:** guard against the cost confirm hanging a bot request ([ac7ac6f](https://github.com/maxbolgarin/unread/commit/ac7ac6f34ccbc8769b00ba38524ca309c970908f))
+
 ## [1.3.0](https://github.com/maxbolgarin/unread/compare/v1.2.1...v1.3.0) (2026-08-23)
 
 ### 🚀 Features
