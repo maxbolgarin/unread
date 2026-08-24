@@ -1905,7 +1905,7 @@ wheels = [
 
 [[package]]
 name = "unread"
-version = "1.4.2"
+version = "1.5.1"
 source = { editable = "." }
 dependencies = [
     { name = "aiosqlite" },

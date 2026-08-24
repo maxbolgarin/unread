@@ -32,7 +32,11 @@ FROM python:3.11-slim AS base
 #   font files a rendered PDF falls back to whatever the base image
 #   happens to have — which had no emoji, so a fact-check verdict table
 #   showed ✅/❌ as tofu boxes while ⚠️ came through. dejavu covers
-#   Latin/Cyrillic text, noto-color-emoji covers the verdict icons.
+#   Latin/Cyrillic text, symbola covers the verdict icons.
+#   NOT noto-color-emoji: its glyphs are CBDT colour bitmaps, which
+#   WeasyPrint cannot embed in a PDF, and its cmap also claims the
+#   ASCII digits (the keycap bases for 0️⃣-9️⃣) — so installing it blanked
+#   every number in the report. Symbola is monochrome outlines.
 # - libpango / libpangoft2: backs `weasyprint` for markdown → PDF
 #   report rendering. Since v1.x, weasyprint is a base dep (not a
 #   `[bot]` extra) so phone Telegram clients get PDF reports out of
@@ -44,7 +48,7 @@ RUN apt-get update \
         libpango-1.0-0 \
         libpangoft2-1.0-0 \
         fonts-dejavu-core \
-        fonts-noto-color-emoji \
+        fonts-symbola \
  && rm -rf /var/lib/apt/lists/*
 
 # Install the project into the system site-packages. We don't use a

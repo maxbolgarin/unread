@@ -197,6 +197,25 @@ runtime_packages() {
   esac
 }
 
+# Fonts for the PDF reports. libpango is the SHAPING ENGINE, not a font:
+# with none installed, a PDF falls back to whatever the box happens to
+# have and a fact-check verdict table renders ✅/❌ as tofu. dejavu draws
+# Latin/Cyrillic, symbola draws the verdict icons as monochrome outlines
+# (a COLOUR emoji font is useless here — WeasyPrint cannot embed colour
+# bitmap glyphs in a PDF, so they come out blank).
+#
+# Best-effort on purpose: these names don't exist on every distro, and a
+# missing font must never abort an otherwise fine install. Worst case the
+# icons degrade to tofu — every preset writes the verdict word next to
+# the icon, so the report still reads.
+font_packages() {
+  case "$PKG" in
+    apt)    echo "fonts-dejavu-core fonts-symbola" ;;
+    dnf)    echo "dejavu-sans-fonts" ;;
+    *)      echo "" ;;
+  esac
+}
+
 # ---------------------------------------------------------------------------
 # Optional reset
 # ---------------------------------------------------------------------------
@@ -242,6 +261,17 @@ if [[ "$NEEDS_INSTALL" == "1" ]]; then
   ok "System deps installed."
 else
   ok "ffmpeg already present: $(ffmpeg -version 2>/dev/null | head -n1)"
+fi
+
+# Fonts, separately and non-fatally — see font_packages().
+FONT_PKGS="$(font_packages)"
+if [[ -n "$FONT_PKGS" ]]; then
+  # shellcheck disable=SC2086
+  if pkg_install $FONT_PKGS >/dev/null 2>&1; then
+    ok "PDF report fonts installed."
+  else
+    warn "Could not install PDF fonts ($FONT_PKGS) — reports still render, verdict icons may show as boxes."
+  fi
 fi
 
 # ---------------------------------------------------------------------------

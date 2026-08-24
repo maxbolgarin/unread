@@ -39,16 +39,39 @@ _PDF_CSS = """
 }
 body {
     /* `-apple-system` / `Segoe UI` don't exist on the Linux box that
-       actually renders these; DejaVu does. The emoji families are the
-       fallback for the verdict icons — without one, ✅/❌ render as
-       tofu boxes. */
-    font-family: -apple-system, "Helvetica Neue", "Segoe UI", "DejaVu Sans",
-                 "Liberation Sans", sans-serif, "Noto Color Emoji",
-                 "Apple Color Emoji", "Segoe UI Emoji";
+       actually renders these; DejaVu does, so it leads.
+
+       NO emoji family belongs in this list. An emoji font covers far
+       more than emoji — Noto Color Emoji's cmap includes the ASCII
+       digits, since they are the keycap bases for 0️⃣-9️⃣ — and naming
+       one here let fontconfig hand it every number in the report. Its
+       glyphs are CBDT colour bitmaps, which WeasyPrint cannot embed in
+       a PDF, so they came out as blank space. Emoji go through
+       `_pdf_worker.wrap_emoji_spans` into `.emoji` below. */
+    font-family: "DejaVu Sans", "Liberation Sans", -apple-system,
+                 "Helvetica Neue", "Segoe UI", sans-serif;
     font-size: 11pt;
     line-height: 1.45;
     color: #222;
 }
+/* The verdict icons, and only them. Symbola draws ✅ ❌ ⚠ 🎭 ❓ as
+   ordinary monochrome outlines, so they embed like any other glyph.
+   Deliberately no colour emoji font in this list either: a colour font
+   here renders as invisible rather than as a fallback box. On a host
+   with none of these installed the icons drop to tofu — every preset
+   pairs each icon with its word, so the verdict still reads. */
+.emoji {
+    font-family: "Symbola", "Noto Sans Symbols2", "Segoe UI Symbol",
+                 "DejaVu Sans", sans-serif;
+    /* Symbola's outlines are hairline next to DejaVu's text weight. */
+    font-size: 1.12em;
+    line-height: 1;
+}
+.emoji-ok   { color: #1a7f37; }
+.emoji-bad  { color: #c0362c; }
+.emoji-warn { color: #b26a00; }
+.emoji-spin { color: #7048a8; }
+.emoji-unk  { color: #6b6b6b; }
 h1, h2, h3, h4 { color: #111; page-break-after: avoid; break-after: avoid; }
 h1 { font-size: 1.5em; margin-top: 0.2em; }
 h2 { font-size: 1.25em; margin-top: 1.4em; border-bottom: 1px solid #ddd; padding-bottom: 0.2em; }
