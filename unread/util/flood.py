@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import functools
 import random
+import re
 from collections.abc import Awaitable, Callable
 from typing import Any, TypeVar
 
@@ -101,6 +102,67 @@ def retry_on_flood(
     return wrap
 
 
+# Upper bound on a provider-supplied wait. A 429 asking for an hour
+# should not wedge one request for an hour — better to fail and let the
+# caller decide.
+_MAX_RETRY_AFTER_SECONDS = 300.0
+
+# "Please try again in 12.953s" / "in 550ms" — the phrasing OpenAI uses in
+# the 429 body when the header is absent.
+_RETRY_AFTER_TEXT_RE = re.compile(r"try again in\s+([0-9.]+)\s*(ms|s)\b", re.IGNORECASE)
+
+# Header carrying a duration string ("12.953s", "550ms") rather than a
+# plain seconds count.
+_DURATION_RE = re.compile(r"^\s*([0-9.]+)\s*(ms|s)?\s*$", re.IGNORECASE)
+
+
+def _coerce_duration(raw: str) -> float | None:
+    m = _DURATION_RE.match(raw)
+    if not m:
+        return None
+    try:
+        value = float(m.group(1))
+    except ValueError:
+        return None
+    return value / 1000.0 if (m.group(2) or "").lower() == "ms" else value
+
+
+def retry_after_hint(err: Any) -> float | None:
+    """Seconds the provider asked us to wait, or None if it didn't say.
+
+    Checked in order: the standard `retry-after` header, OpenAI's
+    `x-ratelimit-reset-*` duration headers, then the message body. Without
+    this the backoff is blind exponential — answering a "try again in
+    12.953s" with 1.2s just burns an attempt, since the limit window
+    hasn't moved.
+    """
+    headers = getattr(getattr(err, "response", None), "headers", None) or {}
+    try:
+        lowered = {str(k).lower(): str(v) for k, v in dict(headers).items()}
+    except Exception:  # header container that isn't dict-like
+        lowered = {}
+
+    for key in ("retry-after", "x-ratelimit-reset-tokens", "x-ratelimit-reset-requests"):
+        raw = lowered.get(key)
+        if raw is None:
+            continue
+        value = _coerce_duration(raw)
+        if value is not None and value > 0:
+            return min(value, _MAX_RETRY_AFTER_SECONDS)
+
+    text = getattr(err, "message", None) or str(err)
+    m = _RETRY_AFTER_TEXT_RE.search(text or "")
+    if not m:
+        return None
+    try:
+        value = float(m.group(1))
+    except ValueError:
+        return None
+    if m.group(2).lower() == "ms":
+        value /= 1000.0
+    return min(value, _MAX_RETRY_AFTER_SECONDS) if value > 0 else None
+
+
 def retry_on_429(
     max_retries: int = 5, base: float = 1.5, cap: float = 30.0
 ) -> Callable[[Callable[..., Awaitable[T]]], Callable[..., Awaitable[T]]]:
@@ -144,10 +206,19 @@ def retry_on_429(
                         )
                         raise
                     delay = min(base**attempt, cap) + random.uniform(0, 1)
+                    # A provider that tells us how long to wait knows
+                    # better than our exponential guess. Answering "try
+                    # again in 12.953s" with 1.2s just burns an attempt:
+                    # the limit window hasn't moved, so the retry fails
+                    # exactly the same way.
+                    hinted = retry_after_hint(e)
+                    if hinted is not None and hinted > delay:
+                        delay = hinted + random.uniform(0, 1)
                     log.warning(
                         "openai.retry",
                         attempt=attempt + 1,
                         delay=round(delay, 2),
+                        hinted=round(hinted, 2) if hinted is not None else None,
                         err=type(e).__name__,
                     )
                     label = "Rate limited" if is_rate_limit else type(e).__name__

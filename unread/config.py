@@ -56,6 +56,12 @@ class OpenAICfg(_StrictCfg):
     temperature: float = 0.2
 
 
+# Providers accepted by `UNREAD_AI_<SLOT>_PROVIDER`. Mirrors the dispatch
+# in `unread.ai.providers.make_chat_provider` — a typo here should fail at
+# load with the valid names, not surface mid-run as "Unknown AI provider".
+_VALID_AI_PROVIDERS: frozenset[str] = frozenset({"openai", "openrouter", "anthropic", "google", "local"})
+
+
 class AICfg(_StrictCfg):
     """Per-slot AI routing.
 
@@ -830,6 +836,24 @@ def load_settings(config_path: Path | str | None = None) -> Settings:
     # configure a container without baking secrets into the image.
     if "bot" not in raw:
         raw["bot"] = {}
+    # Per-slot AI routing from the environment. A container has its own
+    # `~/.unread`, so `unread settings` on a laptop never reaches it —
+    # without these the only way to point a Docker bot at another
+    # provider was SSH-ing in or baking a config.toml into the image.
+    if "ai" not in raw:
+        raw["ai"] = {}
+    for slot in ("chat", "filter", "audio", "vision"):
+        if provider := _env(f"UNREAD_AI_{slot.upper()}_PROVIDER"):
+            value = provider.strip().lower()
+            if value not in _VALID_AI_PROVIDERS:
+                raise ValueError(
+                    f"UNREAD_AI_{slot.upper()}_PROVIDER must be one of "
+                    f"{', '.join(sorted(_VALID_AI_PROVIDERS))}, got: {provider!r}"
+                )
+            raw["ai"][f"{slot}_provider"] = value
+        if model := _env(f"UNREAD_AI_{slot.upper()}_MODEL"):
+            raw["ai"][f"{slot}_model"] = model.strip()
+
     if bot_token := _env("UNREAD_BOT_TOKEN"):
         raw["bot"]["token"] = bot_token
     if bot_owner := (_env("UNREAD_BOT_OWNER_ID") or _env("UNREAD_BOT_OWNER_IDS")):

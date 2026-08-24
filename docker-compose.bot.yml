@@ -38,6 +38,14 @@ services:
       TELEGRAM_API_ID: "${TELEGRAM_API_ID:?TELEGRAM_API_ID is required}"
       TELEGRAM_API_HASH: "${TELEGRAM_API_HASH:?TELEGRAM_API_HASH is required}"
 
+      # Which provider/model the bot uses. The container has its own
+      # ~/.unread, so `unread settings` on your laptop does NOT reach it —
+      # set the provider here or the bot falls back to openai.
+      UNREAD_AI_CHAT_PROVIDER: "${UNREAD_AI_CHAT_PROVIDER:-}"
+      UNREAD_AI_CHAT_MODEL: "${UNREAD_AI_CHAT_MODEL:-}"
+      UNREAD_AI_FILTER_PROVIDER: "${UNREAD_AI_FILTER_PROVIDER:-}"
+      UNREAD_AI_FILTER_MODEL: "${UNREAD_AI_FILTER_MODEL:-}"
+
       OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
       GOOGLE_API_KEY: "${GOOGLE_API_KEY:-}"
