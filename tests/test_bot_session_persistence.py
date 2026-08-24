@@ -62,44 +62,68 @@ async def test_start_uses_a_persistent_session_not_an_in_memory_one(app) -> None
     assert seen["start"]["bot_token"] == "123:abc"
 
 
-async def test_start_raises_a_clear_error_on_flood_wait(app) -> None:
-    """Crash-looping on a flood wait re-triggers the same limit. The
-    operator needs to be told to STOP restarting, with the wait time."""
+async def test_flood_wait_is_slept_through_in_process(app) -> None:
+    """Exiting is the wrong response to a WAIT: `restart: unless-stopped`
+    turns any exit into a restart loop that re-enters the same limit —
+    observed hammering once per second. The process must sleep in place
+    and retry, which needs no operator action at all."""
     from telethon.errors import FloodWaitError
 
-    class _FakeClient:
+    err = FloodWaitError(request=None)
+    err.seconds = 120
+    attempts: list[int] = []
+    slept: list[float] = []
+
+    class _FloodThenOk:
         def __init__(self, *_a, **_kw):
             pass
 
         async def start(self, **_kw):
-            raise FloodWaitError(request=None)
+            attempts.append(1)
+            if len(attempts) == 1:
+                raise err
+            return self
 
-    err = FloodWaitError(request=None)
-    err.seconds = 790
+    async def _fake_sleep(seconds):
+        slept.append(seconds)
 
-    class _FloodClient(_FakeClient):
-        async def start(self, **_kw):
-            raise err
-
-    with patch("unread.bot.app.TelegramClient", _FloodClient), pytest.raises(SystemExit):
+    with (
+        patch("unread.bot.app.TelegramClient", _FloodThenOk),
+        patch("unread.bot.app.asyncio.sleep", _fake_sleep),
+    ):
         await app._start_bot_client()
 
+    assert len(attempts) == 2, "must retry after the wait, not give up"
+    assert slept and slept[0] >= 120, "must sleep at least the requested wait"
+    assert app.bot_client is not None
 
-async def test_flood_wait_message_names_the_wait_and_the_cause(app, capsys) -> None:
+
+async def test_flood_wait_does_not_exit_on_the_first_failure(app) -> None:
+    """A SystemExit here is what produced the restart loop."""
     from telethon.errors import FloodWaitError
 
     err = FloodWaitError(request=None)
-    err.seconds = 790
+    err.seconds = 5
+    calls: list[int] = []
 
-    class _FloodClient:
+    class _AlwaysFlood:
         def __init__(self, *_a, **_kw):
             pass
 
         async def start(self, **_kw):
+            calls.append(1)
             raise err
 
-    with patch("unread.bot.app.TelegramClient", _FloodClient), pytest.raises(SystemExit):
+    async def _fake_sleep(_s):
+        return None
+
+    with (
+        patch("unread.bot.app.TelegramClient", _AlwaysFlood),
+        patch("unread.bot.app.asyncio.sleep", _fake_sleep),
+        pytest.raises(Exception) as caught,
+    ):
         await app._start_bot_client()
-    out = capsys.readouterr().out.lower()
-    assert "790" in out or "13" in out
-    assert "restart" in out
+
+    # It may eventually give up, but only after genuinely retrying.
+    assert len(calls) > 1, "gave up without retrying — that is the restart loop"
+    assert not isinstance(caught.value, SystemExit) or len(calls) > 1

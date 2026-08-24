@@ -47,6 +47,12 @@ def _extra_admins_suffix(owner_id: int, allowed_ids: set[int]) -> str:
     return " · admins=[cyan]" + ",".join(str(i) for i in extras) + "[/]"
 
 
+# Sign-in attempts before giving up on a Telegram flood wait. Each failure
+# sleeps the full wait it was given, so this is "tolerate three separate
+# limits", not "retry three times quickly".
+_BOT_START_FLOOD_RETRIES = 3
+
+
 class BotApp:
     """Bot-mode Telegram client + per-message dispatcher.
 
@@ -201,25 +207,38 @@ class BotApp:
             api_id=s.telegram.api_id,
             api_hash=s.telegram.api_hash,
         )
-        try:
-            await client.start(bot_token=s.bot.token)
-        except FloodWaitError as e:
-            wait = int(getattr(e, "seconds", 0) or 0)
-            mins = max(1, round(wait / 60))
-            console.print(
-                f"[red]Telegram is rate-limiting this bot token:[/] it wants "
-                f"{wait}s (~{mins} min) before the next sign-in.\n"
-                "[yellow]Do NOT restart the container in a loop[/] — every attempt "
-                "re-triggers the same limit and can extend it. Stop the container, "
-                f"wait ~{mins} minutes, then start it once:\n"
-                "  docker compose -f docker-compose.bot.yml --env-file .env.bot stop\n"
-                f"  sleep {wait}\n"
-                "  docker compose -f docker-compose.bot.yml --env-file .env.bot up -d\n"
-                "Once it signs in, the session is saved and restarts no longer "
-                "re-authorize."
-            )
-            log.error("bot.client.flood_wait", seconds=wait)
-            raise SystemExit(1) from e
+        # A flood wait is a WAIT, not a fatal error — so sleep it out in
+        # process. Exiting looks tidier but is actively harmful under
+        # `restart: unless-stopped`: the container comes straight back,
+        # re-enters the same limit, and hammers it (observed once per
+        # second). Sleeping here needs no operator action and cannot
+        # re-trigger anything.
+        for attempt in range(_BOT_START_FLOOD_RETRIES):
+            try:
+                await client.start(bot_token=s.bot.token)
+                break
+            except FloodWaitError as e:
+                wait = int(getattr(e, "seconds", 0) or 0)
+                mins = max(1, round(wait / 60))
+                if attempt == _BOT_START_FLOOD_RETRIES - 1:
+                    console.print(
+                        f"[red]Telegram is still rate-limiting this bot token[/] "
+                        f"after {_BOT_START_FLOOD_RETRIES} attempts ({wait}s left). "
+                        "Giving up so the container doesn't sit here forever — "
+                        "start it again once the wait has passed."
+                    )
+                    log.error("bot.client.flood_wait_giving_up", seconds=wait)
+                    raise
+                console.print(
+                    f"[yellow]Telegram is rate-limiting this bot token:[/] waiting "
+                    f"{wait}s (~{mins} min) before retrying, in place. "
+                    "Leave the container running — restarting it would only "
+                    "re-enter the same limit. Once it signs in, the session is "
+                    "saved and future restarts re-authorize nothing."
+                )
+                log.warning("bot.client.flood_wait", seconds=wait, attempt=attempt + 1)
+                # Small cushion so we don't wake a beat early and burn a retry.
+                await asyncio.sleep(wait + 5)
         self.bot_client = client
         log.info("bot.client.started", session=str(session_path))
 
