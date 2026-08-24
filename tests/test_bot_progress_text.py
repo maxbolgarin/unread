@@ -86,3 +86,21 @@ def test_line_falls_back_to_the_configured_model_for_an_unpinned_preset(settings
 
     line = run_status_line(preset="nonesuch", settings=settings, source="video")
     assert resolve_chat_model(settings) in line
+
+
+def test_line_names_the_real_default_provider_when_unset() -> None:
+    """On a fresh install both `ai.chat_provider` and the legacy
+    `ai.provider` are empty, but the effective provider is openai — the
+    line said `?`, which reads as "something is broken"."""
+    from unread.config import load_settings, reset_settings
+
+    reset_settings()
+    try:
+        s = load_settings()
+        s.ai.chat_provider = ""
+        s.ai.provider = ""
+        line = run_status_line(preset="summary", settings=s, source="video")
+        assert "?" not in line
+        assert "openai" in line.lower()
+    finally:
+        reset_settings()

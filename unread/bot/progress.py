@@ -54,7 +54,9 @@ def run_status_line(*, preset: str, settings: Any, source: str) -> str:
             model = resolve_chat_model(settings)
         except Exception:  # unconfigured provider
             model = "?"
-    provider = getattr(settings.ai, "chat_provider", "") or getattr(settings.ai, "provider", "") or "?"
+    # "openai", not "?": both keys are empty on a fresh install, but the
+    # resolver's own fallback is openai. Rendering "?" reads as breakage.
+    provider = getattr(settings.ai, "chat_provider", "") or getattr(settings.ai, "provider", "") or "openai"
 
     bits = [f"{verb} {source}…", f"preset `{preset}`", f"`{provider}`/`{model}`"]
     if searching:
