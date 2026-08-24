@@ -1,3 +1,19 @@
+## [1.5.0](https://github.com/maxbolgarin/unread/compare/v1.4.2...v1.5.0) (2026-08-24)
+
+### 🚀 Features
+
+* **bot:** /format pdf|md|rich to choose how reports come back ([df5df50](https://github.com/maxbolgarin/unread/commit/df5df50eb2a005a21918deb20ddefe3f6f6dc5a3))
+* **bot:** change provider, model and API key from /settings ([42eeab3](https://github.com/maxbolgarin/unread/commit/42eeab3c2c2714ae04273ddb2b347aa56f73c7d2))
+* **bot:** live progress in the status message and /stop to cancel a run ([b85d5ae](https://github.com/maxbolgarin/unread/commit/b85d5aef6550d4835be755af25032e8d4236c98e))
+* **bot:** say "Fact-checking" and name the model in the progress line ([fbf179d](https://github.com/maxbolgarin/unread/commit/fbf179d78f642e336507cf4fdd513d5ab8f7fac4))
+
+### 🐛 Bug Fixes
+
+* **bot:** correct the 14 defects found reviewing the settings/progress work ([a54798c](https://github.com/maxbolgarin/unread/commit/a54798c548c116058ff0514c8cff35d98841bff1))
+* **ai:** honour the provider's retry-after; allow provider/model from env ([e968db9](https://github.com/maxbolgarin/unread/commit/e968db962bb8fde9849a33acb4f8b3ec49083d63))
+* **bot:** show "openai" not "?" when no provider is configured ([31753a5](https://github.com/maxbolgarin/unread/commit/31753a57343baad26a53d7f22192d18f1bde2f28))
+* **bot:** show the model the run will actually use; add /format primitives ([6e235db](https://github.com/maxbolgarin/unread/commit/6e235db682637528134549670738ebf3a0d15c82))
+
 ## [1.4.2](https://github.com/maxbolgarin/unread/compare/v1.4.1...v1.4.2) (2026-08-24)
 
 ### 🐛 Bug Fixes
