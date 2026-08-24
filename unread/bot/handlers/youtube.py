@@ -60,33 +60,50 @@ async def execute(
     else:
         await edit_progress(progress_msg, f"⏳ Pulling transcript for `{video_id}`…")
     try:
-        from unread.bot.progress import run_status_line
+        from unread.bot.progress import LiveProgress, run_status_line
+        from unread.util.flood import status_sink
 
-        await edit_progress(progress_msg, run_status_line(preset=preset, settings=s, source="video"))
+        header = run_status_line(preset=preset, settings=s, source="video")
+        await edit_progress(progress_msg, header)
+        live = LiveProgress(progress_msg)
+
+        async def _on_progress(text: str) -> None:
+            await live(f"{header}\n{text}")
+
+        def _on_status(text: str) -> None:
+            # Retry notices arrive from a sync context deep in the SDK
+            # retry loop, so schedule the edit rather than awaiting it.
+            import asyncio as _asyncio
+
+            with contextlib.suppress(RuntimeError):
+                _asyncio.get_running_loop().create_task(live.flush(f"{header}\n⏳ {text}"))
+
         language = effective_language(chat_state, s)
         report_language = effective_report_language(chat_state, s)
-        await cmd_analyze_youtube(
-            url=url,
-            preset=preset or None,
-            prompt_file=None,
-            model=None,
-            filter_model=None,
-            output=None,
-            console_out=False,
-            no_console=True,
-            no_cache=False,
-            max_cost=None,
-            dry_run=False,
-            self_check=False,
-            cite_context=0,
-            post_to=None,
-            post_saved=False,
-            language=language,
-            report_language=report_language,
-            source_language=effective_source_language(chat_state, s),
-            youtube_source=options.youtube_source or "auto",
-            yes=True,
-        )
+        with status_sink(_on_status):
+            await cmd_analyze_youtube(
+                url=url,
+                preset=preset or None,
+                prompt_file=None,
+                model=None,
+                filter_model=None,
+                output=None,
+                console_out=False,
+                no_console=True,
+                no_cache=False,
+                max_cost=None,
+                dry_run=False,
+                self_check=False,
+                cite_context=0,
+                post_to=None,
+                post_saved=False,
+                language=language,
+                report_language=report_language,
+                source_language=effective_source_language(chat_state, s),
+                youtube_source=options.youtube_source or "auto",
+                yes=True,
+                on_progress=_on_progress,
+            )
         await edit_progress(progress_msg, "📄 Sending report…")
         from unread.bot import reply
 

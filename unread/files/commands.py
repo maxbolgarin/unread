@@ -26,6 +26,7 @@ import hashlib
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import typer
 from rich.console import Console
@@ -272,6 +273,9 @@ async def cmd_analyze_file(
     report_language: str = "en",
     source_language: str = "",
     yes: bool = False,
+    # Optional async callback for a non-terminal caller (the bot) that
+    # wants phase updates; see `run_analysis`.
+    on_progress: Any = None,
 ) -> None:
     """Analyze a local file or stdin. Same flag set as the chat / website paths."""
     from unread.analyzer.commands import (
@@ -419,6 +423,7 @@ async def cmd_analyze_file(
 
         console.print(f"[grey70]{_t('running_analysis')}[/]")
         result = await run_analysis(
+            on_progress=on_progress,
             repo=repo,
             chat_id=0,
             thread_id=None,

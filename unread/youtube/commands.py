@@ -12,6 +12,7 @@ import re
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import typer
 from rich.console import Console
@@ -539,6 +540,9 @@ async def cmd_analyze_youtube(
     youtube_source: TranscriptSource = "auto",
     yes: bool = False,
     transcript_lang: str | None = None,
+    # Optional async callback for a non-terminal caller (the bot) that
+    # wants phase updates; see `run_analysis`.
+    on_progress: Any = None,
 ) -> None:
     """Analyze one YouTube video. Captions-first, Whisper fallback."""
     from unread.analyzer.commands import (
@@ -911,6 +915,7 @@ async def cmd_analyze_youtube(
 
         console.print(f"[grey70]{_t('running_analysis')}[/]")
         result = await run_analysis(
+            on_progress=on_progress,
             repo=repo,
             chat_id=0,
             thread_id=None,

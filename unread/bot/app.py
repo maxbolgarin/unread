@@ -92,6 +92,11 @@ class BotApp:
         self._chat_state: dict[int, dict] = {}
         # In-flight task set so a graceful shutdown can await them.
         self._tasks: set[asyncio.Task] = set()
+        # The analyze task currently running for each chat, so `/stop` can
+        # cancel one admin's run without touching anybody else's. Keyed by
+        # chat_id and self-cleaning: the done-callback drops the entry, so
+        # a finished run is never reported as cancellable.
+        self._running: dict[int, asyncio.Task] = {}
 
     @property
     def owner_id(self) -> int:
@@ -437,6 +442,21 @@ class BotApp:
             log.exception("bot.add_to_burst_failed", kind=kind)
             await _safe_reply(event, "⚠️ Couldn't queue the message.")
 
+    def register_running(self, chat_id: int, task: asyncio.Task) -> None:
+        """Mark `task` as this chat's in-flight run, for `/stop`."""
+        self._running[chat_id] = task
+        task.add_done_callback(lambda _t: self._running.pop(chat_id, None))
+
+    def stop_running(self, chat_id: int) -> bool:
+        """Cancel this chat's in-flight run. True if there was one."""
+        task = self._running.get(chat_id)
+        if task is None or task.done():
+            self._running.pop(chat_id, None)
+            return False
+        task.cancel()
+        self._running.pop(chat_id, None)
+        return True
+
     def is_primary_owner(self, sender_id: int) -> bool:
         """True when `sender_id` owns the Telegram session the bot reads.
 
@@ -626,6 +646,10 @@ class BotApp:
                 panel=pending.options,
             )
             async with self._semaphore:
+                # Registered so `/stop` can cancel THIS chat's run without
+                # touching another admin's. Registration happens inside the
+                # semaphore so a queued run isn't advertised as running.
+                self.register_running(item.event.chat_id, asyncio.current_task())
                 try:
                     await self._run_execute(
                         item.event,
@@ -634,6 +658,12 @@ class BotApp:
                         options,
                         progress_msg=panel_msg,
                     )
+                except asyncio.CancelledError:
+                    # `/stop`. Acknowledge in the chat rather than letting
+                    # the task die silently, and re-raise so the loop sees
+                    # the cancellation.
+                    await _safe_reply(item.event, "🛑 Stopped.")
+                    raise
                 except Exception as e:
                     if _is_clean_exit(e):
                         return

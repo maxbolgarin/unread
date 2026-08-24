@@ -569,6 +569,7 @@ async def run_analysis(
     language: str | None = None,
     report_language: str | None = None,
     source_language: str | None = None,
+    on_progress: Any = None,
     link_template_override: str | None = None,
 ) -> AnalysisResult:
     """Run the end-to-end analysis for a chat/thread/period.
@@ -602,6 +603,21 @@ async def run_analysis(
         report_language = _resolve_report_lang(settings)
     if source_language is None:
         source_language = _resolve_source_hint(settings)
+
+    async def _emit(text: str) -> None:
+        """Best-effort progress notification for a non-terminal caller.
+
+        Swallows everything: progress is decoration, and a failed
+        Telegram edit must never lose an analysis the user already paid
+        for.
+        """
+        if on_progress is None:
+            return
+        try:
+            await on_progress(text)
+        except Exception:
+            log.debug("analyze.progress_callback_failed", exc_info=True)
+
     # `report_language` selects the prompts tree (presets/<lang>/) and
     # every LLM-facing string (system prompt, formatter labels, reduce
     # prompt, ask system prompt). `language` is only the UI / saved-
@@ -895,6 +911,7 @@ async def run_analysis(
         )
         bhash = batch_hash(preset.name, preset.prompt_version, final_model, chunk.msg_ids, call_options)
         batch_hashes.append(bhash)
+        await _emit(f"Analyzing {len(msgs)} messages in one pass ({final_model})…")
         text, cost, hit, truncated = await _progress_single(
             label=f"Analyzing ({len(msgs)} msgs, {preset.name}/{final_model})",
             coro=_call_cached(
@@ -984,6 +1001,8 @@ async def run_analysis(
         disable=_is_silent(),
     ) as _map_progress:
         _map_task = _map_progress.add_task("map", total=len(chunks), model=filter_model)
+        await _emit(f"Analyzing {len(chunks)} chunks ({filter_model})… 0/{len(chunks)}")
+        _done_chunks = 0
 
         async def _map(chunk) -> tuple[str, str, float, bool, bool]:
             dynamic = _maybe_redact(
@@ -1032,6 +1051,9 @@ async def run_analysis(
                 return bh, t, c, hit, tr
             finally:
                 _map_progress.advance(_map_task)
+                nonlocal _done_chunks
+                _done_chunks += 1
+                await _emit(f"Analyzing {len(chunks)} chunks ({filter_model})… {_done_chunks}/{len(chunks)}")
 
         map_results = await asyncio.gather(*[_map(c) for c in chunks])
     map_hashes = [mh for mh, _, _, _, _ in map_results]
@@ -1077,6 +1099,7 @@ async def run_analysis(
     )
     reduce_bh = reduce_hash(preset.name, preset.prompt_version, final_model, map_hashes, reduce_options)
     batch_hashes.append(reduce_bh)
+    await _emit(f"Merging {len(map_results)} fragments ({final_model})…")
     text, cost, hit, truncated = await _progress_single(
         label=f"Merging {len(map_results)} fragments ({final_model})",
         coro=_call_cached(

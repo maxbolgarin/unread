@@ -25,6 +25,7 @@ Slash commands:
 `/window <day|week|month|msg|from_msg|none>` — sticky default TG window
 `/confirm on|off` — toggle the pre-run confirm panel (default: on)
 `/upload_session` — install your Telegram user session (one-time)
+`/stop` — cancel the run currently in progress in this chat
 `/cancel` — drop any pending `/upload_session`
 """
 
@@ -71,6 +72,13 @@ async def handle(
 
     if cmd in ("start", "help"):
         await event.reply(_build_help_text(app), parse_mode="md")
+        return
+
+    if cmd == "stop":
+        if app.stop_running(event.chat_id):
+            await event.reply("🛑 Stopped the run in progress.")
+        else:
+            await event.reply("Nothing is running in this chat right now.")
         return
 
     if cmd == "ping":

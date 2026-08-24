@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import typer
 from rich.console import Console
@@ -291,6 +292,9 @@ async def cmd_analyze_website(
     report_language: str = "en",
     source_language: str = "",
     yes: bool = False,
+    # Optional async callback for a non-terminal caller (the bot) that
+    # wants phase updates; see `run_analysis`.
+    on_progress: Any = None,
 ) -> None:
     """Analyze a single web page. Fetches once, caches by content hash."""
     from unread.analyzer.commands import (
@@ -430,6 +434,7 @@ async def cmd_analyze_website(
 
         console.print(f"[grey70]{_t('running_analysis')}[/]")
         result = await run_analysis(
+            on_progress=on_progress,
             repo=repo,
             chat_id=0,
             thread_id=None,

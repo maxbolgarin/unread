@@ -15,6 +15,7 @@ Use everywhere instead of bare `await msg.edit(text)`.
 from __future__ import annotations
 
 import contextlib
+import time
 from typing import Any
 
 
@@ -64,6 +65,50 @@ def run_status_line(*, preset: str, settings: Any, source: str) -> str:
 def _report_lang(settings: Any) -> str:
     locale = getattr(settings, "locale", None)
     return (getattr(locale, "report_language", "") or getattr(locale, "language", "") or "en").lower()
+
+
+class LiveProgress:
+    """Throttled progress-message editor for one in-flight bot run.
+
+    The pipeline emits an update per finished chunk; Telegram rate-limits
+    edits, so a 30-chunk run firing 30 edits in a burst earns the bot a
+    flood wait. This lets the first update through immediately (waiting
+    out the window before the FIRST edit leaves the user staring at a
+    stale line) and then at most one per `min_interval`.
+
+    Every edit is best-effort: progress is decoration and must never kill
+    the run it describes.
+    """
+
+    def __init__(self, msg: Any, *, min_interval: float = 3.0) -> None:
+        self._msg = msg
+        self._min_interval = min_interval
+        self._last_at = 0.0
+        self._last_text = ""
+
+    async def __call__(self, text: str) -> None:
+        now = time.monotonic()
+        if self._last_at and (now - self._last_at) < self._min_interval:
+            return
+        await self._write(text, now)
+
+    async def flush(self, text: str) -> None:
+        """Write unconditionally — for the final line of a run.
+
+        Without this the message can end on a stale "2/3" because the
+        last update landed inside the throttle window.
+        """
+        await self._write(text, time.monotonic())
+
+    async def _write(self, text: str, now: float) -> None:
+        if self._msg is None or text == self._last_text:
+            # Telegram rejects a no-op edit with MESSAGE_NOT_MODIFIED;
+            # don't spend a request to find that out.
+            return
+        self._last_at = now
+        self._last_text = text
+        with contextlib.suppress(Exception):
+            await self._msg.edit(text, buttons=None)
 
 
 async def edit_progress(msg: Any, text: str) -> None:

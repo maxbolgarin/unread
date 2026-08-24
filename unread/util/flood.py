@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import functools
 import random
 import re
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Any, TypeVar
 
 from unread.util.logging import get_logger
@@ -15,14 +18,42 @@ log = get_logger(__name__)
 T = TypeVar("T")
 
 
+# Installed by a non-terminal consumer (the bot) that wants these
+# notices too. A ContextVar rather than a module global because bot
+# requests run concurrently under one process — a plain global would
+# deliver one chat's "rate limited" line into another chat's message.
+_status_sink: ContextVar[Callable[[str], None] | None] = ContextVar("unread_status_sink", default=None)
+
+
+@contextmanager
+def status_sink(fn: Callable[[str], None]) -> Iterator[None]:
+    """Route retry/status notices to `fn` for the duration of the block."""
+    token = _status_sink.set(fn)
+    try:
+        yield
+    finally:
+        _status_sink.reset(token)
+
+
 def _user_visible_retry_status(message: str) -> None:
-    """Surface a one-line retry status to the terminal, when interactive.
+    """Surface a one-line retry status, to a sink or to the terminal.
 
     A long run that hits a 429 / FloodWait used to look frozen — the
     log line went to disk but never reached stdout. This emits a single
     yellow line via Rich when stderr is a TTY; in a non-interactive run
     (CI, scripted) we stay silent and rely on the structured log.
+
+    When a `status_sink` is installed it takes precedence — that's how
+    the bot turns "retrying in 13s" into a message edit instead of
+    writing to a terminal nobody is watching.
     """
+    sink = _status_sink.get()
+    if sink is not None:
+        # Display is best-effort; never let a UI hiccup change retry
+        # semantics. Same contract as the terminal path below.
+        with contextlib.suppress(Exception):
+            sink(message)
+        return
     try:
         import sys as _sys
 
