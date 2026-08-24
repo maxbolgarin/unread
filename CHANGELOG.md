@@ -1,3 +1,13 @@
+## [1.6.0](https://github.com/maxbolgarin/unread/compare/v1.5.2...v1.6.0) (2026-08-24)
+
+### 🚀 Features
+
+* **bot:** send rich reports as native Telegram rich messages ([d5692d7](https://github.com/maxbolgarin/unread/commit/d5692d7b4530d92899e54e87365f0ca7dd85df37))
+
+### 🔧 Chores
+
+* refresh uv.lock for the 1.5.2 version bump ([e8d6295](https://github.com/maxbolgarin/unread/commit/e8d6295ea2c820c3e172453641a9b3c72a0fb4a3))
+
 ## [1.5.2](https://github.com/maxbolgarin/unread/compare/v1.5.1...v1.5.2) (2026-08-24)
 
 ### 🐛 Bug Fixes
