@@ -35,6 +35,13 @@ unread "https://youtu.be/..." --preset factcheck
 unread "https://example.com/article" --preset factcheck
 ```
 
+Claims are reported in the order they're made in the source, so you can
+follow the report alongside the video. Verified-TRUE claims are reported
+too, not just the problems — "that striking statistic is accurate, here's
+the source" is a result. There's no target claim count; when a source has
+more claims than can be checked properly, the contested ones win and the
+rest are listed under **Not checked**.
+
 Sources that fit in one chunk — which, with a 300k-token chunk budget, is
 essentially everything short of a book — are verified in a single
 web-search-grounded call: claims are extracted and checked together.

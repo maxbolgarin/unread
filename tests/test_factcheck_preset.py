@@ -57,6 +57,23 @@ def test_factcheck_prompt_forbids_a_verdict_without_a_source(language) -> None:
 
 
 @pytest.mark.parametrize("language", ["en", "ru"])
+def test_factcheck_orders_claims_chronologically(language) -> None:
+    """A reader follows the report alongside the video, so severity-sorted
+    rows make every one of them a search."""
+    system = get_presets(language)["factcheck"].system.lower()
+    assert "chronolog" in system or "хронолог" in system
+
+
+@pytest.mark.parametrize("language", ["en", "ru"])
+def test_factcheck_sets_no_target_claim_count(language) -> None:
+    """An explicit number caps coverage: "ten beat forty" made a 59-minute
+    podcast come back with exactly ten claims."""
+    system = get_presets(language)["factcheck"].system
+    assert "20-30" not in system
+    assert "Ten well-checked" not in system
+
+
+@pytest.mark.parametrize("language", ["en", "ru"])
 def test_factcheck_output_budget_avoids_the_truncation_retry(language) -> None:
     """A verdict table plus a section per claim runs long. At 6000 tokens
     a normal 8-claim report truncated, and the retry re-bills the whole
@@ -64,4 +81,8 @@ def test_factcheck_output_budget_avoids_the_truncation_retry(language) -> None:
     most expensive failure mode this preset has. The models it pins cap
     output at 128k, so a generous budget costs nothing when unused:
     output tokens are billed as generated, not as reserved."""
-    assert get_presets(language)["factcheck"].output_budget_tokens >= 12_000
+    # Measured: a 10-claim report used ~8k output tokens, so ~800/claim.
+    # Removing the count cap means a dense hour-long source can produce
+    # 25-30 claims — ~24k. The pinned model caps at 128k and output bills
+    # as generated, so headroom is free when unused.
+    assert get_presets(language)["factcheck"].output_budget_tokens >= 24_000
