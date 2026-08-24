@@ -137,21 +137,26 @@ async def test_pick_caption_lang_labels_show_auto_vs_manual() -> None:
 
 
 @pytest.mark.asyncio
-async def test_pick_caption_lang_default_value_is_first_preferred_lang() -> None:
+async def test_pick_caption_lang_default_value_is_the_first_row() -> None:
+    """The cursor sits on row one regardless of `preselect`. English is
+    pinned first, so it wins here even though `ru` is the top preference —
+    a highlight that jumps down an auto-translation list is harder to read
+    than one at the top. `preselect` still drives `get_transcript`'s
+    fallback order."""
     meta = _meta(subtitles={"en": [{}], "ru": [{}]})
     with patch("unread.util.prompt.select", return_value="ru") as sel:
         await _interactive_pick_caption_lang(meta, preselect=["ru", "en"])
-    kwargs = sel.call_args.kwargs
-    assert kwargs["default_value"] == "ru"
+    assert sel.call_args.kwargs["default_value"] == "en"
 
 
 @pytest.mark.asyncio
-async def test_pick_caption_lang_default_value_none_when_no_preferred_match() -> None:
+async def test_pick_caption_lang_default_value_when_no_pinned_language_exists() -> None:
+    """Neither pinned language is present, so the first row is whichever
+    sorts first BY DISPLAY NAME — French before German."""
     meta = _meta(subtitles={"de": [{}], "fr": [{}]})
     with patch("unread.util.prompt.select", return_value="de") as sel:
         await _interactive_pick_caption_lang(meta, preselect=["ru", "en"])
-    kwargs = sel.call_args.kwargs
-    assert kwargs["default_value"] is None
+    assert sel.call_args.kwargs["default_value"] == "fr"
 
 
 @pytest.mark.asyncio

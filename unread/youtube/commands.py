@@ -36,7 +36,6 @@ from unread.youtube.transcript import (
     NoTranscriptAvailable,
     TranscriptSource,
     YoutubeFetchError,
-    _lang_base,
     _preferred_caption_langs,
     get_transcript,
     list_caption_tracks,
@@ -396,6 +395,33 @@ def _dedup_display_tracks(meta: YoutubeMetadata) -> list[CaptionTrack]:
     return [by_base[base] for base in sorted(by_base)]
 
 
+# Languages pinned to the top of the caption picker, in this order.
+# Everything else sorts by display name below them. These two cover the
+# overwhelming majority of what this tool is pointed at, and hunting for
+# them in an alphabetical list of thirty auto-translations is a chore.
+_PINNED_CAPTION_LANGS: tuple[str, ...] = ("en", "ru")
+
+
+def _ordered_display_tracks(meta: YoutubeMetadata) -> list[CaptionTrack]:
+    """Picker order: pinned languages first, then the rest BY DISPLAY NAME.
+
+    `_dedup_display_tracks` sorts by ISO code, which is the wrong key for
+    a list whose rows read as names — `zh` sorted last while the row says
+    "Chinese", and `de` sorted early while it says "German". The list
+    looked unsorted to the person reading it.
+    """
+    from unread.util.languages import language_display_name
+
+    tracks = _dedup_display_tracks(meta)
+    by_base = {t.base: t for t in tracks}
+    pinned = [by_base[code] for code in _PINNED_CAPTION_LANGS if code in by_base]
+    rest = sorted(
+        (t for t in tracks if t.base not in _PINNED_CAPTION_LANGS),
+        key=lambda t: language_display_name(t.base).casefold(),
+    )
+    return pinned + rest
+
+
 def _require_audio_ffmpeg() -> None:
     """ffmpeg preflight for the Whisper/audio transcript path.
 
@@ -421,16 +447,19 @@ async def _interactive_pick_caption_lang(
     :data:`WHISPER_LANG_SENTINEL` when the user picks "transcribe
     audio with Whisper" instead, or `None` on cancel.
 
-    `preselect` is an ordered language preference (e.g.
-    `_preferred_caption_langs(settings)`); the first entry whose base
-    language has an available track pre-highlights that row.
+    Rows are ordered by `_ordered_display_tracks`: English and Russian
+    first, then everything else by display name. The cursor starts on the
+    first row — `preselect` is still used for `get_transcript`'s fallback
+    order, but no longer moves the highlight, since a highlight that
+    jumps to row 14 of an auto-translation list is harder to read than
+    one that sits at the top.
     """
     from unread.util.languages import language_display_name
     from unread.util.prompt import Choice
     from unread.util.prompt import select as _select
     from unread.util.prompt import separator as _sep
 
-    tracks = _dedup_display_tracks(meta)
+    tracks = _ordered_display_tracks(meta)
     suffix = {
         True: _t("youtube_lang_pick_auto_suffix"),
         False: _t("youtube_lang_pick_manual_suffix"),
@@ -443,13 +472,7 @@ async def _interactive_pick_caption_lang(
         for track in tracks
     ]
 
-    default_value: str | None = None
-    for lang in preselect:
-        base = _lang_base(lang)
-        match = next((t for t in tracks if t.base == base), None)
-        if match is not None:
-            default_value = match.lang
-            break
+    default_value: str | None = tracks[0].lang if tracks else None
 
     choices.append(_sep())
     choices.append(Choice(value=WHISPER_LANG_SENTINEL, label=_t("youtube_lang_pick_whisper_row")))
