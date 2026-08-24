@@ -103,3 +103,44 @@ def test_missing_pricing_never_blocks(settings, monkeypatch) -> None:
     monkeypatch.setattr("unread.util.prompt.confirm", lambda *a, **k: asked.append(a) or True)
     _gate(settings, lo=None, hi=None)
     assert asked == []
+
+
+# --- the bot must never block on a prompt ------------------------------------
+
+
+def test_gate_never_prompts_when_yes_is_set(settings, monkeypatch) -> None:
+    """Every bot handler calls the analyze commands with `yes=True`. If the
+    cost gate could still prompt, a request would hang forever waiting on
+    a stdin nobody is attached to — the worst failure mode this guard
+    could have."""
+
+    def _explode(*_a, **_k):
+        raise AssertionError("prompted despite yes=True")
+
+    monkeypatch.setattr("unread.util.prompt.confirm", _explode)
+    _gate(settings, lo=10.0, hi=99.0, yes=True)
+    _gate(settings, lo=10.0, hi=99.0, yes=True, extra_cost=50.0)
+
+
+def test_gate_never_prompts_without_a_tty(settings, monkeypatch) -> None:
+    """Belt and braces for the same failure: systemd and Docker give the
+    bot no TTY, so even a handler that forgot `yes=True` can't hang."""
+
+    def _explode(*_a, **_k):
+        raise AssertionError("prompted with no TTY")
+
+    monkeypatch.setattr("unread.util.prompt.confirm", _explode)
+    _gate(settings, lo=10.0, hi=99.0, interactive=False)
+
+
+def test_bot_handlers_all_pass_yes() -> None:
+    """Pins the invariant at the source: a new handler that omits `yes`
+    would make its requests hang on the confirm."""
+    import pathlib
+    import re
+
+    for name in ("youtube", "url", "file", "tg"):
+        src = pathlib.Path(f"unread/bot/handlers/{name}.py").read_text()
+        calls = re.findall(r"await cmd_[a-z_]+\((.*?)\n        \)", src, re.S)
+        for call in calls:
+            assert "yes=True" in call, f"{name}.py: analyze call without yes=True"
