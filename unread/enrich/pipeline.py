@@ -291,6 +291,21 @@ async def enrich_messages(
 
     from unread.util.logging import is_silent as _is_silent
 
+    # Only messages with an enabled enricher (or text, when link enrichment
+    # is on) go through the bar. Otherwise a dump with images disabled still
+    # walks every photo and shows "Image (msg #N)" as if it were
+    # downloading them, and the total counts messages that are no-ops.
+    kind_enabled = {
+        "voice": opts.voice,
+        "videonote": opts.videonote,
+        "video": opts.video,
+        "photo": opts.image,
+        "doc": opts.doc,
+    }
+    work = [m for m in msgs if kind_enabled.get(m.media_type or "", False) or (opts.link and m.text)]
+    if not work:
+        return stats
+
     with Progress(
         SpinnerColumn(),
         TextColumn("[grey70]{task.description}[/]"),
@@ -301,7 +316,7 @@ async def enrich_messages(
         console=Console(),
         disable=_is_silent(),
     ) as progress:
-        task_id = progress.add_task("Enriching media", total=len(msgs))
+        task_id = progress.add_task("Enriching media", total=len(work))
 
         # Per-item description so the user sees what's happening rather
         # than just an advancing bar. We write the description before
@@ -318,14 +333,17 @@ async def enrich_messages(
         }
 
         async def handle_with_progress(m: Message) -> None:
-            label = kind_label.get(m.media_type or "", "Message") if m.media_type else "Links"
+            if kind_enabled.get(m.media_type or "", False):
+                label = kind_label.get(m.media_type or "", "Message")
+            else:
+                label = "Links"
             progress.update(task_id, description=f"{label} (msg #{m.msg_id})")
             try:
                 await handle(m)
             finally:
                 progress.advance(task_id)
 
-        await asyncio.gather(*(handle_with_progress(m) for m in msgs))
+        await asyncio.gather(*(handle_with_progress(m) for m in work))
     log.debug(
         "enrich.done",
         counts=dict(stats.counts),
