@@ -114,3 +114,40 @@ async def test_doc_id_none_photos_do_not_burn_cap_slots():
     assert sorted(enrich_calls) == [4, 5], (
         f"only photos with a doc_id should reach enrich_image; got {enrich_calls}"
     )
+
+
+@pytest.mark.asyncio
+async def test_progress_only_covers_messages_with_enabled_enrichers():
+    # Regression: with image enrichment off, the progress bar still walked
+    # every photo and labelled it "Image (msg #N)", which read as if the
+    # photos were being downloaded. Only enabled kinds should show up.
+    voice = Message(
+        chat_id=-100,
+        msg_id=10,
+        date=datetime.now(UTC),
+        text=None,
+        media_type="voice",
+        media_doc_id=9000,
+    )
+    msgs = [_photo(1, doc_id=1000), _photo(2, doc_id=2000), voice]
+
+    progress = MagicMock()
+    progress.__enter__.return_value = progress
+    descriptions: list[str] = []
+    progress.update.side_effect = lambda _tid, description: descriptions.append(description)
+
+    with (
+        patch("rich.progress.Progress", return_value=progress),
+        patch("unread.enrich.pipeline.enrich_image") as mock_image,
+        patch("unread.enrich.pipeline.enrich_audio", new=AsyncMock(return_value=None)),
+    ):
+        await enrich_messages(
+            msgs,
+            client=MagicMock(),
+            repo=AsyncMock(),
+            opts=EnrichOpts(voice=True, image=False),
+        )
+
+    mock_image.assert_not_called()
+    assert progress.add_task.call_args.kwargs["total"] == 1
+    assert descriptions == ["Voice (msg #10)"]
