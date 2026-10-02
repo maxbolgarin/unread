@@ -53,20 +53,35 @@ def test_provider_menu_marks_the_active_one(settings) -> None:
     assert active and any("✓" in t or "•" in t for t in active)
 
 
-def test_model_menu_lists_models_for_the_active_provider(settings) -> None:
+def test_model_menu_lists_no_model_buttons(settings) -> None:
+    """Model ids are typed, not tapped: a hardcoded list goes stale fast."""
     settings.ai.chat_provider = "openrouter"
     _text, buttons = build_model_menu(settings=settings, panel_msg_id=1)
     values = [parse_settings_callback(b.data)[2] for row in buttons for b in row]
-    assert values, "should offer something"
-    assert all(v is None or v.startswith("openai/") or "/" in v for v in values if v)
+    assert [v for v in values if v] == []
 
 
-def test_model_menu_shows_prices(settings) -> None:
-    """Picking a model blind is how you end up on a flagship by accident."""
+@pytest.mark.parametrize("provider", ["openai", "openrouter", "anthropic", "google", "local"])
+def test_model_menu_links_the_providers_model_list(settings, provider) -> None:
+    from unread.bot.settings_menu import MODEL_LIST_URL
+
+    settings.ai.chat_provider = provider
+    text, _buttons = build_model_menu(settings=settings, panel_msg_id=1)
+    assert MODEL_LIST_URL[provider] in text
+
+
+def test_model_menu_shows_the_current_models_price(settings) -> None:
     settings.ai.chat_provider = "openai"
-    text, buttons = build_model_menu(settings=settings, panel_msg_id=1)
-    labels = " ".join(b.text for row in buttons for b in row)
-    assert "$" in labels or "$" in text
+    settings.ai.chat_model = "gpt-5.6-luna"
+    text, _buttons = build_model_menu(settings=settings, panel_msg_id=1)
+    assert "gpt-5.6-luna" in text
+    assert "$0.2/$1.2" in text
+
+
+def test_model_menu_keeps_preset_default_and_back(settings) -> None:
+    _text, buttons = build_model_menu(settings=settings, panel_msg_id=1)
+    actions = [parse_settings_callback(b.data)[0] for row in buttons for b in row]
+    assert actions == ["S_MODEL", "S_ROOT"]
 
 
 # --- callback encoding ---------------------------------------------------------
@@ -150,22 +165,6 @@ def test_secret_fields_match_the_secrets_allowlist() -> None:
         field = secret_key_for_provider(name)
         if field:
             assert field in SECRET_KEYS, f"{name} → {field} is not an allowlisted secret"
-
-
-def test_model_menu_offers_a_custom_model_button(settings) -> None:
-    """The catalog ages faster than providers ship models."""
-    settings.ai.chat_provider = "openrouter"
-    _text, buttons = build_model_menu(settings=settings, panel_msg_id=1)
-    actions = [parse_settings_callback(b.data)[0] for row in buttons for b in row]
-    assert "S_MODELC" in actions
-
-
-def test_model_menu_marks_an_uncatalogued_active_model(settings) -> None:
-    settings.ai.chat_provider = "openrouter"
-    settings.ai.chat_model = "mistralai/mistral-large-2611"
-    _text, buttons = build_model_menu(settings=settings, panel_msg_id=1)
-    custom = [b.text for row in buttons for b in row if parse_settings_callback(b.data)[0] == "S_MODELC"]
-    assert custom == ["✓ ✏️ mistralai/mistral-large-2611"]
 
 
 @pytest.mark.parametrize(

@@ -136,7 +136,7 @@ async def maybe_consume_model_name(event: events.NewMessage.Event, *, app: BotAp
     if not looks_like_model_id(raw):
         await event.reply(
             "That doesn't look like a model id, so nothing was changed. "
-            "Tap 🧠 Model → ✏️ Other model… in /settings to try again."
+            "Tap 🧠 Model in /settings to try again."
         )
         return True
 

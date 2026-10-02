@@ -25,11 +25,10 @@ from telethon import Button
 #   S_ROOT  = back to the root settings menu
 #   S_PROVS = show the provider list
 #   S_PROV  = pick a provider (arg = provider name)
-#   S_MODELS= show the model list for the active provider
+#   S_MODELS= show the model prompt (the next message is the model id)
 #   S_MODEL = pick a model (arg = model id; empty = preset default)
 #   S_KEY   = start the API-key prompt
-#   S_MODELC= start the custom-model-name prompt
-SETTINGS_ACTIONS = frozenset({"S_ROOT", "S_PROVS", "S_PROV", "S_MODELS", "S_MODEL", "S_MODELC", "S_KEY"})
+SETTINGS_ACTIONS = frozenset({"S_ROOT", "S_PROVS", "S_PROV", "S_MODELS", "S_MODEL", "S_KEY"})
 
 
 # Providers offered in the menu. Derived from the config allowlist rather
@@ -153,59 +152,19 @@ def build_provider_menu(*, settings: Any, panel_msg_id: int) -> tuple[str, list]
     return ("Pick the provider for analysis:", rows)
 
 
-def build_model_menu(*, settings: Any, panel_msg_id: int) -> tuple[str, list]:
-    """Chat-capable models for the active provider, with prices.
+# Where to look up model ids for each provider. Linked from the model
+# prompt instead of listing models as buttons: a hardcoded list goes stale
+# within weeks, and OpenRouter alone has hundreds of models.
+MODEL_LIST_URL: dict[str, str] = {
+    "openai": "https://platform.openai.com/docs/models",
+    "openrouter": "https://openrouter.ai/models",
+    "anthropic": "https://docs.claude.com/en/docs/about-claude/models/overview",
+    "google": "https://ai.google.dev/gemini-api/docs/models",
+    "local": "https://ollama.com/library",
+}
 
-    Prices come from the catalog rather than being typed in, so the menu
-    can't advertise a model the cost accounting doesn't know — an unpriced
-    model reports $0 and makes a run look free.
-    """
-    from unread.ai.models import models_for_provider
-
-    active_provider = _active_provider(settings)
-    active_model = _active_model(settings)
-    try:
-        models = models_for_provider(active_provider, role="chat")
-    except Exception:  # unknown provider name
-        models = []
-
-    rows = [
-        [
-            Button.inline(
-                f"{'✓ ' if not active_model else ''}preset default",
-                encode_settings_callback("S_MODEL", panel_msg_id, ""),
-            )
-        ]
-    ]
-    for info in models:
-        mark = "✓ " if info.id == active_model else ""
-        price = f" (${info.input_price:g}/${info.output_price:g})" if info.output_price else ""
-        rows.append(
-            [
-                Button.inline(
-                    f"{mark}{info.id}{price}",
-                    encode_settings_callback("S_MODEL", panel_msg_id, info.id),
-                )
-            ]
-        )
-    # The catalog ages faster than releases ship, and `local` has no
-    # catalog at all — a typed-in id is the escape hatch. An active model
-    # the catalog doesn't list is shown here so it doesn't look unset.
-    custom_active = bool(active_model) and all(info.id != active_model for info in models)
-    custom_label = f"✓ ✏️ {active_model}" if custom_active else "✏️ Other model…"
-    rows.append([Button.inline(custom_label, encode_settings_callback("S_MODELC", panel_msg_id))])
-    rows.append([Button.inline("⬅ Back", encode_settings_callback("S_ROOT", panel_msg_id))])
-    text = (
-        f"Pick the model for `{active_provider}`.\n"
-        "Prices are $ per 1M tokens (input/output). "
-        "**preset default** lets each preset use the model it pins. "
-        "**Other model…** lets you type any model id."
-    )
-    return text, rows
-
-
-# Example ids for the custom-model prompt, so the user sees the spelling
-# each provider expects (OpenRouter's `vendor/model`, Anthropic's dashes).
+# Example ids, so the user sees the spelling each provider expects
+# (OpenRouter's `vendor/model`, Anthropic's dashes).
 _MODEL_ID_EXAMPLE: dict[str, str] = {
     "openai": "gpt-5.6-terra",
     "openrouter": "anthropic/claude-sonnet-5.5",
@@ -215,16 +174,55 @@ _MODEL_ID_EXAMPLE: dict[str, str] = {
 }
 
 
-def custom_model_prompt_text(provider: str) -> str:
-    """Copy for the "type a model id" prompt."""
+def build_model_menu(*, settings: Any, panel_msg_id: int) -> tuple[str, list]:
+    """Prompt for a typed model id, with a link to the provider's list.
+
+    The caller arms the prompt, so the next message is taken as the id.
+    The only buttons are "preset default" (clears the override) and Back.
+    """
+    from unread.ai.models import find_model
+
+    provider = _active_provider(settings)
+    active_model = _active_model(settings)
     example = _MODEL_ID_EXAMPLE.get(provider, "model-name")
-    return (
-        f"Send the **{provider}** model id as your next message, "
-        f"e.g. `{example}`.\n\n"
-        "It's used as-is, so copy it exactly from the provider's model list. "
-        "Models I don't have prices for still work, but their runs show as $0 in cost reports.\n\n"
-        "`/cancel` aborts."
-    )
+    url = MODEL_LIST_URL.get(provider, "")
+
+    if active_model:
+        info = find_model(active_model)
+        price = (
+            f" (${info.input_price:g}/${info.output_price:g} per 1M in/out)"
+            if info and info.output_price
+            else ""
+        )
+        current = f"Current model: `{active_model}`{price}."
+    else:
+        current = "Current model: **preset default**: each preset uses the model it pins."
+    lines = [
+        f"🧠 **Model for `{provider}`**",
+        "",
+        current,
+        "",
+        f"Send the model id as your next message, e.g. `{example}`.",
+    ]
+    if url:
+        lines.append(f"Available models: {url}")
+    lines += [
+        "",
+        "The id is used exactly as typed. Models I don't have prices for still work, "
+        "but their runs show as $0 in cost reports.",
+        "",
+        "`/cancel` aborts.",
+    ]
+    rows = [
+        [
+            Button.inline(
+                f"{'✓ ' if not active_model else ''}preset default",
+                encode_settings_callback("S_MODEL", panel_msg_id, ""),
+            ),
+            Button.inline("⬅ Back", encode_settings_callback("S_ROOT", panel_msg_id)),
+        ]
+    ]
+    return "\n".join(lines), rows
 
 
 def looks_like_model_id(raw: str) -> bool:

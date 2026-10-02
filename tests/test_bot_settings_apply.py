@@ -181,25 +181,33 @@ async def test_unarmed_message_still_reaches_classification(app) -> None:
 # --- custom model id ------------------------------------------------------------
 
 
-async def test_custom_model_tap_arms_the_next_message(app) -> None:
-    cb = _Cb(encode_settings_callback("S_MODELC", 5))
+async def test_model_tap_arms_the_next_message(app) -> None:
+    cb = _Cb(encode_settings_callback("S_MODELS", 5))
     await app._handle_callback(cb)
     assert app._chat_state.get(7, {}).get("pending_model")
-    assert cb.edits and "model id" in cb.edits[-1]
+    assert cb.edits and "next message" in cb.edits[-1]
 
 
-async def test_custom_model_tap_disarms_a_pending_key_prompt(app) -> None:
+async def test_model_tap_disarms_a_pending_key_prompt(app) -> None:
     """Only one text prompt at a time — a model id must never be stored as a key."""
     await app._handle_callback(_Cb(encode_settings_callback("S_KEY", 5)))
-    await app._handle_callback(_Cb(encode_settings_callback("S_MODELC", 5)))
+    await app._handle_callback(_Cb(encode_settings_callback("S_MODELS", 5)))
     state = app._chat_state.get(7, {})
     assert state.get("pending_model")
     assert not state.get("pending_api_key")
 
 
-async def test_custom_model_is_primary_owner_only(app) -> None:
+@pytest.mark.parametrize("action", [("S_ROOT", None), ("S_MODEL", "")])
+async def test_leaving_the_model_panel_disarms_the_prompt(app, action) -> None:
+    """Otherwise the next ordinary message would become the model."""
+    await app._handle_callback(_Cb(encode_settings_callback("S_MODELS", 5)))
+    await app._handle_callback(_Cb(encode_settings_callback(action[0], 5, action[1])))
+    assert not app._chat_state.get(7, {}).get("pending_model")
+
+
+async def test_model_prompt_is_primary_owner_only(app) -> None:
     app.allowed_ids.add(999)
-    await app._handle_callback(_Cb(encode_settings_callback("S_MODELC", 5), sender_id=999))
+    await app._handle_callback(_Cb(encode_settings_callback("S_MODELS", 5), sender_id=999))
     assert not app._chat_state.get(7, {}).get("pending_model")
 
 
