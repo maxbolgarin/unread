@@ -9,9 +9,14 @@
 #   3. docker compose -f docker-compose.bot.yml --env-file .env.bot pull
 #   4. docker compose -f docker-compose.bot.yml --env-file .env.bot up -d
 #
-# Updates:
-#   docker compose -f docker-compose.bot.yml --env-file .env.bot pull
-#   docker compose -f docker-compose.bot.yml --env-file .env.bot up -d
+# Updates (see docs/bot-vm-deploy.md → "Updating a running bot"):
+#   cd ~/unread
+#   DOCKER_CONFIG=~/.docker-anon docker compose -f docker-compose.bot.yml --env-file .env.bot pull
+#   DOCKER_CONFIG=~/.docker-anon docker compose -f docker-compose.bot.yml --env-file .env.bot up -d
+# The empty DOCKER_CONFIG (one-time: mkdir -p ~/.docker-anon && echo '{}' >
+# ~/.docker-anon/config.json) pulls the public image anonymously, so a VM
+# already logged in to ghcr.io for other private images doesn't get
+# "denied". On a VM with no ghcr.io login, drop the DOCKER_CONFIG prefix.
 #
 # NOTE: `UNREAD_BOT_TOKEN` below uses the `:?` required-variable form, so
 # EVERY compose subcommand needs `--env-file .env.bot` — not just `up`.

@@ -226,6 +226,44 @@ flip this once, any `docker pull` has to authenticate.
 
 After this, `docker compose pull` works with no `docker login`.
 
+### Updating a running bot
+
+On the VM, from the directory holding `docker-compose.bot.yml` and
+`.env.bot`:
+
+```bash
+cd ~/unread
+DOCKER_CONFIG=~/.docker-anon docker compose -f docker-compose.bot.yml --env-file .env.bot pull
+DOCKER_CONFIG=~/.docker-anon docker compose -f docker-compose.bot.yml --env-file .env.bot up -d
+```
+
+`DOCKER_CONFIG=~/.docker-anon` points Docker at an empty config, so it
+pulls the public image anonymously. Without it, Docker sends whatever
+`ghcr.io` login the VM already has (for example, one used for other,
+private images), and GHCR answers `error from registry: denied` when
+that login can't read this package, even though the package is public.
+The VM's real login is left untouched. Create the empty config once:
+
+```bash
+mkdir -p ~/.docker-anon && echo '{}' > ~/.docker-anon/config.json
+```
+
+`up -d` needs it too: the compose file sets `pull_policy: always`, so
+`up` pulls again. On a VM with no `ghcr.io` login, the plain commands
+without `DOCKER_CONFIG` work just as well.
+
+Reports, secrets, the Telegram session, and the provider/model picked
+in `/settings` live in the `unread_state` volume and survive the
+update. Check the logs for `✓ bot ready` afterwards:
+
+```bash
+docker logs unread-unread-bot-1 --tail 30
+```
+
+`:latest` moves only when the Release workflow publishes a version.
+To run what's on `main` before then, set
+`UNREAD_BOT_IMAGE=ghcr.io/maxbolgarin/unread:main` in `.env.bot`.
+
 ### Image tags
 
 `.github/workflows/image.yml` publishes on every tag and `main` push:
