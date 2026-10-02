@@ -150,3 +150,36 @@ def test_secret_fields_match_the_secrets_allowlist() -> None:
         field = secret_key_for_provider(name)
         if field:
             assert field in SECRET_KEYS, f"{name} → {field} is not an allowlisted secret"
+
+
+def test_model_menu_offers_a_custom_model_button(settings) -> None:
+    """The catalog ages faster than providers ship models."""
+    settings.ai.chat_provider = "openrouter"
+    _text, buttons = build_model_menu(settings=settings, panel_msg_id=1)
+    actions = [parse_settings_callback(b.data)[0] for row in buttons for b in row]
+    assert "S_MODELC" in actions
+
+
+def test_model_menu_marks_an_uncatalogued_active_model(settings) -> None:
+    settings.ai.chat_provider = "openrouter"
+    settings.ai.chat_model = "mistralai/mistral-large-2611"
+    _text, buttons = build_model_menu(settings=settings, panel_msg_id=1)
+    custom = [b.text for row in buttons for b in row if parse_settings_callback(b.data)[0] == "S_MODELC"]
+    assert custom == ["✓ ✏️ mistralai/mistral-large-2611"]
+
+
+@pytest.mark.parametrize(
+    "raw",
+    ["gpt-5.6-terra", "anthropic/claude-opus-5.5", "qwen2.5:14b", "google/gemini-3.7-flash"],
+)
+def test_looks_like_model_id_accepts_real_ids(raw) -> None:
+    from unread.bot.settings_menu import looks_like_model_id
+
+    assert looks_like_model_id(raw)
+
+
+@pytest.mark.parametrize("raw", ["", "https://x.com/a", "two words", "/cancel", "a" * 200])
+def test_looks_like_model_id_rejects_junk(raw) -> None:
+    from unread.bot.settings_menu import looks_like_model_id
+
+    assert not looks_like_model_id(raw)

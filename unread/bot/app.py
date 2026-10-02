@@ -421,6 +421,17 @@ class BotApp:
         # An armed `/settings` → API key prompt consumes the next message
         # whole. Checked before classification so a key is never routed to
         # the analyze path (and so never reaches a log line or a report).
+        if chat_state.get("pending_model"):
+            from unread.bot.handlers import cmds as _cmds
+
+            try:
+                if await _cmds.maybe_consume_model_name(event, app=self):
+                    return
+            except Exception:
+                log.exception("bot.model_name_capture_failed")
+                await _safe_reply(event, "⚠️ Couldn't set that model; see the bot logs.")
+                return
+
         if chat_state.get("pending_api_key"):
             from unread.bot.handlers import cmds as _cmds
 
@@ -774,6 +785,7 @@ class BotApp:
             build_model_menu,
             build_provider_menu,
             build_settings_menu,
+            custom_model_prompt_text,
             key_prompt_text,
             parse_settings_callback,
         )
@@ -790,7 +802,7 @@ class BotApp:
         # changing them silently changes the primary owner's runs and
         # spends their budget. Same reasoning as the key button, which was
         # the only one gated before.
-        if action in ("S_PROVS", "S_MODELS", "S_PROV", "S_MODEL") and not self.is_primary_owner(
+        if action in ("S_PROVS", "S_MODELS", "S_PROV", "S_MODEL", "S_MODELC") and not self.is_primary_owner(
             event.sender_id
         ):
             with contextlib.suppress(Exception):
@@ -819,6 +831,21 @@ class BotApp:
             text, buttons = build_settings_menu(
                 chat_state=chat_state, settings=settings, panel_msg_id=panel_id
             )
+        elif action == "S_MODELC":
+            provider = (
+                getattr(settings.ai, "chat_provider", "") or getattr(settings.ai, "provider", "") or "openai"
+            )
+            # One text prompt at a time: whichever was armed last wins, so
+            # a model id can never be stored as an API key or vice versa.
+            chat_state.pop("pending_api_key", None)
+            chat_state.pop("pending_api_key_at", None)
+            chat_state["pending_model"] = provider
+            chat_state["pending_model_at"] = time.time()
+            with contextlib.suppress(Exception):
+                await event.answer()
+            with contextlib.suppress(Exception):
+                await event.edit(custom_model_prompt_text(provider), buttons=None, parse_mode="md")
+            return True
         elif action == "S_KEY":
             # Credentials are bot-wide, not per-chat: a second admin
             # rotating the key would silently change every admin's runs.
@@ -829,6 +856,8 @@ class BotApp:
             provider = (
                 getattr(settings.ai, "chat_provider", "") or getattr(settings.ai, "provider", "") or "openai"
             )
+            chat_state.pop("pending_model", None)
+            chat_state.pop("pending_model_at", None)
             chat_state["pending_api_key"] = provider
             chat_state["pending_api_key_at"] = time.time()
             with contextlib.suppress(Exception):

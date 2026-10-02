@@ -47,14 +47,12 @@ def _is_reasoning_model(model: str) -> bool:
     accidentally dropping temperature for a non-reasoning model is
     harmless (defaults to 1.0 server-side), while incorrectly
     *forwarding* temperature to a reasoning model 400s the request.
+    Also covers Claude 5.x routed through OpenRouter, which rejects
+    sampling parameters the same way.
     """
-    from unread.ai.models import find_model
+    from unread.ai.models import rejects_temperature
 
-    info = find_model(model)
-    if info is not None and info.reasoning:
-        return True
-    name = model.rsplit("/", 1)[-1].lower()
-    return name.startswith("o1") or name.startswith("o3") or name.startswith("o4") or name.startswith("gpt-5")
+    return rejects_temperature(model)
 
 
 class _OpenAICompatBase:
