@@ -1,3 +1,10 @@
+## [1.7.0](https://github.com/maxbolgarin/unread/compare/v1.6.0...v1.7.0) (2026-10-02)
+
+### 🚀 Features
+
+* **bot:** ask for the model id as text instead of listing model buttons ([a7defd8](https://github.com/maxbolgarin/unread/commit/a7defd8aee1c04974fd4c51410b45673dff83f77))
+* **bot:** refresh model catalog and let /settings take a typed model id ([afbd71c](https://github.com/maxbolgarin/unread/commit/afbd71cb33b5e42fcee4a0838a8893307e91604e))
+
 ## [1.6.0](https://github.com/maxbolgarin/unread/compare/v1.5.2...v1.6.0) (2026-08-24)
 
 ### 🚀 Features
