@@ -56,6 +56,12 @@ def _default_model_for(provider: str) -> str:
     return chat or ""
 
 
+def _active_provider_name(settings) -> str:  # type: ignore[no-untyped-def]
+    return (
+        getattr(settings.ai, "chat_provider", "") or getattr(settings.ai, "provider", "") or "openai"
+    ).lower()
+
+
 def _default_filter_model_for(provider: str) -> str:
     from unread.ai.providers import _provider_class_defaults
 
@@ -785,7 +791,6 @@ class BotApp:
             build_model_menu,
             build_provider_menu,
             build_settings_menu,
-            custom_model_prompt_text,
             key_prompt_text,
             parse_settings_callback,
         )
@@ -802,7 +807,7 @@ class BotApp:
         # changing them silently changes the primary owner's runs and
         # spends their budget. Same reasoning as the key button, which was
         # the only one gated before.
-        if action in ("S_PROVS", "S_MODELS", "S_PROV", "S_MODEL", "S_MODELC") and not self.is_primary_owner(
+        if action in ("S_PROVS", "S_MODELS", "S_PROV", "S_MODEL") and not self.is_primary_owner(
             event.sender_id
         ):
             with contextlib.suppress(Exception):
@@ -812,6 +817,13 @@ class BotApp:
         if action == "S_PROVS":
             text, buttons = build_provider_menu(settings=settings, panel_msg_id=panel_id)
         elif action == "S_MODELS":
+            # The panel asks for a typed model id, so arm the prompt. Only
+            # one text prompt at a time: whichever was armed last wins, so
+            # a model id can never be stored as an API key or vice versa.
+            chat_state.pop("pending_api_key", None)
+            chat_state.pop("pending_api_key_at", None)
+            chat_state["pending_model"] = _active_provider_name(settings)
+            chat_state["pending_model_at"] = time.time()
             text, buttons = build_model_menu(settings=settings, panel_msg_id=panel_id)
         elif action == "S_PROV":
             await self._apply_ai_setting("ai.chat_provider", value or "")
@@ -827,25 +839,12 @@ class BotApp:
                 chat_state=chat_state, settings=settings, panel_msg_id=panel_id
             )
         elif action == "S_MODEL":
+            chat_state.pop("pending_model", None)
+            chat_state.pop("pending_model_at", None)
             await self._apply_ai_setting("ai.chat_model", value or "")
             text, buttons = build_settings_menu(
                 chat_state=chat_state, settings=settings, panel_msg_id=panel_id
             )
-        elif action == "S_MODELC":
-            provider = (
-                getattr(settings.ai, "chat_provider", "") or getattr(settings.ai, "provider", "") or "openai"
-            )
-            # One text prompt at a time: whichever was armed last wins, so
-            # a model id can never be stored as an API key or vice versa.
-            chat_state.pop("pending_api_key", None)
-            chat_state.pop("pending_api_key_at", None)
-            chat_state["pending_model"] = provider
-            chat_state["pending_model_at"] = time.time()
-            with contextlib.suppress(Exception):
-                await event.answer()
-            with contextlib.suppress(Exception):
-                await event.edit(custom_model_prompt_text(provider), buttons=None, parse_mode="md")
-            return True
         elif action == "S_KEY":
             # Credentials are bot-wide, not per-chat: a second admin
             # rotating the key would silently change every admin's runs.
@@ -866,6 +865,10 @@ class BotApp:
                 await event.edit(key_prompt_text(provider), buttons=None)
             return True
         else:  # S_ROOT
+            # Backing out of the model panel must not leave its prompt
+            # armed, or the next ordinary message becomes the model.
+            chat_state.pop("pending_model", None)
+            chat_state.pop("pending_model_at", None)
             text, buttons = build_settings_menu(
                 chat_state=chat_state, settings=settings, panel_msg_id=panel_id
             )
@@ -873,7 +876,7 @@ class BotApp:
         with contextlib.suppress(Exception):
             await event.answer()
         with contextlib.suppress(Exception):
-            await event.edit(text, buttons=buttons, parse_mode="md")
+            await event.edit(text, buttons=buttons, parse_mode="md", link_preview=False)
         return True
 
     async def _apply_ai_setting(self, key: str, value: str) -> None:
