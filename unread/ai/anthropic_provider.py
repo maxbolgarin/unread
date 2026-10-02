@@ -125,8 +125,13 @@ class AnthropicProvider:
             "model": model,
             "max_tokens": max_tokens,
             "messages": rest,
-            "temperature": temperature,
         }
+        # Opus 4.7+ and every Claude 5.x model reject sampling parameters
+        # with a 400; older Claude models still honour them.
+        from unread.ai.models import rejects_temperature
+
+        if not rejects_temperature(model):
+            kwargs["temperature"] = temperature
         if system_prompt:
             kwargs["system"] = system_prompt
         if web_search:

@@ -28,7 +28,8 @@ from telethon import Button
 #   S_MODELS= show the model list for the active provider
 #   S_MODEL = pick a model (arg = model id; empty = preset default)
 #   S_KEY   = start the API-key prompt
-SETTINGS_ACTIONS = frozenset({"S_ROOT", "S_PROVS", "S_PROV", "S_MODELS", "S_MODEL", "S_KEY"})
+#   S_MODELC= start the custom-model-name prompt
+SETTINGS_ACTIONS = frozenset({"S_ROOT", "S_PROVS", "S_PROV", "S_MODELS", "S_MODEL", "S_MODELC", "S_KEY"})
 
 
 # Providers offered in the menu. Derived from the config allowlist rather
@@ -187,13 +188,61 @@ def build_model_menu(*, settings: Any, panel_msg_id: int) -> tuple[str, list]:
                 )
             ]
         )
+    # The catalog ages faster than releases ship, and `local` has no
+    # catalog at all — a typed-in id is the escape hatch. An active model
+    # the catalog doesn't list is shown here so it doesn't look unset.
+    custom_active = bool(active_model) and all(info.id != active_model for info in models)
+    custom_label = f"✓ ✏️ {active_model}" if custom_active else "✏️ Other model…"
+    rows.append([Button.inline(custom_label, encode_settings_callback("S_MODELC", panel_msg_id))])
     rows.append([Button.inline("⬅ Back", encode_settings_callback("S_ROOT", panel_msg_id))])
     text = (
         f"Pick the model for `{active_provider}`.\n"
         "Prices are $ per 1M tokens (input/output). "
-        "**preset default** lets each preset use the model it pins."
+        "**preset default** lets each preset use the model it pins. "
+        "**Other model…** lets you type any model id."
     )
     return text, rows
+
+
+# Example ids for the custom-model prompt, so the user sees the spelling
+# each provider expects (OpenRouter's `vendor/model`, Anthropic's dashes).
+_MODEL_ID_EXAMPLE: dict[str, str] = {
+    "openai": "gpt-5.6-terra",
+    "openrouter": "anthropic/claude-sonnet-5.5",
+    "anthropic": "claude-sonnet-5-5",
+    "google": "gemini-3.7-flash",
+    "local": "llama3.1",
+}
+
+
+def custom_model_prompt_text(provider: str) -> str:
+    """Copy for the "type a model id" prompt."""
+    example = _MODEL_ID_EXAMPLE.get(provider, "model-name")
+    return (
+        f"Send the **{provider}** model id as your next message, "
+        f"e.g. `{example}`.\n\n"
+        "It's used as-is, so copy it exactly from the provider's model list. "
+        "Models I don't have prices for still work, but their runs show as $0 in cost reports.\n\n"
+        "`/cancel` aborts."
+    )
+
+
+def looks_like_model_id(raw: str) -> bool:
+    """Cheap sanity check on a typed model id.
+
+    Provider ids are short, whitespace-free tokens (`gpt-5.6-luna`,
+    `anthropic/claude-opus-5.5`, `qwen2.5:14b`). Anything else (a link,
+    a sentence) is a message that landed in the prompt by accident, and
+    storing it would break every later run.
+    """
+    if not raw or len(raw) > 128:
+        return False
+    if any(ch.isspace() for ch in raw):
+        return False
+    lowered = raw.lower()
+    if lowered.startswith(("http://", "https://", "t.me/", "www.", "/")):
+        return False
+    return all(ch.isalnum() or ch in "-_.:/@+" for ch in raw)
 
 
 def key_prompt_text(provider: str) -> str:

@@ -103,6 +103,54 @@ def _looks_like_api_key(raw: str) -> bool:
     return not lowered.startswith(("http://", "https://", "t.me/", "www."))
 
 
+async def maybe_consume_model_name(event: events.NewMessage.Event, *, app: BotApp) -> bool:
+    """Consume this message as a custom model id when that prompt is armed.
+
+    Returns True when it swallowed the message. Same expiry as the key
+    prompt and for the same reason: a forgotten prompt must not turn the
+    next pasted link into the bot-wide model.
+    """
+    chat_state = app._chat_state.get(event.chat_id) or {}
+    provider = chat_state.get("pending_model")
+    if not provider:
+        return False
+
+    armed_at = float(chat_state.get("pending_model_at") or 0.0)
+    chat_state.pop("pending_model", None)
+    chat_state.pop("pending_model_at", None)
+    if armed_at and (time.time() - armed_at) > _API_KEY_PROMPT_TTL_SECONDS:
+        await event.reply(
+            "The model prompt expired (it lasts "
+            f"{int(_API_KEY_PROMPT_TTL_SECONDS // 60)} min). Nothing was changed — "
+            "tap 🧠 Model in /settings again if you still want to set one."
+        )
+        return False
+
+    from unread.ai.models import find_model
+    from unread.bot.settings_menu import looks_like_model_id
+
+    raw = (getattr(event, "raw_text", None) or getattr(event, "text", "") or "").strip()
+    if not raw or raw.startswith("/"):
+        await event.reply("Cancelled — model unchanged.")
+        return True
+    if not looks_like_model_id(raw):
+        await event.reply(
+            "That doesn't look like a model id, so nothing was changed. "
+            "Tap 🧠 Model → ✏️ Other model… in /settings to try again."
+        )
+        return True
+
+    await app._apply_ai_setting("ai.chat_model", raw)
+    note = ""
+    if find_model(raw) is None:
+        note = "\n\nI don't have prices for it, so its runs will show as $0 in cost reports."
+    await event.reply(
+        f"🧠 Model set to `{raw}` for **{provider}**.{note}",
+        parse_mode="md",
+    )
+    return True
+
+
 async def maybe_consume_api_key(event: events.NewMessage.Event, *, app: BotApp) -> bool:
     """Consume this message as an API key when the key flow is armed.
 
@@ -352,6 +400,8 @@ async def handle(
     if cmd == "cancel":
         chat_state = app._chat_state.setdefault(event.chat_id, {})
         had_pending = chat_state.pop("pending_session_upload", False)
+        chat_state.pop("pending_model", None)
+        chat_state.pop("pending_model_at", None)
         if had_pending:
             await event.reply("Session-upload cancelled.")
         else:

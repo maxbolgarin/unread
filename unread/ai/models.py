@@ -2,7 +2,7 @@
 
 Single source of truth for the settings picker, default pricing, and
 "is this model supported by this provider" checks. Refreshed against
-the provider docs on **2026-05-01**:
+the provider docs on **2026-10-02**:
 
   - OpenAI:   platform.openai.com/docs/pricing
   - Anthropic: docs.claude.com/en/docs/about-claude/models
@@ -62,12 +62,48 @@ class ModelInfo:
     reasoning: bool = False
 
 
-# ----------------------- OpenAI (refreshed 2026-05-01) ---------------------
+# ----------------------- OpenAI (refreshed 2026-10-02) ---------------------
+#
+# GPT-5.6 Sol is at a promotional $4/$20 until 2026-11-21; we record the
+# $5/$30 list rate so cost reports err high rather than low once it ends.
 
 _OPENAI_MODELS: tuple[ModelInfo, ...] = (
     ModelInfo(
+        "gpt-5.6-sol",
+        "GPT-5.6 Sol — flagship",
+        "chat",
+        5.00,
+        0.50,
+        30.00,
+        context_window=1_050_000,
+        max_output_tokens=128_000,
+        reasoning=True,
+    ),
+    ModelInfo(
+        "gpt-5.6-terra",
+        "GPT-5.6 Terra — balanced",
+        "chat",
+        2.00,
+        0.20,
+        12.00,
+        context_window=1_050_000,
+        max_output_tokens=128_000,
+        reasoning=True,
+    ),
+    ModelInfo(
+        "gpt-5.6-luna",
+        "GPT-5.6 Luna — cheapest, 1M context",
+        "chat",
+        0.20,
+        0.02,
+        1.20,
+        context_window=1_050_000,
+        max_output_tokens=128_000,
+        reasoning=True,
+    ),
+    ModelInfo(
         "gpt-5.5",
-        "GPT-5.5 — flagship (1M ctx)",
+        "GPT-5.5 — previous flagship (1M ctx)",
         "chat",
         5.00,
         0.50,
@@ -85,39 +121,6 @@ _OPENAI_MODELS: tuple[ModelInfo, ...] = (
         15.00,
         context_window=1_000_000,
         max_output_tokens=16_384,
-        reasoning=True,
-    ),
-    ModelInfo(
-        "gpt-5.6-luna",
-        "GPT-5.6 Luna — cheapest, 1M context",
-        "chat",
-        0.2,
-        0.02,
-        1.2,
-        context_window=1_050_000,
-        max_output_tokens=128_000,
-        reasoning=True,
-    ),
-    ModelInfo(
-        "gpt-5.6-sol",
-        "GPT-5.6 Sol — flagship (preset default)",
-        "chat",
-        2.0,
-        0.2,
-        10.0,
-        context_window=1_050_000,
-        max_output_tokens=128_000,
-        reasoning=True,
-    ),
-    ModelInfo(
-        "gpt-5.6-terra",
-        "GPT-5.6 Terra — pricier sibling of Sol",
-        "chat",
-        2.0,
-        0.2,
-        12.0,
-        context_window=1_050_000,
-        max_output_tokens=128_000,
         reasoning=True,
     ),
     ModelInfo(
@@ -171,28 +174,37 @@ _OPENAI_MODELS: tuple[ModelInfo, ...] = (
 )
 
 
-# ----------------------- Anthropic (refreshed 2026-05-01) ------------------
+# ----------------------- Anthropic (refreshed 2026-10-02) ------------------
+#
+# `reasoning=True` on Claude means "rejects a custom `temperature`": Opus
+# 4.7 and every 5.x model 400 on sampling parameters. The Anthropic
+# adapter drops `temperature` for these, same as the OpenAI one does for
+# gpt-5. `max_output_tokens` stays at 16k even where the model allows
+# 128k: the adapter doesn't stream, and the SDK refuses a non-streaming
+# request with a very large `max_tokens`.
 
 _ANTHROPIC_MODELS: tuple[ModelInfo, ...] = (
     ModelInfo(
-        "claude-opus-4-7",
-        "Claude Opus 4.7 — most capable (1M ctx)",
+        "claude-opus-5-5",
+        "Claude Opus 5.5 — flagship (1M ctx)",
         "chat",
-        5.00,
-        0.50,
-        25.00,
+        4.00,
+        0.20,
+        20.00,
         context_window=1_000_000,
         max_output_tokens=16_384,
+        reasoning=True,
     ),
     ModelInfo(
-        "claude-sonnet-4-6",
-        "Claude Sonnet 4.6 — balanced",
+        "claude-sonnet-5-5",
+        "Claude Sonnet 5.5 — balanced (1M ctx)",
         "chat",
-        3.00,
-        0.30,
-        15.00,
-        context_window=200_000,
+        2.00,
+        0.20,
+        10.00,
+        context_window=1_000_000,
         max_output_tokens=16_384,
+        reasoning=True,
     ),
     ModelInfo(
         "claude-haiku-4-5",
@@ -204,10 +216,42 @@ _ANTHROPIC_MODELS: tuple[ModelInfo, ...] = (
         context_window=200_000,
         max_output_tokens=8_192,
     ),
+    ModelInfo(
+        "claude-fable-5-1",
+        "Claude Fable 5.1 — most capable, priciest",
+        "chat",
+        10.00,
+        0.25,
+        50.00,
+        context_window=1_000_000,
+        max_output_tokens=16_384,
+        reasoning=True,
+    ),
+    ModelInfo(
+        "claude-opus-4-7",
+        "Claude Opus 4.7 — previous gen",
+        "chat",
+        5.00,
+        0.50,
+        25.00,
+        context_window=1_000_000,
+        max_output_tokens=16_384,
+        reasoning=True,
+    ),
+    ModelInfo(
+        "claude-sonnet-4-6",
+        "Claude Sonnet 4.6 — previous gen",
+        "chat",
+        3.00,
+        0.30,
+        15.00,
+        context_window=200_000,
+        max_output_tokens=16_384,
+    ),
 )
 
 
-# ----------------------- Google (refreshed 2026-05-01) ---------------------
+# ----------------------- Google (refreshed 2026-10-02) ---------------------
 #
 # Pricing for prompts ≤200k tokens. Gemini bills a higher tier on
 # >200k prompts; we surface the lower tier here since the analyzer
@@ -223,6 +267,16 @@ _GOOGLE_MODELS: tuple[ModelInfo, ...] = (
         12.00,
         context_window=1_000_000,
         max_output_tokens=32_768,
+    ),
+    ModelInfo(
+        "gemini-3.7-flash",
+        "Gemini 3.7 Flash — balanced",
+        "chat",
+        0.75,
+        0.075,
+        3.75,
+        context_window=1_048_576,
+        max_output_tokens=65_536,
     ),
     ModelInfo(
         "gemini-3.1-flash-lite-preview",
@@ -277,37 +331,18 @@ _OPENROUTER_MODELS: tuple[ModelInfo, ...] = (
     # OpenRouter aliases mirror the underlying model's max_output_tokens
     # cap (claude-opus → 16384, gemini-flash → 8192, etc.) — the router
     # forwards the request to the upstream vendor whose limits are what
-    # actually matter. `reasoning=True` for the gpt-5 aliases for the
-    # same reason: OpenRouter routes them to OpenAI's reasoning endpoint.
-    ModelInfo(
-        "openai/gpt-5.5",
-        "OpenRouter → GPT-5.5",
-        "chat",
-        5.00,
-        0.50,
-        30.00,
-        context_window=1_000_000,
-        max_output_tokens=16_384,
-        reasoning=True,
-    ),
-    ModelInfo(
-        "openai/gpt-5.6-luna",
-        "OpenRouter → GPT-5.6 Luna",
-        "chat",
-        0.2,
-        0.02,
-        1.2,
-        context_window=1_050_000,
-        max_output_tokens=128_000,
-        reasoning=True,
-    ),
+    # actually matter. `reasoning=True` for the gpt-5 and Claude 5.x
+    # aliases for the same reason: the upstream rejects `temperature`.
+    #
+    # OpenRouter spells Claude versions with a DOT (`claude-opus-5.5`),
+    # unlike Anthropic's own API (`claude-opus-5-5`).
     ModelInfo(
         "openai/gpt-5.6-sol",
         "OpenRouter → GPT-5.6 Sol (flagship)",
         "chat",
-        2.0,
-        0.2,
-        10.0,
+        5.00,
+        0.50,
+        30.00,
         context_window=1_050_000,
         max_output_tokens=128_000,
         reasoning=True,
@@ -316,57 +351,48 @@ _OPENROUTER_MODELS: tuple[ModelInfo, ...] = (
         "openai/gpt-5.6-terra",
         "OpenRouter → GPT-5.6 Terra",
         "chat",
-        2.0,
-        0.2,
-        12.0,
+        2.00,
+        0.20,
+        12.00,
         context_window=1_050_000,
         max_output_tokens=128_000,
         reasoning=True,
     ),
     ModelInfo(
-        "openai/gpt-5.4-mini",
-        "OpenRouter → GPT-5.4 mini",
+        "openai/gpt-5.6-luna",
+        "OpenRouter → GPT-5.6 Luna",
         "chat",
-        0.75,
-        0.075,
-        4.50,
-        context_window=400_000,
-        max_output_tokens=16_384,
-        reasoning=True,
-    ),
-    ModelInfo(
-        "openai/gpt-5.4-nano",
-        "OpenRouter → GPT-5.4 nano",
-        "filter",
         0.20,
         0.02,
-        1.25,
-        context_window=400_000,
+        1.20,
+        context_window=1_050_000,
+        max_output_tokens=128_000,
+        reasoning=True,
+    ),
+    ModelInfo(
+        "anthropic/claude-opus-5.5",
+        "OpenRouter → Claude Opus 5.5",
+        "chat",
+        4.00,
+        0.20,
+        20.00,
+        context_window=1_000_000,
         max_output_tokens=16_384,
         reasoning=True,
     ),
     ModelInfo(
-        "anthropic/claude-opus-4-7",
-        "OpenRouter → Claude Opus 4.7",
+        "anthropic/claude-sonnet-5.5",
+        "OpenRouter → Claude Sonnet 5.5",
         "chat",
-        5.00,
-        0.50,
-        25.00,
+        2.00,
+        0.20,
+        10.00,
         context_window=1_000_000,
         max_output_tokens=16_384,
+        reasoning=True,
     ),
     ModelInfo(
-        "anthropic/claude-sonnet-4-6",
-        "OpenRouter → Claude Sonnet 4.6",
-        "chat",
-        3.00,
-        0.30,
-        15.00,
-        context_window=200_000,
-        max_output_tokens=16_384,
-    ),
-    ModelInfo(
-        "anthropic/claude-haiku-4-5",
+        "anthropic/claude-haiku-4.5",
         "OpenRouter → Claude Haiku 4.5",
         "filter",
         1.00,
@@ -376,22 +402,32 @@ _OPENROUTER_MODELS: tuple[ModelInfo, ...] = (
         max_output_tokens=8_192,
     ),
     ModelInfo(
-        "google/gemini-2.5-flash",
-        "OpenRouter → Gemini 2.5 Flash",
+        "google/gemini-3.1-pro-preview",
+        "OpenRouter → Gemini 3.1 Pro",
         "chat",
-        0.30,
-        0.075,
-        2.50,
+        2.00,
+        0.50,
+        12.00,
         context_window=1_000_000,
-        max_output_tokens=8_192,
+        max_output_tokens=32_768,
     ),
     ModelInfo(
-        "google/gemini-2.5-flash-lite",
-        "OpenRouter → Gemini 2.5 Flash-Lite",
+        "google/gemini-3.7-flash",
+        "OpenRouter → Gemini 3.7 Flash",
+        "chat",
+        0.75,
+        0.075,
+        3.75,
+        context_window=1_048_576,
+        max_output_tokens=65_536,
+    ),
+    ModelInfo(
+        "google/gemini-3.1-flash-lite-preview",
+        "OpenRouter → Gemini 3.1 Flash-Lite",
         "filter",
-        0.10,
-        0.025,
-        0.40,
+        0.25,
+        0.0625,
+        1.50,
         context_window=1_000_000,
         max_output_tokens=8_192,
     ),
@@ -433,25 +469,26 @@ _VISION_CAPABLE_IDS: frozenset[str] = frozenset(
         "gpt-5.4-nano",
         "gpt-4o",
         # Anthropic — every modern Claude accepts image blocks.
+        "claude-opus-5-5",
+        "claude-sonnet-5-5",
+        "claude-fable-5-1",
         "claude-opus-4-7",
         "claude-sonnet-4-6",
         "claude-haiku-4-5",
         # Google — all Gemini 2.5 / 3.1 entries accept image parts.
         "gemini-3.1-pro-preview",
+        "gemini-3.7-flash",
         "gemini-3.1-flash-lite-preview",
         "gemini-2.5-pro",
         "gemini-2.5-flash",
         "gemini-2.5-flash-lite",
         # OpenRouter mirrors — vendor-prefixed.
-        "openai/gpt-5.5",
-        "openai/gpt-5.4-mini",
-        "openai/gpt-5.4-nano",
-        "openai/gpt-4o-mini",
-        "anthropic/claude-opus-4-7",
-        "anthropic/claude-sonnet-4-6",
-        "anthropic/claude-haiku-4-5",
-        "google/gemini-2.5-flash",
-        "google/gemini-2.5-flash-lite",
+        "anthropic/claude-opus-5.5",
+        "anthropic/claude-sonnet-5.5",
+        "anthropic/claude-haiku-4.5",
+        "google/gemini-3.1-pro-preview",
+        "google/gemini-3.7-flash",
+        "google/gemini-3.1-flash-lite-preview",
     }
 )
 
@@ -500,10 +537,25 @@ def all_known_models() -> list[ModelInfo]:
 
 
 def find_model(model_id: str) -> ModelInfo | None:
-    """Look up a model by id across every provider's catalog."""
+    """Look up a model by id across every provider's catalog.
+
+    An OpenRouter-style `vendor/model` id the catalog doesn't list falls
+    back to the vendor's own row (`openai/gpt-5.5` → `gpt-5.5`), with
+    OpenRouter's dotted Claude versions folded to Anthropic's dashes
+    (`anthropic/claude-opus-4.7` → `claude-opus-4-7`). That keeps pricing
+    and context windows right for ids typed in by hand and for older
+    OpenRouter rows the picker no longer offers.
+    """
     for pool in _REGISTRY.values():
         for m in pool:
             if m.id == model_id:
+                return m
+    vendor, sep, bare = (model_id or "").partition("/")
+    pool = _REGISTRY.get(vendor.lower(), ()) if sep and vendor.lower() != "openrouter" else ()
+    candidates = (bare, bare.replace(".", "-")) if vendor.lower() == "anthropic" else (bare,)
+    for candidate in candidates:
+        for m in pool:
+            if m.id == candidate:
                 return m
     return None
 
@@ -549,6 +601,40 @@ def provider_for_model(model_id: str) -> str | None:
     if lower.startswith(("gpt", "o1", "o3", "o4", "chatgpt")):
         return "openai"
     return None
+
+
+# Claude families that reject `temperature` (and every other sampling
+# parameter) with a 400. Matched against the bare id with dots folded to
+# dashes, so OpenRouter's `anthropic/claude-opus-5.5` and Anthropic's
+# `claude-opus-5-5` both hit — and so does a custom id the catalog has
+# never heard of.
+_SAMPLING_LOCKED_CLAUDE_PREFIXES: tuple[str, ...] = (
+    "claude-opus-4-7",
+    "claude-opus-4-8",
+    "claude-opus-5",
+    "claude-sonnet-5",
+    "claude-fable-",
+    "claude-mythos-",
+)
+
+
+def rejects_temperature(model_id: str) -> bool:
+    """True when `model_id` 400s on a custom `temperature`.
+
+    The catalog's `reasoning` flag is the source of truth; the name-shape
+    fallback covers ids typed in by hand (the bot's "Custom…" model) so a
+    newer release doesn't fail every run until someone edits this file.
+    Dropping `temperature` for a model that would have accepted it is
+    harmless (the server default applies); sending it to one that doesn't
+    is a hard failure.
+    """
+    info = find_model(model_id)
+    if info is not None and info.reasoning:
+        return True
+    name = (model_id or "").rsplit("/", 1)[-1].lower().replace(".", "-")
+    if name.startswith(("o1", "o3", "o4", "gpt-5")):
+        return True
+    return name.startswith(_SAMPLING_LOCKED_CLAUDE_PREFIXES)
 
 
 def supported_providers() -> tuple[str, ...]:

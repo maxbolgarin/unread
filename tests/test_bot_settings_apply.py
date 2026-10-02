@@ -176,3 +176,72 @@ async def test_unarmed_message_still_reaches_classification(app) -> None:
     ):
         await app._handle(event)
     classify.assert_called_once()
+
+
+# --- custom model id ------------------------------------------------------------
+
+
+async def test_custom_model_tap_arms_the_next_message(app) -> None:
+    cb = _Cb(encode_settings_callback("S_MODELC", 5))
+    await app._handle_callback(cb)
+    assert app._chat_state.get(7, {}).get("pending_model")
+    assert cb.edits and "model id" in cb.edits[-1]
+
+
+async def test_custom_model_tap_disarms_a_pending_key_prompt(app) -> None:
+    """Only one text prompt at a time — a model id must never be stored as a key."""
+    await app._handle_callback(_Cb(encode_settings_callback("S_KEY", 5)))
+    await app._handle_callback(_Cb(encode_settings_callback("S_MODELC", 5)))
+    state = app._chat_state.get(7, {})
+    assert state.get("pending_model")
+    assert not state.get("pending_api_key")
+
+
+async def test_custom_model_is_primary_owner_only(app) -> None:
+    app.allowed_ids.add(999)
+    await app._handle_callback(_Cb(encode_settings_callback("S_MODELC", 5), sender_id=999))
+    assert not app._chat_state.get(7, {}).get("pending_model")
+
+
+async def test_custom_model_message_sets_the_model(app) -> None:
+    from unread.config import get_settings
+
+    app._chat_state.setdefault(7, {})["pending_model"] = "openrouter"
+    event = _Event(text="anthropic/claude-sonnet-5.5")
+    with patch("unread.bot.dispatcher.classify") as classify:
+        await app._handle(event)
+    classify.assert_not_called()
+    assert get_settings().ai.chat_model == "anthropic/claude-sonnet-5.5"
+    assert not app._chat_state.get(7, {}).get("pending_model")
+
+
+async def test_unpriced_custom_model_warns_about_cost_reports(app) -> None:
+    from unread.bot.handlers import cmds
+
+    app._chat_state.setdefault(7, {})["pending_model"] = "openrouter"
+    event = _Event(text="mistralai/mistral-large-2611")
+    assert await cmds.maybe_consume_model_name(event, app=app) is True
+    assert "$0" in " ".join(event.replies)
+
+
+@pytest.mark.parametrize("text", ["https://youtu.be/abc", "what is this", "/cancel"])
+async def test_non_model_text_leaves_the_model_alone(app, text) -> None:
+    from unread.bot.handlers import cmds
+    from unread.config import get_settings
+
+    before = get_settings().ai.chat_model
+    app._chat_state.setdefault(7, {})["pending_model"] = "openai"
+    assert await cmds.maybe_consume_model_name(_Event(text=text), app=app) is True
+    assert get_settings().ai.chat_model == before
+
+
+async def test_expired_model_prompt_lets_the_message_through(app) -> None:
+    import time
+
+    from unread.bot.handlers import cmds
+
+    state = app._chat_state.setdefault(7, {})
+    state["pending_model"] = "openai"
+    state["pending_model_at"] = time.time() - 3600
+    assert await cmds.maybe_consume_model_name(_Event(text="gpt-5.6-terra"), app=app) is False
+    assert not state.get("pending_model")

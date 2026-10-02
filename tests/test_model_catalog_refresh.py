@@ -45,7 +45,7 @@ def test_terra_pricing_matches_the_published_rates(prefix) -> None:
 @pytest.mark.parametrize("prefix", ["", "openai/"])
 def test_sol_pricing_matches_the_published_rates(prefix) -> None:
     m = find_model(prefix + SOL)
-    assert (m.input_price, m.output_price, m.cached_price) == (2.00, 10.00, 0.20)
+    assert (m.input_price, m.output_price, m.cached_price) == (5.00, 30.00, 0.50)
 
 
 @pytest.mark.parametrize("prefix", ["", "openai/"])
