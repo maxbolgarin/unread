@@ -39,20 +39,38 @@ MODEL_CONTEXT: dict[str, int] = {
 _UNKNOWN_MODEL_WARNED: set[str] = set()
 
 
+def _configured_context_window(model: str) -> int | None:
+    """`context_window` from the user's pricing entry for `model`, if any."""
+    from unread.config import get_settings
+
+    try:
+        row = get_settings().pricing.chat.get(model)
+    except Exception:  # unloadable config must not break chunking
+        log.debug("chunker.config_context_window_unavailable", exc_info=True)
+        return None
+    return row.context_window if row is not None else None
+
+
 def model_context_window(model: str) -> int:
     """Return the input-context window for `model`, defaulting to 128k.
 
     Lookup order:
-      1. `ai.models.find_model()` — covers OpenAI / Anthropic / Google
+      1. `context_window` on the model's `[pricing.chat."<model>"]`
+         config entry — so a model newer than this release still
+         chunks at its real size.
+      2. `ai.models.find_model()` — covers OpenAI / Anthropic / Google
          / OpenRouter ids registered in the per-provider catalog.
-      2. Legacy `MODEL_CONTEXT` table for any older alias.
-      3. 128k fallback with a one-time warning.
+      3. Legacy `MODEL_CONTEXT` table for any older alias.
+      4. 128k fallback with a one-time warning.
 
     Without (1), every Claude / Gemini id silently fell to 128k — the
     chunker over-chunked Opus 4.7 (1M ctx) by ~8x, multiplying both
     spend and wall time. The warning fires once per unknown model id
     per process so log volume stays sane.
     """
+    configured = _configured_context_window(model)
+    if configured:
+        return configured
     info = find_model(model)
     if info is not None and info.context_window > 0:
         return info.context_window
@@ -64,7 +82,7 @@ def model_context_window(model: str) -> int:
             "chunker.unknown_model",
             model=model,
             fallback=128_000,
-            hint="register the model in unread/ai/models.py with a context_window",
+            hint='set context_window on [pricing.chat."<model>"] in config.toml',
         )
     return 128_000
 

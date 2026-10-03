@@ -34,8 +34,9 @@
 # [ai]
 # provider = "openai"
 # base_url = ""             # OpenAI-compat endpoint override (Azure, …)
-# chat_model = ""           # empty → provider's hard-coded default
-# filter_model = ""
+# chat_model = ""           # empty → preset's pin, then provider default.
+# filter_model = ""         # Set → wins over every preset's pinned model,
+#                           # so a newer model is a config edit, not an update.
 # Anthropic's server-side web-search tool is versioned by date and the API
 # rejects a type newer than your account's API version with a 400. Only the
 # `factcheck` preset uses it. Bump if Anthropic retires this version.
@@ -184,6 +185,8 @@ vision_model = "gpt-4o-mini"
 # attribute spend. A model missing from this table shows up as
 # "⚠ N call(s) had no pricing entry" in the stats output.
 # Keep entries for every model you actually use.
+# Optional `context_window = 1000000` on an entry sizes chunks for a model
+# newer than this release (unknown models otherwise assume 128k).
 # Rates last refreshed 2026-05-01. `unread/ai/models.py` ships the same
 # table for the model picker, so these entries here are advisory unless
 # you want to override them.

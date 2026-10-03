@@ -1534,6 +1534,7 @@ async def _run_single(
         if loaded_preset is None:
             console.print(f"[bold]{_tf('dry_run_unloadable', n=n, preset=preset)}[/]")
             return
+        from unread.analyzer.pipeline import effective_models as _effective_models
         from unread.analyzer.pipeline import estimate_cost as _estimate_cost
 
         lo, hi = _estimate_cost(
@@ -1541,14 +1542,15 @@ async def _run_single(
             preset=loaded_preset,
             settings=get_settings(),
         )
+        _final, _fil = _effective_models(loaded_preset, get_settings())
         console.print(
             "[bold]"
             + _tf(
                 "dry_run_summary",
                 preset=preset,
                 n=n,
-                final=loaded_preset.final_model,
-                fil=loaded_preset.filter_model,
+                final=_final,
+                fil=_fil,
             )
             + "[/]"
         )

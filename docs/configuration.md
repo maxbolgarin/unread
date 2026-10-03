@@ -251,6 +251,27 @@ rerank_keep = 50                         # what survives rerank → flagship
 Models that aren't priced still work — they just show as "unpriced
 calls" in `unread stats` and `unread doctor` warns about it.
 
+### Using a model newer than your release
+
+You don't need an app update to switch to a newly released model:
+
+```toml
+[ai]
+chat_model = "gpt-5.7-luna"              # beats every preset's `final_model` pin
+filter_model = "gpt-5.7-luna"            # beats every preset's `filter_model` pin
+
+[pricing.chat."gpt-5.7-luna"]
+input = 0.20
+cached_input = 0.02
+output = 1.20
+context_window = 1000000                 # optional; unknown models chunk at 128k
+```
+
+Or, on a server or Docker container: `UNREAD_AI_CHAT_MODEL` /
+`UNREAD_AI_FILTER_MODEL`. Model precedence for analysis is `--model` /
+`--filter-model` → `ai.chat_model` / `ai.filter_model` → the preset's
+pin → `[openai] *_model_default`.
+
 `UNREAD_CONFIG_PATH=/abs/path/config.toml` overrides the cwd-relative
 discovery.
 
