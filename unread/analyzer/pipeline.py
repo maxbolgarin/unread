@@ -119,6 +119,36 @@ def _resolve_language(settings: Any) -> str:
     return (locale.language or "en").lower()
 
 
+def effective_models(
+    preset: Preset,
+    settings: Any,
+    *,
+    model_override: str | None = None,
+    filter_model_override: str | None = None,
+) -> tuple[str, str]:
+    """Return `(final_model, filter_model)` for an analyze run.
+
+    Precedence, highest first:
+      1. explicit override (`--model` / `--filter-model`)
+      2. config `ai.chat_model` / `ai.filter_model` (or the matching
+         `UNREAD_AI_*_MODEL` env var)
+      3. the preset's `final_model` / `filter_model` pin
+      4. legacy `openai.*_model_default`
+
+    Config beats the preset pin so switching to a newer model is a
+    config edit, not a release: every shipped preset pins a model, and
+    when the pin won, `ai.chat_model` had no effect on analysis at all.
+    """
+    ai = getattr(settings, "ai", None)
+    cfg_final = (getattr(ai, "chat_model", "") or "").strip()
+    cfg_filter = (getattr(ai, "filter_model", "") or "").strip()
+    final_model = model_override or cfg_final or preset.final_model or settings.openai.chat_model_default
+    filter_model = (
+        filter_model_override or cfg_filter or preset.filter_model or settings.openai.filter_model_default
+    )
+    return final_model, filter_model
+
+
 def estimate_cost(
     *,
     n_messages: int,
@@ -159,8 +189,7 @@ def estimate_cost(
 
     from unread.util.pricing import chat_pricing_for
 
-    filter_model = preset.filter_model
-    final_model = preset.final_model
+    final_model, filter_model = effective_models(preset, settings)
     if chat_pricing_for(filter_model, settings) is None or chat_pricing_for(final_model, settings) is None:
         return None, None
 
@@ -641,8 +670,12 @@ async def run_analysis(
     # style hint about the *input* content; empty means "auto-detect".
     preset = _load_preset(opts, language=report_language)
 
-    final_model = opts.model_override or preset.final_model or settings.openai.chat_model_default
-    filter_model = opts.filter_model_override or preset.filter_model or settings.openai.filter_model_default
+    final_model, filter_model = effective_models(
+        preset,
+        settings,
+        model_override=opts.model_override,
+        filter_model_override=opts.filter_model_override,
+    )
 
     thread_param = thread_id if thread_id is not None else 0
     log.debug(

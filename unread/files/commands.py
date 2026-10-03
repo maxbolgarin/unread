@@ -31,7 +31,7 @@ from typing import Any
 import typer
 from rich.console import Console
 
-from unread.analyzer.pipeline import AnalysisOptions, estimate_cost, run_analysis
+from unread.analyzer.pipeline import AnalysisOptions, effective_models, estimate_cost, run_analysis
 from unread.config import get_settings
 from unread.db.repo import open_repo
 from unread.files.extractors import (
@@ -379,10 +379,11 @@ async def cmd_analyze_file(
                 console.print(f"[bold]Dry run: {n} synthetic msgs / preset={effective_preset}[/]")
                 return
             lo, hi = estimate_cost(n_messages=n, preset=loaded_preset, settings=settings)
+            final_m, filter_m = effective_models(loaded_preset, settings)
             console.print(
                 f"[bold]Dry run: file={name} kind={kind} paragraphs={len(paragraphs)} "
-                f"preset={effective_preset} final={loaded_preset.final_model} "
-                f"filter={loaded_preset.filter_model}[/]"
+                f"preset={effective_preset} final={final_m} "
+                f"filter={filter_m}[/]"
             )
             if hi is not None:
                 console.print(f"  Estimated cost: ${lo or 0.0:.4f} – ${hi:.4f}")

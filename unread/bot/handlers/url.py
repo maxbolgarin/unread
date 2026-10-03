@@ -58,8 +58,8 @@ async def execute(
             url=url,
             preset=preset or None,
             prompt_file=None,
-            # `ai.chat_model` only takes effect as a model_override: every
-            # preset pins `final_model`, and a pin beats config.
+            # `run_analysis` already lets `ai.chat_model` beat the preset's
+            # pin; passing it explicitly keeps the bot independent of that.
             model=(getattr(s.ai, "chat_model", "") or None),
             filter_model=None,
             output=None,

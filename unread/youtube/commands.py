@@ -20,6 +20,7 @@ from rich.panel import Panel
 
 from unread.analyzer.pipeline import (
     AnalysisOptions,
+    effective_models,
     estimate_cost,
     run_analysis,
 )
@@ -857,11 +858,12 @@ async def cmd_analyze_youtube(
                 preset=loaded_preset,
                 settings=settings,
             )
+            final_m, filter_m = effective_models(loaded_preset, settings)
             console.print(
                 f"[bold]Dry run: video={video_id} "
                 f"chars={len(transcript_text):,} "
                 f"segments={n} preset={effective_preset} "
-                f"final={loaded_preset.final_model} filter={loaded_preset.filter_model}[/]"
+                f"final={final_m} filter={filter_m}[/]"
             )
             if hi is not None:
                 analysis_hi = hi + transcript_cost

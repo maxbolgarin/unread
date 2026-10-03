@@ -50,18 +50,11 @@ def run_status_line(*, preset: str, settings: Any, source: str, kind: str = "") 
     searching = bool(getattr(preset_obj, "needs_web_search", False))
     verb = "🔎 Fact-checking" if searching else "⏳ Analyzing"
 
-    # Mirror `run_analysis`'s precedence exactly:
-    #   final_model = model_override or preset.final_model or config default
-    # A preset's pin WINS over `ai.chat_model`, and every shipped preset
-    # pins one. Showing `resolve_chat_model` advertised the provider-
-    # routed id (`openai/gpt-5.6-luna`) while the run actually sends the
-    # preset's bare `gpt-5.6-luna` — a progress line naming the wrong
-    # model is worse than one naming none.
-    # Precedence, mirroring `run_analysis`:
-    #   model_override or preset.final_model or config default
+    # Mirror `run_analysis`'s precedence (`pipeline.effective_models`):
+    #   override or ai.chat_model or preset.final_model or config default
     # The bot passes `ai.chat_model` as the override, so it comes FIRST —
-    # otherwise the line names the preset's pin while the run uses the
-    # override, which is the same wrong-model bug in a new place.
+    # a progress line naming a different model than the run actually
+    # sends is worse than one naming none.
     model = getattr(settings.ai, "chat_model", "") or ""
     if not model:
         model = getattr(preset_obj, "final_model", "") or ""

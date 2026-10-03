@@ -19,6 +19,7 @@ from rich.panel import Panel
 
 from unread.analyzer.pipeline import (
     AnalysisOptions,
+    effective_models,
     estimate_cost,
     run_analysis,
 )
@@ -384,10 +385,11 @@ async def cmd_analyze_website(
                 preset=loaded_preset,
                 settings=settings,
             )
+            final_m, filter_m = effective_models(loaded_preset, settings)
             console.print(
                 f"[bold]Dry run: page={page.metadata.page_id} "
                 f"paragraphs={len(page.paragraphs)} preset={effective_preset} "
-                f"final={loaded_preset.final_model} filter={loaded_preset.filter_model}[/]"
+                f"final={final_m} filter={filter_m}[/]"
             )
             if hi is not None:
                 console.print(f"  Estimated cost: ${lo or 0.0:.4f} – ${hi:.4f}")

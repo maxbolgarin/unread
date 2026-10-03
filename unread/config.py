@@ -542,6 +542,10 @@ class ChatPricing(_StrictCfg):
     input: float
     cached_input: float
     output: float
+    # Input-context window in tokens. Optional: lets a model newer than
+    # the built-in catalog (`unread/ai/models.py`) chunk at its real size
+    # instead of the 128k fallback, without waiting for a release.
+    context_window: int | None = Field(default=None, gt=0)
 
 
 class PricingCfg(_StrictCfg):

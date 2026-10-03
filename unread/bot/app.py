@@ -828,11 +828,11 @@ class BotApp:
         elif action == "S_PROV":
             await self._apply_ai_setting("ai.chat_provider", value or "")
             await self._apply_ai_setting("ai.filter_provider", value or "")
-            # Every preset pins an OpenAI model id, and a pin beats config
-            # — so switching provider without also switching the model
-            # sent `gpt-5.6-luna` to Anthropic and 4xx'd every later run.
-            # Pin the new provider's own default; the model menu can
-            # change it from there.
+            # Every preset pins an OpenAI model id, so switching provider
+            # without also setting a model sent `gpt-5.6-luna` to
+            # Anthropic and 4xx'd every later run. Pin the new provider's
+            # own default (config beats the preset pin); the model menu
+            # can change it from there.
             await self._apply_ai_setting("ai.chat_model", _default_model_for(value or ""))
             await self._apply_ai_setting("ai.filter_model", _default_filter_model_for(value or ""))
             text, buttons = build_settings_menu(
