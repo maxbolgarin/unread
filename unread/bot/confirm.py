@@ -33,6 +33,8 @@ from unread.config import Settings
 #   T_MO  = TG link: last 30 days
 #   Y_DUMP= YouTube link: skip analysis, return transcript.md
 #   Y_FACT= YouTube link: analyze with the `factcheck` preset
+#   V_DUMP= voice / audio / video msg: transcribe, upload transcript.md
+#   V_TEXT= voice / audio / video msg: transcribe, send the words as plain messages
 _ACTIONS = frozenset(
     {
         "R",
@@ -40,6 +42,8 @@ _ACTIONS = frozenset(
         "M",
         "Y_DUMP",
         "Y_FACT",
+        "V_DUMP",
+        "V_TEXT",
         "T_ONE",
         "T_FRM",
         "T_DAY",
@@ -297,7 +301,12 @@ def build_forward_choice_panel(
     has_fwd_msg_id = bool(payload.get("fwd_msg_id"))
 
     # Row 1 — analyze the forwarded message itself.
-    if has_media and has_caption:
+    if is_transcribable(payload):
+        # A forwarded voice / video: "caption only" is rarely what anyone
+        # wants, the words are. Same transcript pair as the direct panel.
+        rows.append([Button.inline("▶ Analyze", encode_callback("F_FULL", panel_msg_id))])
+        rows.append(_transcript_row(panel_msg_id))
+    elif has_media and has_caption:
         rows.append(
             [
                 Button.inline("🖼 Image + caption", encode_callback("F_FULL", panel_msg_id)),
@@ -386,6 +395,60 @@ def build_youtube_choice_panel(
             Button.inline("📝 Transcript", encode_callback("Y_DUMP", panel_msg_id)),
         ],
         [Button.inline("🔎 Fact-check", encode_callback("Y_FACT", panel_msg_id))],
+    ]
+    return text, rows
+
+
+def is_transcribable(payload: dict) -> bool:
+    """True for a single audio / video attachment (voice, round video, files).
+
+    Albums are excluded: the transcript buttons act on one recording, and
+    an album's merged item only carries its first member.
+    """
+    return (
+        payload.get("source") == "media"
+        and payload.get("kind") in ("audio", "video")
+        and not payload.get("album_size")
+    )
+
+
+def media_label(payload: dict) -> str:
+    """Human label for an audio / video attachment, e.g. `🎙 Voice message`."""
+    subtype = payload.get("subtype")
+    if subtype == "voice":
+        return "🎙 Voice message"
+    if subtype == "videonote":
+        return "⭕ Video message"
+    name = payload.get("name") or "file"
+    if payload.get("kind") == "video":
+        return f"🎞 Video: `{name}`"
+    return f"🎧 Audio: `{name}`"
+
+
+def _transcript_row(panel_msg_id: int) -> list[Any]:
+    return [
+        Button.inline("📝 Transcript", encode_callback("V_DUMP", panel_msg_id)),
+        Button.inline("💬 As text", encode_callback("V_TEXT", panel_msg_id)),
+    ]
+
+
+def build_media_choice_panel(
+    *,
+    payload: dict,
+    panel_msg_id: int,
+) -> tuple[str, list[list[Any]]]:
+    """Picker shown when a single voice / audio / video message arrives.
+
+    * ▶ Analyze     — the normal file pipeline (transcribe, then summarize).
+    * 📝 Transcript — no LLM call: transcribe and upload `transcript.md`.
+    * 💬 As text    — no LLM call: transcribe and send the words back as
+      plain chat messages, nothing else (no header, no cost line), so the
+      result can be read, copied or forwarded like any other message.
+    """
+    text = f"{media_label(payload)}\nWhat do you want?"
+    rows: list[list[Any]] = [
+        [Button.inline("▶ Analyze", encode_callback("R", panel_msg_id))],
+        _transcript_row(panel_msg_id),
     ]
     return text, rows
 

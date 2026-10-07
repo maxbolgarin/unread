@@ -646,7 +646,7 @@ class BotApp:
             log.info("bot.callback.refused_non_primary", action=action, sender_id=event.sender_id)
             return
 
-        if action in ("R", "A", "M", "Y_DUMP", "Y_FACT") or is_tg_window or is_forward:
+        if action in ("R", "A", "M", "Y_DUMP", "Y_FACT", "V_DUMP", "V_TEXT") or is_tg_window or is_forward:
             pending_runs.pop(panel_msg_id, None)
             with contextlib.suppress(Exception):
                 await event.answer("Running…")
@@ -671,6 +671,10 @@ class BotApp:
 
         if action == "Y_DUMP":
             await self._run_youtube_dump(pending, panel_msg)
+            return
+
+        if action in ("V_DUMP", "V_TEXT"):
+            await self._run_media_transcript(pending, panel_msg, as_text=action == "V_TEXT")
             return
 
         if action == "Y_FACT":
@@ -941,6 +945,41 @@ class BotApp:
                 if _is_clean_exit(e):
                     return
                 log.exception("bot.youtube_dump_failed")
+                await _safe_reply(item.event, f"⚠️ {type(e).__name__}: {e}")
+
+    async def _run_media_transcript(self, pending, panel_msg, *, as_text: bool) -> None:
+        """Transcript-only path for a single voice / audio / video item.
+
+        Offered on the media panel and on the forward picker for a
+        forwarded recording — both are single-item bursts, so like
+        `_run_youtube_dump` there is no N-item loop here.
+        """
+        from unread.bot.handlers import transcript as transcript_handler
+
+        items = pending.payload.get("items") or []
+        if not items:
+            return
+        item = items[0]
+        async with self._semaphore:
+            # Registered so `/stop` can reach this run; see `register_running`.
+            self.register_running(item.event.chat_id, asyncio.current_task())
+            try:
+                with contextlib.suppress(Exception):
+                    item.event._unread_app = self
+                await transcript_handler.execute(
+                    item.event,
+                    item.payload,
+                    app=self,
+                    as_text=as_text,
+                    progress_msg=panel_msg,
+                )
+            except asyncio.CancelledError:
+                await _safe_reply(item.event, "🛑 Stopped.")
+                raise
+            except Exception as e:
+                if _is_clean_exit(e):
+                    return
+                log.exception("bot.media_transcript_failed")
                 await _safe_reply(item.event, f"⚠️ {type(e).__name__}: {e}")
 
     async def _run_forward_action(self, action: str, pending, panel_msg) -> None:

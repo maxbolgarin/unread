@@ -47,6 +47,7 @@ Slash commands:
 _HELP_TEXT_FULL = """\
 **unread bot** — send me one of:
 • a file (PDF, audio, video, text, code, …)
+• a voice / video message → summary, or just the transcript (as a file or plain text)
 • a web URL → I'll summarize the page
 • a YouTube URL → I'll summarize the transcript
 • a forwarded Telegram message → I'll analyze its contents
@@ -57,6 +58,7 @@ _HELP_TEXT_FULL = """\
 _HELP_TEXT_NO_SESSION = """\
 **unread bot** — send me one of:
 • a file (PDF, audio, video, text, code, …)
+• a voice / video message → summary, or just the transcript (as a file or plain text)
 • a web URL → I'll summarize the page
 • a YouTube URL → I'll summarize the transcript
 
