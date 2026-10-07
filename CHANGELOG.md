@@ -1,3 +1,14 @@
+## [1.8.0](https://github.com/maxbolgarin/unread/compare/v1.7.0...v1.8.0) (2026-10-07)
+
+### 🚀 Features
+
+* **ai:** let config pick newer models without an app update ([79f92b2](https://github.com/maxbolgarin/unread/commit/79f92b25623d1eec822d1a7e10486000108d0cc4))
+* **bot:** transcribe voice / video messages, optionally as plain text ([853d1a9](https://github.com/maxbolgarin/unread/commit/853d1a955052ee5482f2e31b99073b6b0c3723fe))
+
+### 📚 Documentation
+
+* **bot:** document how to update a running Docker bot ([42f2b2f](https://github.com/maxbolgarin/unread/commit/42f2b2fc76a5e661b56c680b11d159861a4dff88))
+
 ## [1.7.0](https://github.com/maxbolgarin/unread/compare/v1.6.0...v1.7.0) (2026-10-02)
 
 ### 🚀 Features
