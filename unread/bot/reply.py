@@ -224,7 +224,7 @@ async def send_transcript_dump(
     started: float,
     title: str,
 ) -> None:
-    """Upload a `transcript.md` written by `cmd_dump_youtube`.
+    """Upload a `transcript.md` (YouTube dump or a voice / video message).
 
     Deliberately NOT `_upload_with_caption`: a transcript has no TL;DR
     section to extract and no report structure worth rendering to PDF —
@@ -263,6 +263,55 @@ async def send_transcript_dump(
     except Exception:
         log.exception("bot.transcript_upload_failed", transcript=str(transcript))
         await event.reply(f"⚠️ Couldn't upload the transcript. It's at `{transcript}` on the host.")
+
+
+def split_plain_text(text: str, *, limit: int) -> list[str]:
+    """Split plain prose into chunks of at most `limit` characters.
+
+    Unlike `split_for_telegram`, which only knows blank-line boundaries,
+    this is for a Whisper transcript: often one giant paragraph. Cuts at
+    the last newline, then sentence end, then space inside the window, and
+    only mid-word when a window has none of those.
+    """
+    text = (text or "").strip()
+    parts: list[str] = []
+    while len(text) > limit:
+        window = text[:limit]
+        cut = window.rfind("\n")
+        if cut <= 0:
+            cut = max(window.rfind(". "), window.rfind("! "), window.rfind("? "))
+            cut = cut + 1 if cut > 0 else -1
+        if cut <= 0:
+            cut = window.rfind(" ")
+        if cut <= 0:
+            cut = limit
+        parts.append(text[:cut].rstrip())
+        text = text[cut:].lstrip()
+    if text:
+        parts.append(text)
+    return parts
+
+
+async def send_transcript_text(event: events.NewMessage.Event, *, text: str) -> None:
+    """Send a transcript as plain chat messages — the words and nothing else.
+
+    No header, no cost caption, no Markdown parsing (a transcript that
+    happens to contain `*` or `_` must come back verbatim). The first
+    message replies to the recording so it's clear what it transcribes;
+    the rest follow in order.
+    """
+    parts = split_plain_text(text, limit=telegram_message_limit(event.client))
+    if not parts:
+        await event.reply("⚠️ The transcript is empty.")
+        return
+    for idx, part in enumerate(parts):
+        await event.client.send_message(
+            event.chat_id,
+            part,
+            reply_to=event.message.id if idx == 0 else None,
+            parse_mode=None,
+            link_preview=False,
+        )
 
 
 # ----------------------------------------------------------------------

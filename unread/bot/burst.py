@@ -112,6 +112,7 @@ def render_burst_panel(*, items: list[BurstItem], panel_msg_id: int) -> tuple[st
     * forwarded-from-channel → analyze the message vs the source channel
     * TG link                → how much of the chat to pull
     * YouTube link           → analyze vs dump the transcript
+    * voice / audio / video  → analyze vs transcript (file or plain text)
 
     Everything else (and every multi-item burst) falls through to the
     generic Run separately / Run combined batch panel.
@@ -119,8 +120,10 @@ def render_burst_panel(*, items: list[BurstItem], panel_msg_id: int) -> tuple[st
     from unread.bot.confirm import (
         build_batch_panel,
         build_forward_choice_panel,
+        build_media_choice_panel,
         build_tg_choice_panel,
         build_youtube_choice_panel,
+        is_transcribable,
     )
 
     if len(items) == 1:
@@ -142,6 +145,8 @@ def render_burst_panel(*, items: list[BurstItem], panel_msg_id: int) -> tuple[st
                 url=item.payload.get("url", ""),
                 panel_msg_id=panel_msg_id,
             )
+        if item.kind == "file" and is_transcribable(item.payload):
+            return build_media_choice_panel(payload=item.payload, panel_msg_id=panel_msg_id)
     return build_batch_panel(items=items, panel_msg_id=panel_msg_id)
 
 
@@ -220,6 +225,11 @@ def summary_line(item: BurstItem) -> str:
         if album_size:
             label = "album" if album_size > 1 else "media"
             return f"📷 {label} ({album_size} items)"
+        subtype = item.payload.get("subtype")
+        if subtype == "voice":
+            return "🎙 voice message"
+        if subtype == "videonote":
+            return "⭕ video message"
         return f"📄 {item.payload.get('name') or 'file'}"
     if item.kind == "url":
         return f"🌐 {item.payload.get('url', '')}"

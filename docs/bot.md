@@ -27,7 +27,7 @@ deployment (GHCR image, docker-compose, session bootstrapping) see
 
 A few of the moments where forwarding to the bot beats anything else:
 
-- **Long voice message** — a friend sends a 12-minute voice. Forward it; the bot replies with a TL;DR in roughly the time it takes to put your phone down.
+- **Long voice message** — a friend sends a 12-minute voice. Forward it; the bot replies with a TL;DR in roughly the time it takes to put your phone down. Or tap **💬 As text** to read it instead of listening.
 - **Podcast / lecture video** — drop a `.mp4` or YouTube URL, get the talk's main points without watching.
 - **Recorded meeting** — `.mp4` from Zoom / Meet / Teams. The audio track is extracted, transcribed, summarized.
 - **Suspicious link** — that "you have to see this" URL from a stranger. Forward it; the bot fetches, summarizes, tells you what it actually says without you clicking.
@@ -71,6 +71,21 @@ What do you want?
 - **▶ Analyze** — the normal pipeline: the `video` preset over the timestamped transcript, report as PDF/`.md`.
 - **📝 Transcript** — no analysis at all. The bot writes `transcript.md` (metadata header + plain transcript text) and uploads it as a Markdown file. No LLM call, so the only possible cost is Whisper, and only when the video has no usable captions.
 - **🔎 Fact-check** — pulls the checkable claims out of the video and verifies them against the web, then replies with a verdict table plus per-claim detail and source links. The most expensive of the three: flagship model *and* a per-search fee. See [Fact-checking](sources.md#fact-checking) for how it behaves on providers without web search, and why the cost caption understates this one.
+
+**Voice, video messages and audio/video files get the same idea**, minus fact-check:
+
+```
+🎙 Voice message
+What do you want?
+[▶ Analyze]
+[📝 Transcript]  [💬 As text]
+```
+
+- **▶ Analyze** — transcribe with Whisper, then summarize, like any other file.
+- **📝 Transcript** — no analysis: the transcript uploaded as `transcript.md`, with the usual time/cost caption.
+- **💬 As text** — no analysis, and nothing but the words: the transcript comes back as ordinary chat messages (split at Telegram's message limit), with no header and no stats line, ready to read, copy or forward.
+
+A voice or video forwarded from a channel shows the same three buttons above the channel options.
 
 Fact-check isn't YouTube-only — `/preset factcheck` makes it the default for everything you send in that chat, articles and forwarded posts included.
 

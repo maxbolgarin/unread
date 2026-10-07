@@ -22,6 +22,8 @@ from urllib.parse import urlparse
 from telethon import events
 from telethon.tl.types import (
     Document,
+    DocumentAttributeAudio,
+    DocumentAttributeVideo,
     MessageMediaDocument,
     MessageMediaPhoto,
     MessageMediaWebPage,
@@ -189,7 +191,7 @@ def _classify_media(media: Any) -> dict[str, Any]:
         mime = doc.mime_type or ""
         size = getattr(doc, "size", None)
         name = _filename_from_doc(doc) or _name_for_mime(mime)
-        return {
+        out = {
             "source": "media",
             "kind": _kind_for_mime(mime, name),
             "mime": mime,
@@ -197,6 +199,10 @@ def _classify_media(media: Any) -> dict[str, Any]:
             "media": media,
             "name": name,
         }
+        subtype = _media_subtype(doc)
+        if subtype:
+            out["subtype"] = subtype
+        return out
     # Round videos, audio, contact, geo, etc. all reach here as
     # MessageMediaDocument; anything else (poll, geo, contact, …) is
     # surfaced as `unknown` for the handler to refuse politely.
@@ -208,6 +214,21 @@ def _classify_media(media: Any) -> dict[str, Any]:
         "media": media,
         "name": "attachment",
     }
+
+
+def _media_subtype(doc: Document) -> str | None:
+    """`"voice"` for a voice note, `"videonote"` for a round video, else None.
+
+    Both arrive as plain audio/ogg and video/mp4 documents; only the
+    attribute flags tell them apart from an uploaded file. The confirm
+    panel uses this for its label — routing still goes by `kind`.
+    """
+    for attr in getattr(doc, "attributes", []) or []:
+        if isinstance(attr, DocumentAttributeAudio) and getattr(attr, "voice", False):
+            return "voice"
+        if isinstance(attr, DocumentAttributeVideo) and getattr(attr, "round_message", False):
+            return "videonote"
+    return None
 
 
 def _filename_from_doc(doc: Document) -> str | None:
