@@ -42,7 +42,7 @@ def _is_reasoning_model(model: str) -> bool:
     the curated source of truth (covers gpt-5.x including mini/nano,
     o-series, and OpenRouter aliases like `openai/gpt-5.4-mini`). When
     the model isn't in the catalog, falls back to a name-shape heuristic:
-    `o1`/`o3`/`o4`/`gpt-5` prefixes (matched against the bare suffix so
+    `o1`/`o3`/`o4`/`gpt-5`-and-later prefixes (matched against the bare suffix so
     `vendor/model` routing still works). The heuristic is permissive —
     accidentally dropping temperature for a non-reasoning model is
     harmless (defaults to 1.0 server-side), while incorrectly
