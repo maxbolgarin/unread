@@ -50,7 +50,13 @@ class YoutubeMetadata:
 
 def _ydl_options() -> dict[str, Any]:
     """Quiet, network-only yt-dlp options for metadata extraction."""
+    # Lazy: `transcript` imports this module. The logger is what lets a
+    # missing-JS-runtime warning reach the log — extraction is where
+    # yt-dlp notices it, one step before the download 403s.
+    from unread.youtube.transcript import _YtDlpLogger
+
     return {
+        "logger": _YtDlpLogger(),
         "quiet": True,
         "no_warnings": True,
         "skip_download": True,

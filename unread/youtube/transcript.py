@@ -362,6 +362,13 @@ def _yt_dlp_run(
     raise last_err
 
 
+_ACTIONABLE_YTDLP_WARNING = re.compile(
+    r"JavaScript runtime|challenge solving failed|Signature solving failed|"
+    r"PO Token|Sign in to confirm|older than \d+ days",
+    re.IGNORECASE,
+)
+
+
 class _YtDlpLogger:
     """Routes yt-dlp's own output into our logger instead of stderr.
 
@@ -379,7 +386,13 @@ class _YtDlpLogger:
         log.debug("ytdlp", msg=str(msg)[:300])
 
     def warning(self, msg: str) -> None:
-        log.debug("ytdlp.warning", msg=str(msg)[:300])
+        text = str(msg)
+        # These predict a 403 on the download that follows. Everything
+        # else yt-dlp warns about is routine and stays at debug.
+        if _ACTIONABLE_YTDLP_WARNING.search(text):
+            log.warning("ytdlp.warning", msg=text[:300])
+        else:
+            log.debug("ytdlp.warning", msg=text[:300])
 
     def error(self, msg: str) -> None:
         # Debug, not error: every caller of a yt-dlp run already handles
