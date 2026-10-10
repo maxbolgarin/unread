@@ -2,7 +2,7 @@
 
 Single source of truth for the settings picker, default pricing, and
 "is this model supported by this provider" checks. Refreshed against
-the provider docs on **2026-10-02**:
+the provider docs on **2026-10-10**:
 
   - OpenAI:   platform.openai.com/docs/pricing
   - Anthropic: docs.claude.com/en/docs/about-claude/models
@@ -28,6 +28,7 @@ moves.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 
@@ -62,12 +63,49 @@ class ModelInfo:
     reasoning: bool = False
 
 
-# ----------------------- OpenAI (refreshed 2026-10-02) ---------------------
+# ----------------------- OpenAI (refreshed 2026-10-10) ---------------------
 #
 # GPT-5.6 Sol is at a promotional $4/$20 until 2026-11-21; we record the
 # $5/$30 list rate so cost reports err high rather than low once it ends.
+#
+# GPT-6 prices are the ≤272k-input tier. Above 272k input OpenAI bills
+# the whole request at 2x input / 1.5x output, which a flat catalog row
+# can't express — a single call past that line reports low.
 
 _OPENAI_MODELS: tuple[ModelInfo, ...] = (
+    ModelInfo(
+        "gpt-6-astra",
+        "GPT-6 Astra — flagship",
+        "chat",
+        10.00,
+        1.00,
+        50.00,
+        context_window=1_050_000,
+        max_output_tokens=128_000,
+        reasoning=True,
+    ),
+    ModelInfo(
+        "gpt-6-sol",
+        "GPT-6 Sol — balanced",
+        "chat",
+        2.00,
+        0.20,
+        10.00,
+        context_window=1_050_000,
+        max_output_tokens=128_000,
+        reasoning=True,
+    ),
+    ModelInfo(
+        "gpt-6-luna",
+        "GPT-6 Luna — cheapest, 1M context",
+        "chat",
+        0.10,
+        0.01,
+        0.50,
+        context_window=1_050_000,
+        max_output_tokens=128_000,
+        reasoning=True,
+    ),
     ModelInfo(
         "gpt-5.6-sol",
         "GPT-5.6 Sol — flagship",
@@ -174,7 +212,7 @@ _OPENAI_MODELS: tuple[ModelInfo, ...] = (
 )
 
 
-# ----------------------- Anthropic (refreshed 2026-10-02) ------------------
+# ----------------------- Anthropic (refreshed 2026-10-10) ------------------
 #
 # `reasoning=True` on Claude means "rejects a custom `temperature`": Opus
 # 4.7 and every 5.x model 400 on sampling parameters. The Anthropic
@@ -182,6 +220,9 @@ _OPENAI_MODELS: tuple[ModelInfo, ...] = (
 # gpt-5. `max_output_tokens` stays at 16k even where the model allows
 # 128k: the adapter doesn't stream, and the SDK refuses a non-streaming
 # request with a very large `max_tokens`.
+#
+# Claude Haiku 5.5 prices are the ≤100k-prompt tier; past 100k it bills
+# $0.50/$2.50, which a flat row can't express, so long prompts report low.
 
 _ANTHROPIC_MODELS: tuple[ModelInfo, ...] = (
     ModelInfo(
@@ -207,8 +248,19 @@ _ANTHROPIC_MODELS: tuple[ModelInfo, ...] = (
         reasoning=True,
     ),
     ModelInfo(
+        "claude-haiku-5-5",
+        "Claude Haiku 5.5 — fast & cheap (1M ctx)",
+        "filter",
+        0.10,
+        0.01,
+        0.50,
+        context_window=1_000_000,
+        max_output_tokens=16_384,
+        reasoning=True,
+    ),
+    ModelInfo(
         "claude-haiku-4-5",
-        "Claude Haiku 4.5 — fast & cheap",
+        "Claude Haiku 4.5 — previous gen",
         "filter",
         1.00,
         0.10,
@@ -251,13 +303,26 @@ _ANTHROPIC_MODELS: tuple[ModelInfo, ...] = (
 )
 
 
-# ----------------------- Google (refreshed 2026-10-02) ---------------------
+# ----------------------- Google (refreshed 2026-10-10) ---------------------
 #
 # Pricing for prompts ≤200k tokens. Gemini bills a higher tier on
 # >200k prompts; we surface the lower tier here since the analyzer
 # chunks ahead of any single call ever crossing the threshold.
+#
+# Gemini 3.8 Flash is at an introductory $0.75/$3.75 until 2026-12-31;
+# we record the $1.50/$7.50 list rate so cost reports err high.
 
 _GOOGLE_MODELS: tuple[ModelInfo, ...] = (
+    ModelInfo(
+        "gemini-3.8-flash",
+        "Gemini 3.8 Flash — balanced",
+        "chat",
+        1.50,
+        0.15,
+        7.50,
+        context_window=1_048_576,
+        max_output_tokens=65_536,
+    ),
     ModelInfo(
         "gemini-3.1-pro-preview",
         "Gemini 3.1 Pro — frontier (preview)",
@@ -328,6 +393,39 @@ _GOOGLE_MODELS: tuple[ModelInfo, ...] = (
 # other vendor/model alias.
 
 _OPENROUTER_MODELS: tuple[ModelInfo, ...] = (
+    ModelInfo(
+        "openai/gpt-6-astra",
+        "OpenRouter → GPT-6 Astra (flagship)",
+        "chat",
+        10.00,
+        1.00,
+        50.00,
+        context_window=1_050_000,
+        max_output_tokens=128_000,
+        reasoning=True,
+    ),
+    ModelInfo(
+        "openai/gpt-6-sol",
+        "OpenRouter → GPT-6 Sol",
+        "chat",
+        2.00,
+        0.20,
+        10.00,
+        context_window=1_050_000,
+        max_output_tokens=128_000,
+        reasoning=True,
+    ),
+    ModelInfo(
+        "openai/gpt-6-luna",
+        "OpenRouter → GPT-6 Luna",
+        "chat",
+        0.10,
+        0.01,
+        0.50,
+        context_window=1_050_000,
+        max_output_tokens=128_000,
+        reasoning=True,
+    ),
     # OpenRouter aliases mirror the underlying model's max_output_tokens
     # cap (claude-opus → 16384, gemini-flash → 8192, etc.) — the router
     # forwards the request to the upstream vendor whose limits are what
@@ -392,6 +490,17 @@ _OPENROUTER_MODELS: tuple[ModelInfo, ...] = (
         reasoning=True,
     ),
     ModelInfo(
+        "anthropic/claude-haiku-5.5",
+        "OpenRouter → Claude Haiku 5.5",
+        "filter",
+        0.10,
+        0.01,
+        0.50,
+        context_window=1_000_000,
+        max_output_tokens=16_384,
+        reasoning=True,
+    ),
+    ModelInfo(
         "anthropic/claude-haiku-4.5",
         "OpenRouter → Claude Haiku 4.5",
         "filter",
@@ -410,6 +519,16 @@ _OPENROUTER_MODELS: tuple[ModelInfo, ...] = (
         12.00,
         context_window=1_000_000,
         max_output_tokens=32_768,
+    ),
+    ModelInfo(
+        "google/gemini-3.8-flash",
+        "OpenRouter → Gemini 3.8 Flash",
+        "chat",
+        1.50,
+        0.15,
+        7.50,
+        context_window=1_048_576,
+        max_output_tokens=65_536,
     ),
     ModelInfo(
         "google/gemini-3.7-flash",
@@ -464,6 +583,9 @@ _REGISTRY: dict[str, tuple[ModelInfo, ...]] = {
 _VISION_CAPABLE_IDS: frozenset[str] = frozenset(
     {
         # OpenAI flagships (vision via chat completions image_url).
+        "gpt-6-astra",
+        "gpt-6-sol",
+        "gpt-6-luna",
         "gpt-5.5",
         "gpt-5.4-mini",
         "gpt-5.4-nano",
@@ -474,9 +596,11 @@ _VISION_CAPABLE_IDS: frozenset[str] = frozenset(
         "claude-fable-5-1",
         "claude-opus-4-7",
         "claude-sonnet-4-6",
+        "claude-haiku-5-5",
         "claude-haiku-4-5",
         # Google — all Gemini 2.5 / 3.1 entries accept image parts.
         "gemini-3.1-pro-preview",
+        "gemini-3.8-flash",
         "gemini-3.7-flash",
         "gemini-3.1-flash-lite-preview",
         "gemini-2.5-pro",
@@ -485,7 +609,9 @@ _VISION_CAPABLE_IDS: frozenset[str] = frozenset(
         # OpenRouter mirrors — vendor-prefixed.
         "anthropic/claude-opus-5.5",
         "anthropic/claude-sonnet-5.5",
+        "anthropic/claude-haiku-5.5",
         "anthropic/claude-haiku-4.5",
+        "google/gemini-3.8-flash",
         "google/gemini-3.1-pro-preview",
         "google/gemini-3.7-flash",
         "google/gemini-3.1-flash-lite-preview",
@@ -613,6 +739,7 @@ _SAMPLING_LOCKED_CLAUDE_PREFIXES: tuple[str, ...] = (
     "claude-opus-4-8",
     "claude-opus-5",
     "claude-sonnet-5",
+    "claude-haiku-5",
     "claude-fable-",
     "claude-mythos-",
 )
@@ -632,7 +759,7 @@ def rejects_temperature(model_id: str) -> bool:
     if info is not None and info.reasoning:
         return True
     name = (model_id or "").rsplit("/", 1)[-1].lower().replace(".", "-")
-    if name.startswith(("o1", "o3", "o4", "gpt-5")):
+    if name.startswith(("o1", "o3", "o4")) or re.match(r"gpt-([5-9]|\d{2,})\b", name):
         return True
     return name.startswith(_SAMPLING_LOCKED_CLAUDE_PREFIXES)
 
