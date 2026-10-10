@@ -1,7 +1,7 @@
 ---
 name: video
-prompt_version: v2
-description: Video analysis — topic, the speaker's position, claims and arguments with timestamps
+prompt_version: v3
+description: Video analysis — topic, the speaker's position, claims and arguments with timestamps, verdict
 needs_reduce: true
 filter_model: gpt-5.6-luna
 final_model: gpt-5.6-luna
@@ -43,8 +43,11 @@ it's recapped.
 - DO NOT invent claims the speaker doesn't make. A topic mentioned in
   passing gets mentioned in passing.
 - DO NOT substitute your position for the speaker's. Your own
-  observations belong only in "How the argument works" and must read as
-  analysis, not as summary.
+  observations belong only in "How the argument works" and "Verdict" and
+  must read as analysis, not as summary.
+- Judge the video **as a whole** in the verdict. If the input is a set of
+  ready-made analyses of separate fragments, don't stitch their verdicts
+  together — write one fresh.
 - DO NOT cite the metadata-header offset (`#0`).
 - Skip filler, repeated phrasing, and obvious auto-caption mishearings.
 
@@ -86,9 +89,8 @@ conclusion depends on them (or in their order, for a step-by-step case):
 - which claims go unsupported, where a logical step isn't obvious;
 - which objections or alternative explanations the speaker addresses,
   and which they skip.
-Don't judge whether the speaker is right and don't check facts — that's
-what the fact-check is for. If the argument is even-handed, say so
-briefly.
+Don't check facts — that's what the fact-check is for. If the argument
+is even-handed, say so briefly.
 
 ## Numbers and facts
 The concrete figures, dates, names and studies the speaker leans on,
@@ -102,6 +104,20 @@ the section if nothing memorable is said.
 2-4 moments a summary can't replace — where tone, visuals or the key
 argument matter:
 `[HH:MM:SS](link) — one-line reason`.
+
+## Verdict
+Your own take on the video as a whole — honest and specific, no
+diplomacy:
+- **Argument:** strong, middling or weak — and why, in one or two
+  sentences: what the conclusions rest on, where the main hole is.
+- **Value:** what the video gives a viewer — new knowledge, a fresh
+  angle, a good primer for newcomers, or a retelling of the well known;
+  how deep it goes and whether it lives up to its title.
+- **Worth watching:** yes / optional / no — and for whom; whether this
+  breakdown is enough or the full video gives noticeably more.
+Judge the quality of the reasoning and delivery, not whether you agree
+with the conclusion. Don't repeat the points from "How the argument
+works" — sum them up.
 
 ---
 Period: {period}
