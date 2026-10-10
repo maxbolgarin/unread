@@ -1,3 +1,17 @@
+## [1.9.0](https://github.com/maxbolgarin/unread/compare/v1.8.0...v1.9.0) (2026-10-10)
+
+### 🚀 Features
+
+* **ai:** add GPT-6, Claude Haiku 5.5 and Gemini 3.8 Flash to the catalog ([5fa3169](https://github.com/maxbolgarin/unread/commit/5fa31696d89b87152b5ff6f2b40450235be4aeba))
+* **ai:** auto-update the model list and prices in a running bot ([5506b71](https://github.com/maxbolgarin/unread/commit/5506b71f613cc04793fc05c6bff5bfb5db715fe4))
+* **youtube:** fix the video analysis prompt, add a summary mode ([e3ae058](https://github.com/maxbolgarin/unread/commit/e3ae0588a3ddb082d49fc041357d7a53e26475da))
+* **factcheck:** judge spoken sources by their genre, add TL;DR and closing verdict ([4b49c5f](https://github.com/maxbolgarin/unread/commit/4b49c5f6d96354ee0c1bc6bbdf624feb494bc1b2))
+
+### 🐛 Bug Fixes
+
+* **logging:** one line per exception, never print frame locals ([1f8e80c](https://github.com/maxbolgarin/unread/commit/1f8e80c50e20fc61eed4a5b7aae4240f1bb956b2))
+* **youtube:** ship a JS runtime so audio downloads stop 403ing ([1897daa](https://github.com/maxbolgarin/unread/commit/1897daa4af383a0bf112e52426615d4d76fb5d83))
+
 ## [1.8.0](https://github.com/maxbolgarin/unread/compare/v1.7.0...v1.8.0) (2026-10-07)
 
 ### 🚀 Features
