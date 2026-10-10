@@ -663,7 +663,11 @@ class BotApp:
             log.info("bot.callback.refused_non_primary", action=action, sender_id=event.sender_id)
             return
 
-        if action in ("R", "A", "M", "Y_DUMP", "Y_FACT", "V_DUMP", "V_TEXT") or is_tg_window or is_forward:
+        if (
+            action in ("R", "A", "M", "Y_DUMP", "Y_FACT", "Y_SUM", "V_DUMP", "V_TEXT")
+            or is_tg_window
+            or is_forward
+        ):
             pending_runs.pop(panel_msg_id, None)
             with contextlib.suppress(Exception):
                 await event.answer("Running…")
@@ -694,11 +698,11 @@ class BotApp:
             await self._run_media_transcript(pending, panel_msg, as_text=action == "V_TEXT")
             return
 
-        if action == "Y_FACT":
+        if action in ("Y_FACT", "Y_SUM"):
             # Stamp the preset and reuse the ordinary single-item run
             # path — `_run_batch_separately` merges panel options over
             # the kind defaults, so the override survives.
-            pending.options.preset_override = "factcheck"
+            pending.options.preset_override = "factcheck" if action == "Y_FACT" else "video_summary"
             await self._run_batch_separately(pending, panel_msg)
             return
 

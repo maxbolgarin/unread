@@ -33,6 +33,7 @@ from unread.config import Settings
 #   T_MO  = TG link: last 30 days
 #   Y_DUMP= YouTube link: skip analysis, return transcript.md
 #   Y_FACT= YouTube link: analyze with the `factcheck` preset
+#   Y_SUM = YouTube link: retell the video with the `video_summary` preset
 #   V_DUMP= voice / audio / video msg: transcribe, upload transcript.md
 #   V_TEXT= voice / audio / video msg: transcribe, send the words as plain messages
 _ACTIONS = frozenset(
@@ -42,6 +43,7 @@ _ACTIONS = frozenset(
         "M",
         "Y_DUMP",
         "Y_FACT",
+        "Y_SUM",
         "V_DUMP",
         "V_TEXT",
         "T_ONE",
@@ -378,12 +380,14 @@ def build_youtube_choice_panel(
 ) -> tuple[str, list[list[Any]]]:
     """Picker shown when a single YouTube link arrives in a burst.
 
-    Three different jobs share one input shape: "tell me what this video
-    says" (analyze — LLM cost), "give me the words" (dump the transcript
-    as Markdown — no LLM call unless captions are missing and Whisper has
-    to run), and "is any of this true?" (fact-check — the most expensive
-    of the three, since it also pays per web search). Asking up front is
-    cheaper than running the wrong one.
+    Four different jobs share one input shape: "what is this about, so I
+    don't have to watch it" (summary — a retelling in order), "what does
+    the speaker argue and on what grounds" (analyze — claims and
+    arguments), "give me the words" (dump the transcript as Markdown — no
+    LLM call unless captions are missing and Whisper has to run), and "is
+    any of this true?" (fact-check — the most expensive, since it also
+    pays per web search). Asking up front is cheaper than running the
+    wrong one.
 
     `▶ Analyze` keeps the generic `R` action so it flows through the
     same single-item batch path every other kind uses.
@@ -391,10 +395,13 @@ def build_youtube_choice_panel(
     text = f"🎬 **YouTube**: {url}\nWhat do you want?"
     rows: list[list[Any]] = [
         [
+            Button.inline("📄 Summary", encode_callback("Y_SUM", panel_msg_id)),
             Button.inline("▶ Analyze", encode_callback("R", panel_msg_id)),
-            Button.inline("📝 Transcript", encode_callback("Y_DUMP", panel_msg_id)),
         ],
-        [Button.inline("🔎 Fact-check", encode_callback("Y_FACT", panel_msg_id))],
+        [
+            Button.inline("📝 Transcript", encode_callback("Y_DUMP", panel_msg_id)),
+            Button.inline("🔎 Fact-check", encode_callback("Y_FACT", panel_msg_id)),
+        ],
     ]
     return text, rows
 

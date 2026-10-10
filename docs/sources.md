@@ -79,7 +79,8 @@ Two caveats worth knowing:
 1. yt-dlp fetches metadata (title, channel, duration, captions index).
 2. A summary panel shows up + an interactive picker asks for the
    transcript source — captions (free), audio + Whisper (paid, with a
-   cost estimate), transcript-only (no analysis), or cancel. Skipped
+   cost estimate), transcript-only (no analysis), a summary or a
+   fact-check instead of the analysis, or cancel. Skipped
    when stdin isn't a TTY, when `--yes` is passed, or when an explicit
    `--youtube-source` flag was set. Picking **Transcript only** hands
    off to `unread dump <url> --mode transcript` and stops there — you
@@ -95,8 +96,12 @@ Two caveats worth knowing:
 4. Captions are fetched as VTT (or audio is downloaded → Whisper), and
    each cue's start-second becomes that segment's `msg_id`.
 5. The bundled `video` preset runs over the time-stamped synthetic
-   messages. Citations land as `[#754](https://www.youtube.com/watch?v=ID&t=754s)`
-   — every citation in the report is a clickable jump to that moment.
+   messages: the speaker's position, their claims and the arguments
+   behind each, and how the argument holds together. `video_summary`
+   (the picker's **Summary** row, or `--preset video_summary`) retells
+   the video in order instead, for when you won't watch it. Citations
+   land as `[00:12:34](https://www.youtube.com/watch?v=ID&t=754s)` —
+   every one is a clickable jump to that moment.
 6. Re-runs hit the cache — no yt-dlp, no Whisper, no LLM-side re-spend.
    Metadata lives in `youtube_videos`; transcripts live in
    `youtube_transcripts`, keyed by the language you **asked for** rather

@@ -291,6 +291,11 @@ DUMP_SENTINEL = "__dump__"
 # IS an analysis, just a different one.
 FACTCHECK_SENTINEL = "__factcheck__"
 
+# Sentinel for the "summary instead" row: same pipeline, the
+# `video_summary` preset — a retelling in order for someone who won't
+# watch, where `video` breaks down the speaker's claims and arguments.
+SUMMARY_SENTINEL = "__summary__"
+
 
 async def _interactive_pick_source(
     meta: YoutubeMetadata,
@@ -303,7 +308,8 @@ async def _interactive_pick_source(
 
     Returns the chosen TranscriptSource ("auto" / "captions" / "audio"),
     `DUMP_SENTINEL` for "skip the analysis, just write the transcript",
-    `FACTCHECK_SENTINEL` for "run the fact-check preset instead", or
+    `FACTCHECK_SENTINEL` for "run the fact-check preset instead",
+    `SUMMARY_SENTINEL` for "retell it with the summary preset", or
     `None` to signal cancel.
 
     `allow_actions=False` drops the dump / fact-check rows for callers
@@ -350,6 +356,12 @@ async def _interactive_pick_source(
             Choice(
                 value=DUMP_SENTINEL,
                 label="📝 Transcript only — save the text as Markdown, no analysis (no LLM cost)",
+            )
+        )
+        choices.append(
+            Choice(
+                value=SUMMARY_SENTINEL,
+                label="📄 Summary — what the video is about, retold in order, so you don't have to watch",
             )
         )
         choices.append(
@@ -715,11 +727,11 @@ async def cmd_analyze_youtube(
                         prefetched_meta=metadata,
                     )
                     return
-                if picked == FACTCHECK_SENTINEL:
+                if picked in (FACTCHECK_SENTINEL, SUMMARY_SENTINEL):
                     # Same pipeline, different preset — and `auto` stays
-                    # the transcript source, since fact-checking needs the
-                    # words either way.
-                    effective_preset = "factcheck"
+                    # the transcript source, since both need the words
+                    # either way.
+                    effective_preset = "factcheck" if picked == FACTCHECK_SENTINEL else "video_summary"
                     picked = "auto"
                 effective_source = picked
 
