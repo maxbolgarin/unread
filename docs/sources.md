@@ -364,7 +364,7 @@ What kind of analysis do you want? Pick a preset with `--preset`:
 | `decisions` | Markdown table: *Decision / Who / When / Rationale / Link*. |
 | `questions` | Open questions table: *unanswered / partial / no consensus*. |
 | `reactions` | Top-reacted messages grouped by reaction kind (👍 / 🔥 / 🤔 / 👎). |
-| `factcheck` | Pulls the checkable claims out of the source and verifies them against the web: a verdict table (✅ true / ❌ false / ⚠️ misleading / 🎭 manipulated / ❓ unverifiable) followed by per-claim detail with source links. Works on any source — video, article, PDF, forwarded post. |
+| `factcheck` | Pulls the checkable claims out of the source and verifies them against the web: a TL;DR with an overall rating, a verdict table (✅ true / ☑️ mostly true / 🔸 imprecise / ⚠️ misleading / ❌ false / 🎭 manipulated / ❓ unverifiable), per-claim detail with source links, and a closing verdict on the source as a whole. Judges spoken sources by their genre: rounding, loose wording and rhetoric don't count against a claim whose substance holds. Works on any source — video, article, PDF, forwarded post. |
 | `single_msg` | Picked automatically when `<ref>` is a `t.me/.../<msg_id>` link. |
 | `multichat` | Picked automatically for batch / folder analysis: aggregates across chats into ONE report instead of per-chat. |
 | `video` | Picked automatically for YouTube URLs — transcript summary with time-stamped citations. |

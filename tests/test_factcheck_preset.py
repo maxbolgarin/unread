@@ -86,3 +86,31 @@ def test_factcheck_output_budget_avoids_the_truncation_retry(language) -> None:
     # 25-30 claims — ~24k. The pinned model caps at 128k and output bills
     # as generated, so headroom is free when unused.
     assert get_presets(language)["factcheck"].output_budget_tokens >= 24_000
+
+
+@pytest.mark.parametrize("language", ["en", "ru"])
+def test_factcheck_opens_with_a_tldr_the_bot_can_send_inline(language) -> None:
+    """The bot posts the `## TL;DR` body as its own Telegram message
+    (`extract_tldr`); a fact-check without one arrived as a bare file."""
+    from unread.bot.extract import extract_tldr
+
+    system = get_presets(language)["factcheck"].system
+    assert "## TL;DR" in system
+    # The skeleton's TL;DR must stop before the claims table, or the
+    # inline message would swallow the whole table.
+    tldr = extract_tldr(system[system.index("## TL;DR") :])
+    assert tldr and "| # |" not in tldr
+
+
+@pytest.mark.parametrize("language", ["en", "ru"])
+def test_factcheck_ends_with_an_overall_verdict(language) -> None:
+    system = get_presets(language)["factcheck"].system
+    assert ("## Verdict" if language == "en" else "## Итог") in system
+
+
+@pytest.mark.parametrize("language", ["en", "ru"])
+def test_factcheck_has_a_soft_verdict_for_loose_but_right_claims(language) -> None:
+    """Spoken sources round and simplify; without a middle verdict the
+    model filed nearly every such claim under "misleading"."""
+    system = get_presets(language)["factcheck"].system
+    assert ("Mostly true" if language == "en" else "В целом верно") in system

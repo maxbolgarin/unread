@@ -88,7 +88,7 @@ def test_verdict_emoji_are_paired_with_words_in_both_presets() -> None:
     still be able to tell True from False."""
     from unread.analyzer.prompts import get_presets
 
-    for language, words in (("en", ("True", "False")), ("ru", ("Правда", "Ложь"))):
+    for language, words in (("en", ("True", "False")), ("ru", ("Верно", "Неверно"))):
         system = get_presets(language)["factcheck"].system
         for word in words:
             assert word in system
