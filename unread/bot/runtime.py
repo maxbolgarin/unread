@@ -20,7 +20,6 @@ call.
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Any
 
 from unread.bot.confirm import RunOptions
 from unread.config import Settings
@@ -284,46 +283,91 @@ def parse_lang_value(arg: str) -> tuple[str | None, str]:
 # ---------------------------------------------------------------------------
 
 
+# Human labels for the stored values. The overview and the inline menus
+# both read these, so a button and the line it changes always agree.
+LANGUAGE_LABELS: dict[str, str] = {
+    "en": "English",
+    "ru": "Русский",
+    "uk": "Українська",
+    "de": "Deutsch",
+    "es": "Español",
+    "fr": "Français",
+    "it": "Italiano",
+    "pt": "Português",
+    "zh": "中文",
+    "ja": "日本語",
+}
+FORMAT_LABELS: dict[str, str] = {
+    "pdf": "PDF document",
+    "md": "Markdown file",
+    "rich": "Message in chat",
+}
+TG_WINDOW_LABELS: dict[str, str] = {
+    "1d": "Last day",
+    "7d": "Last week",
+    "30d": "Last month",
+    "msg": "Just the linked message",
+    "from_msg": "From the linked message on",
+}
+ENRICH_LABELS: dict[str, str] = {
+    "image": "Images",
+    "doc": "Documents",
+    "link": "Links",
+    "video": "Videos",
+}
+
+
+_MEDIA_LABELS: dict[str, str] = {"voice": "Voice", "videonote": "Video notes", **ENRICH_LABELS}
+
+
+def language_label(code: str) -> str:
+    name = LANGUAGE_LABELS.get(code)
+    return f"{name} ({code})" if name else code
+
+
 def render_settings_overview(chat_state: dict, settings: Settings) -> str:
-    """Markdown block summarizing every sticky knob + its config fallback."""
-    sticky_preset = chat_state.get(STICKY_PRESET) or ""
-    sticky_lang = chat_state.get(STICKY_REPORT_LANGUAGE) or ""
-    sticky_extras = sorted(chat_state.get(STICKY_ENRICH_EXTRAS) or [])
-    sticky_window = chat_state.get(STICKY_TG_WINDOW) or ""
+    """Markdown block summarizing every per-chat setting.
+
+    Shows the value in effect, not the layer it came from: "ru (sticky)
+    · default: en" made people work out which one applies. A value the
+    user set is plain; one inherited from config says "(default)".
+    """
+    sticky_preset = (chat_state.get(STICKY_PRESET) or "").strip()
+    sticky_lang = (chat_state.get(STICKY_REPORT_LANGUAGE) or "").strip()
+    sticky_extras = set(chat_state.get(STICKY_ENRICH_EXTRAS) or ())
+    sticky_window = (chat_state.get(STICKY_TG_WINDOW) or "").strip()
+    sticky_format = (chat_state.get(STICKY_REPORT_FORMAT) or "").strip()
     confirm_disabled = bool(chat_state.get(STICKY_CONFIRM_DISABLED))
 
-    cfg_preset = settings.bot.default_preset or "(kind-specific)"
-    cfg_lang = settings.locale.report_language or settings.locale.language or "en"
-    cfg_extras_on = [
-        name for name in ("voice", "videonote", *ENRICH_NAMES) if getattr(settings.enrich, name, False)
-    ]
-    cfg_extras_str = ", ".join(cfg_extras_on) if cfg_extras_on else "(none)"
+    default = " __(default)__"
 
-    def _row(label: str, sticky_val: Any, default_val: Any) -> str:
-        if sticky_val:
-            return f"• **{label}**: `{sticky_val}` (sticky) · default: `{default_val}`"
-        return f"• **{label}**: `{default_val}` (default)"
+    lang = sticky_lang or settings.locale.report_language or settings.locale.language or "en"
+    fmt = effective_report_format(chat_state, settings)
+    cfg_preset = (settings.bot.default_preset or "").strip()
+    preset = sticky_preset or cfg_preset
+    preset_str = f"`{preset}`" if preset else "Auto — picked per content type"
+
+    # Everything a TG run will read: what config turns on plus what this
+    # chat added. One list — "none (sticky) · config: voice" read as if
+    # voice notes were off.
+    media_names = [
+        name
+        for name in ("voice", "videonote", *ENRICH_NAMES)
+        if name in sticky_extras or getattr(settings.enrich, name, False)
+    ]
+    media = ", ".join(_MEDIA_LABELS[n] for n in media_names) or "Text only"
 
     lines = [
-        "📊 **Settings for this chat**",
+        "⚙️ **Settings**",
         "",
-        _row("Preset", sticky_preset, cfg_preset),
-        _row("Report language", sticky_lang, cfg_lang),
+        "📝 **Reports**",
+        f"• Language: {language_label(lang)}{'' if sticky_lang else default}",
+        f"• Format: {FORMAT_LABELS.get(fmt, fmt)}{'' if sticky_format else default}",
+        f"• Preset: {preset_str}{'' if sticky_preset else default}",
+        "",
+        "💬 **Telegram chats**",
+        f"• Period: {TG_WINDOW_LABELS.get(sticky_window, sticky_window) if sticky_window else 'Ask each time'}",
+        f"• Also read: {media}",
+        f"• Confirm before running: {'Off' if confirm_disabled else 'On'}",
     ]
-    if sticky_extras:
-        lines.append(
-            f"• **Extra enrich**: `{', '.join(sticky_extras)}` (sticky) · config: `{cfg_extras_str}`"
-        )
-    else:
-        lines.append(f"• **Extra enrich**: none (sticky) · config: `{cfg_extras_str}`")
-    if sticky_window:
-        lines.append(f"• **TG window**: `{sticky_window}` (sticky)")
-    else:
-        lines.append("• **TG window**: ask each time (default)")
-    lines.append(f"• **Confirm panel**: `{'off' if confirm_disabled else 'on'}` (default: on)")
-    lines.append("")
-    lines.append(
-        "Change with: `/preset <name>` · `/lang <code>` · `/enrich <list|all|none>` · "
-        "`/window <day|week|month|msg|from_msg|none>` · `/confirm on|off`"
-    )
     return "\n".join(lines)

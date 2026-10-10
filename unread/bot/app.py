@@ -813,9 +813,13 @@ class BotApp:
     async def _maybe_handle_settings_callback(self, event) -> bool:
         """Apply a `/settings` menu tap. False when it isn't one."""
         from unread.bot.settings_menu import (
+            CHAT_MENU_BUILDERS,
+            CHAT_SET_ACTIONS,
+            build_media_menu,
             build_model_menu,
             build_provider_menu,
             build_settings_menu,
+            chat_setting_change,
             key_prompt_text,
             parse_settings_callback,
         )
@@ -839,7 +843,40 @@ class BotApp:
                 await event.answer(_NOT_PRIMARY_OWNER_TOAST, alert=True)
             return True
 
-        if action == "S_PROVS":
+        if action == "S_CLOSE":
+            chat_state.pop("pending_model", None)
+            chat_state.pop("pending_model_at", None)
+            with contextlib.suppress(Exception):
+                await event.answer()
+            with contextlib.suppress(Exception):
+                await event.edit(buttons=None)
+            return True
+
+        # Per-chat settings: each admin owns their own chat's values, so
+        # no primary-owner gate here (unlike the bot-wide AI ones below).
+        if action in CHAT_MENU_BUILDERS:
+            text, buttons = CHAT_MENU_BUILDERS[action](
+                chat_state=chat_state, settings=settings, panel_msg_id=panel_id
+            )
+        elif action in CHAT_SET_ACTIONS:
+            from unread.bot import prefs
+
+            try:
+                key, new_value = chat_setting_change(action, value, chat_state)
+            except ValueError:
+                log.warning("bot.settings.bad_value", action=action, value=value)
+                with contextlib.suppress(Exception):
+                    await event.answer("That option is no longer available.", alert=True)
+                return True
+            if new_value:
+                await prefs.set_sticky(self, chat_id=event.chat_id, key=key, value=new_value)
+            else:
+                await prefs.clear_sticky(self, chat_id=event.chat_id, key=key)
+            # Media is a set of toggles, so stay on it; every other pick
+            # is final and goes back to the overview.
+            builder = build_media_menu if action == "S_MED" else build_settings_menu
+            text, buttons = builder(chat_state=chat_state, settings=settings, panel_msg_id=panel_id)
+        elif action == "S_PROVS":
             text, buttons = build_provider_menu(settings=settings, panel_msg_id=panel_id)
         elif action == "S_MODELS":
             # The panel asks for a typed model id, so arm the prompt. Only

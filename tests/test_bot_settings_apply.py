@@ -29,12 +29,14 @@ class _Cb:
         self.chat_id = chat_id
         self.answers: list[str] = []
         self.edits: list[str] = []
+        self.edit_buttons: list[Any] = []
 
     async def answer(self, text: str = "", **_kw) -> None:
         self.answers.append(text)
 
-    async def edit(self, text: str, **_kw) -> None:
-        self.edits.append(text)
+    async def edit(self, text: str | None = None, **kw) -> None:
+        self.edits.append(text or "")
+        self.edit_buttons.append(kw.get("buttons"))
 
     async def get_message(self):
         return None
@@ -253,3 +255,51 @@ async def test_expired_model_prompt_lets_the_message_through(app) -> None:
     state["pending_model_at"] = time.time() - 3600
     assert await cmds.maybe_consume_model_name(_Event(text="gpt-5.6-terra"), app=app) is False
     assert not state.get("pending_model")
+
+
+# --- per-chat settings taps ------------------------------------------------------
+
+
+async def test_format_tap_sets_and_persists_the_chat_value(app) -> None:
+    cb = _Cb(encode_settings_callback("S_FMT", 5, "rich"))
+    await app._handle_callback(cb)
+    assert app._chat_state[7]["report_format"] == "rich"
+    assert "Message in chat" in cb.edits[-1]  # back on the overview, showing it
+    from unread.db.repo import open_repo
+
+    async with open_repo(app.settings.storage.data_path) as repo:
+        stored = await repo.get_all_bot_chat_settings()
+    assert stored[7]["report_format"] == "rich"
+
+
+async def test_default_tap_clears_the_chat_value(app) -> None:
+    await app._handle_callback(_Cb(encode_settings_callback("S_LANG", 5, "ru")))
+    await app._handle_callback(_Cb(encode_settings_callback("S_LANG", 5, "")))
+    assert "report_language" not in app._chat_state[7]
+
+
+async def test_media_tap_stays_on_the_media_menu(app) -> None:
+    cb = _Cb(encode_settings_callback("S_MED", 5, "image"))
+    await app._handle_callback(cb)
+    assert app._chat_state[7]["enrich_extras"] == {"image"}
+    assert "Media" in cb.edits[-1]
+
+
+async def test_chat_settings_are_open_to_extra_admins(app) -> None:
+    """Per-chat values belong to whoever's chat it is; only AI is gated."""
+    app.allowed_ids.add(222)
+    await app._handle_callback(_Cb(encode_settings_callback("S_CONF", 5), sender_id=222, chat_id=8))
+    assert app._chat_state[8]["confirm_disabled"] is True
+
+
+async def test_forged_value_is_refused(app) -> None:
+    cb = _Cb(encode_settings_callback("S_FMT", 5, "docx"))
+    await app._handle_callback(cb)
+    assert "report_format" not in app._chat_state.get(7, {})
+    assert cb.answers and cb.answers[-1]
+
+
+async def test_close_drops_the_keyboard(app) -> None:
+    cb = _Cb(encode_settings_callback("S_CLOSE", 5))
+    await app._handle_callback(cb)
+    assert cb.edit_buttons == [None]

@@ -28,7 +28,19 @@ from telethon import Button
 #   S_MODELS= show the model prompt (the next message is the model id)
 #   S_MODEL = pick a model (arg = model id; empty = preset default)
 #   S_KEY   = start the API-key prompt
-SETTINGS_ACTIONS = frozenset({"S_ROOT", "S_PROVS", "S_PROV", "S_MODELS", "S_MODEL", "S_KEY"})
+# Per-chat settings — the plural opens the sub-menu, the singular applies
+# the tapped value (empty = back to the default):
+#   S_LANGS / S_LANG    = report language
+#   S_FMTS  / S_FMT     = report format
+#   S_PRSTS / S_PRST    = preset
+#   S_WINS  / S_WIN     = TG period
+#   S_MEDS  / S_MED     = TG extra media (arg = kind to toggle, or all/none)
+#   S_CONF  = flip the confirm panel
+#   S_CLOSE = drop the keyboard
+CHAT_MENU_ACTIONS = frozenset({"S_LANGS", "S_FMTS", "S_PRSTS", "S_WINS", "S_MEDS"})
+CHAT_SET_ACTIONS = frozenset({"S_LANG", "S_FMT", "S_PRST", "S_WIN", "S_MED", "S_CONF"})
+AI_ACTIONS = frozenset({"S_PROVS", "S_PROV", "S_MODELS", "S_MODEL", "S_KEY"})
+SETTINGS_ACTIONS = frozenset({"S_ROOT", "S_CLOSE"}) | AI_ACTIONS | CHAT_MENU_ACTIONS | CHAT_SET_ACTIONS
 
 
 # Providers offered in the menu. Derived from the config allowlist rather
@@ -112,12 +124,28 @@ def _active_model(settings: Any) -> str:
     return getattr(settings.ai, "chat_model", "") or ""
 
 
+def _btn(label: str, action: str, panel_msg_id: int, value: str | None = None) -> Any:
+    return Button.inline(label, encode_settings_callback(action, panel_msg_id, value))
+
+
+def _back_row(panel_msg_id: int) -> list:
+    return [_btn("⬅ Back", "S_ROOT", panel_msg_id)]
+
+
+def _grid(buttons: list, per_row: int = 2) -> list[list]:
+    return [buttons[i : i + per_row] for i in range(0, len(buttons), per_row)]
+
+
+def _mark(label: str, active: bool) -> str:
+    return f"✓ {label}" if active else label
+
+
 def build_settings_menu(*, chat_state: dict, settings: Any, panel_msg_id: int) -> tuple[str, list]:
-    """Root menu: what's set now, plus a way into each sub-menu."""
-    from unread.bot.runtime import render_settings_overview
+    """Root menu: what's set now, plus a button for every setting."""
+    from unread.bot.runtime import STICKY_CONFIRM_DISABLED, render_settings_overview
 
     provider = _active_provider(settings)
-    model = _active_model(settings) or "(preset default)"
+    model = _active_model(settings) or "preset default"
     key_field = _KEY_FIELD.get(provider, "")
     key_value = ""
     if key_field:
@@ -126,19 +154,203 @@ def build_settings_menu(*, chat_state: dict, settings: Any, panel_msg_id: int) -
 
     text = render_settings_overview(chat_state, settings)
     text += (
-        "\n\n🤖 **AI**\n"
-        f"• **Provider**: `{provider}`\n"
-        f"• **Model**: `{model}`\n"
-        f"• **API key**: `{mask_secret(key_value) if key_field else '(n/a)'}`"
+        "\n\n🤖 **AI** __(whole bot)__\n"
+        f"• Provider: `{provider}`\n"
+        f"• Model: `{model}`\n"
+        f"• API key: {mask_secret(key_value) if key_field else 'not needed'}"
+        "\n\nTap a button to change a setting."
     )
+    confirm_on = not chat_state.get(STICKY_CONFIRM_DISABLED)
     rows = [
+        [_btn("🌐 Language", "S_LANGS", panel_msg_id), _btn("📄 Format", "S_FMTS", panel_msg_id)],
+        [_btn("🎛 Preset", "S_PRSTS", panel_msg_id), _btn("📅 Period", "S_WINS", panel_msg_id)],
         [
-            Button.inline("🔀 Provider", encode_settings_callback("S_PROVS", panel_msg_id)),
-            Button.inline("🧠 Model", encode_settings_callback("S_MODELS", panel_msg_id)),
+            _btn("🖼 Media", "S_MEDS", panel_msg_id),
+            _btn(f"{'✅' if confirm_on else '⬜'} Confirm", "S_CONF", panel_msg_id),
         ],
-        [Button.inline("🔑 API key", encode_settings_callback("S_KEY", panel_msg_id))],
+        [_btn("🔀 Provider", "S_PROVS", panel_msg_id), _btn("🧠 Model", "S_MODELS", panel_msg_id)],
+        [_btn("🔑 API key", "S_KEY", panel_msg_id), _btn("✖ Close", "S_CLOSE", panel_msg_id)],
     ]
     return text, rows
+
+
+def build_language_menu(*, chat_state: dict, settings: Any, panel_msg_id: int) -> tuple[str, list]:
+    from unread.bot.runtime import LANGUAGE_LABELS, STICKY_REPORT_LANGUAGE
+
+    sticky = (chat_state.get(STICKY_REPORT_LANGUAGE) or "").strip()
+    cfg = settings.locale.report_language or settings.locale.language or "en"
+    buttons = [
+        _btn(_mark(name, code == sticky), "S_LANG", panel_msg_id, code)
+        for code, name in LANGUAGE_LABELS.items()
+    ]
+    rows = _grid(buttons)
+    rows.append([_btn(_mark(f"Default ({cfg})", not sticky), "S_LANG", panel_msg_id, "")])
+    rows.append(_back_row(panel_msg_id))
+    text = (
+        "🌐 **Language**\n\n"
+        "Used for analyses, report headings and transcripts.\n"
+        "Not listed? Send `/lang <code>`, e.g. `/lang pl`."
+    )
+    return text, rows
+
+
+def build_format_menu(*, chat_state: dict, settings: Any, panel_msg_id: int) -> tuple[str, list]:
+    from unread.bot.runtime import FORMAT_LABELS, STICKY_REPORT_FORMAT
+
+    sticky = (chat_state.get(STICKY_REPORT_FORMAT) or "").strip()
+    cfg = (getattr(settings.bot, "report_format", "") or "pdf").strip()
+    rows = [
+        [_btn(_mark(label, value == sticky), "S_FMT", panel_msg_id, value)]
+        for value, label in FORMAT_LABELS.items()
+    ]
+    rows.append(
+        [_btn(_mark(f"Default ({FORMAT_LABELS.get(cfg, cfg)})", not sticky), "S_FMT", panel_msg_id, "")]
+    )
+    rows.append(_back_row(panel_msg_id))
+    text = (
+        "📄 **Report format**\n\n"
+        "• **PDF document** — rendered, best on phones\n"
+        "• **Markdown file** — the raw `.md`\n"
+        "• **Message in chat** — the report itself, nothing to download"
+    )
+    return text, rows
+
+
+def _visible_presets() -> list[tuple[str, str]]:
+    """`(name, description)` of the presets a user may pick, sorted.
+
+    Hidden presets are the ones routing picks on its own (single message,
+    website, video); offering them as a sticky default would pin every
+    run to one content type.
+    """
+    from unread.analyzer.prompts import get_presets
+
+    try:
+        presets = get_presets("en")
+    except Exception:
+        return []
+    # Only the lead of each description: the full ones run to a sentence
+    # and turn the menu into a wall.
+    return sorted(
+        (name, (p.description or "").split(" — ")[0].strip()) for name, p in presets.items() if not p.hidden
+    )
+
+
+def build_preset_menu(*, chat_state: dict, settings: Any, panel_msg_id: int) -> tuple[str, list]:
+    from unread.bot.runtime import STICKY_PRESET
+
+    sticky = (chat_state.get(STICKY_PRESET) or "").strip()
+    presets = _visible_presets()
+    buttons = [_btn(_mark(name, name == sticky), "S_PRST", panel_msg_id, name) for name, _ in presets]
+    rows = _grid(buttons)
+    rows.append([_btn(_mark("Auto (per content type)", not sticky), "S_PRST", panel_msg_id, "")])
+    rows.append(_back_row(panel_msg_id))
+    lines = ["🎛 **Preset**", "", "What kind of report to write:"]
+    lines += [f"• `{name}` — {desc}" if desc else f"• `{name}`" for name, desc in presets]
+    return "\n".join(lines), rows
+
+
+def build_window_menu(*, chat_state: dict, settings: Any, panel_msg_id: int) -> tuple[str, list]:
+    from unread.bot.runtime import STICKY_TG_WINDOW, TG_WINDOW_LABELS
+
+    sticky = (chat_state.get(STICKY_TG_WINDOW) or "").strip()
+    rows = [
+        [_btn(_mark(label, value == sticky), "S_WIN", panel_msg_id, value)]
+        for value, label in TG_WINDOW_LABELS.items()
+    ]
+    rows.append([_btn(_mark("Ask each time", not sticky), "S_WIN", panel_msg_id, "")])
+    rows.append(_back_row(panel_msg_id))
+    text = (
+        "📅 **Period for Telegram chats**\n\n"
+        "Which messages to read when you send a `t.me/...` link or a forward. "
+        "With **Ask each time** I show the choice before every run."
+    )
+    return text, rows
+
+
+def build_media_menu(*, chat_state: dict, settings: Any, panel_msg_id: int) -> tuple[str, list]:
+    from unread.bot.runtime import ENRICH_LABELS, ENRICH_NAMES, STICKY_ENRICH_EXTRAS
+
+    extras = set(chat_state.get(STICKY_ENRICH_EXTRAS) or ())
+    buttons = []
+    for name in ENRICH_NAMES:
+        on = name in extras or bool(getattr(settings.enrich, name, False))
+        locked = bool(getattr(settings.enrich, name, False))
+        label = f"{'✅' if on else '⬜'} {ENRICH_LABELS[name]}{' 🔒' if locked else ''}"
+        buttons.append(_btn(label, "S_MED", panel_msg_id, name))
+    rows = _grid(buttons)
+    rows.append([_btn("All", "S_MED", panel_msg_id, "all"), _btn("None", "S_MED", panel_msg_id, "none")])
+    rows.append(_back_row(panel_msg_id))
+    text = (
+        "🖼 **Media in Telegram chats**\n\n"
+        "Besides text, which attachments to read. Voice and video notes are "
+        "always transcribed. Each extra costs more time and tokens.\n\n"
+        "🔒 = turned on in the bot config, can't be switched off here."
+    )
+    return text, rows
+
+
+CHAT_MENU_BUILDERS = {
+    "S_LANGS": build_language_menu,
+    "S_FMTS": build_format_menu,
+    "S_PRSTS": build_preset_menu,
+    "S_WINS": build_window_menu,
+    "S_MEDS": build_media_menu,
+}
+
+
+def chat_setting_change(action: str, value: str | None, chat_state: dict) -> tuple[str, Any]:
+    """Map a per-chat settings tap to `(sticky_key, new_value)`.
+
+    A falsy `new_value` means "clear the sticky value". Pure, so the
+    taps are testable without a Telegram connection; the caller persists.
+    Raises ValueError on a value the menu never offers (stale or forged
+    callback data).
+    """
+    from unread.bot.runtime import (
+        ENRICH_NAMES,
+        FORMAT_LABELS,
+        STICKY_CONFIRM_DISABLED,
+        STICKY_ENRICH_EXTRAS,
+        STICKY_PRESET,
+        STICKY_REPORT_FORMAT,
+        STICKY_REPORT_LANGUAGE,
+        STICKY_TG_WINDOW,
+        TG_WINDOW_LABELS,
+        parse_lang_value,
+    )
+
+    value = (value or "").strip()
+    if action == "S_CONF":
+        return STICKY_CONFIRM_DISABLED, not chat_state.get(STICKY_CONFIRM_DISABLED)
+    if action == "S_LANG":
+        if value and parse_lang_value(value)[0] is None:
+            raise ValueError(f"bad language {value!r}")
+        return STICKY_REPORT_LANGUAGE, value.lower()
+    if action == "S_FMT":
+        if value and value not in FORMAT_LABELS:
+            raise ValueError(f"bad format {value!r}")
+        return STICKY_REPORT_FORMAT, value
+    if action == "S_WIN":
+        if value and value not in TG_WINDOW_LABELS:
+            raise ValueError(f"bad window {value!r}")
+        return STICKY_TG_WINDOW, value
+    if action == "S_PRST":
+        if value and value not in {name for name, _ in _visible_presets()}:
+            raise ValueError(f"bad preset {value!r}")
+        return STICKY_PRESET, value
+    if action == "S_MED":
+        extras = set(chat_state.get(STICKY_ENRICH_EXTRAS) or ())
+        if value == "all":
+            extras = set(ENRICH_NAMES)
+        elif value == "none":
+            extras = set()
+        elif value in ENRICH_NAMES:
+            extras ^= {value}
+        else:
+            raise ValueError(f"bad media kind {value!r}")
+        return STICKY_ENRICH_EXTRAS, extras
+    raise ValueError(f"not a chat setting action: {action!r}")
 
 
 def build_provider_menu(*, settings: Any, panel_msg_id: int) -> tuple[str, list]:

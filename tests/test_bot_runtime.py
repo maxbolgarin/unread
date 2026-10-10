@@ -213,21 +213,26 @@ def test_render_settings_overview_shows_all_knobs():
         STICKY_REPORT_LANGUAGE: "ru",
         STICKY_ENRICH_EXTRAS: {"image", "link"},
         STICKY_TG_WINDOW: "30d",
+        "report_format": "rich",
     }
     text = render_settings_overview(chat_state, _fresh_settings())
     assert "digest" in text
-    assert "ru" in text
-    assert "image" in text
-    assert "link" in text
-    assert "30d" in text
-    assert "/preset" in text
-    assert "/lang" in text
+    assert "(ru)" in text
+    assert "Images" in text
+    assert "Links" in text
+    assert "Last month" in text
+    assert "Message in chat" in text
+    # Every value here was set by the user, so none is marked default.
+    assert "Language: Русский (ru)\n" in text
 
 
 def test_render_settings_overview_no_sticky_shows_defaults():
     text = render_settings_overview({}, _fresh_settings())
     assert "(default)" in text
-    assert "none (sticky)" in text or "ask each time" in text
+    assert "Ask each time" in text
+    # The old "none (sticky) · config: voice" wording read as if voice
+    # notes were off; the line must list what actually gets read.
+    assert "sticky" not in text
 
 
 # ---------------------------------------------------------------------------
