@@ -51,6 +51,13 @@ RUN apt-get update \
         fonts-symbola \
  && rm -rf /var/lib/apt/lists/*
 
+# Deno: yt-dlp solves YouTube's JS challenge (nsig / signature) with an
+# external runtime, and deno is the one it enables by default. Without
+# it the extracted media URLs are signed wrong and the first byte of
+# every audio download is a 403 Forbidden. Copied from the official
+# image rather than apt-installed: Debian ships no deno package.
+COPY --from=denoland/deno:bin-2.9.7 /deno /usr/local/bin/deno
+
 # Install the project into the system site-packages. We don't use a
 # venv here because the container's whole filesystem IS the venv.
 WORKDIR /app

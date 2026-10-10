@@ -65,7 +65,10 @@ dependencies = [
     "beautifulsoup4>=4.12",
     "pypdf>=4.0",
     "python-docx>=1.1",
-    "yt-dlp>=2024.7",
+    # `default` pulls yt-dlp-ejs, the challenge solver the JS runtime
+    # (deno, in the image) executes. YouTube changes often enough that
+    # an old yt-dlp is the usual cause of download 403s.
+    "yt-dlp[default]>=2026.8.19",
     "trafilatura>=1.12",
     # Alternative chat-provider SDKs. Pulled in unconditionally because
     # any of the four providers can be the active one, and a missing

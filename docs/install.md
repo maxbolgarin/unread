@@ -49,6 +49,13 @@ recordings):
 Without `ffmpeg`, audio/video paths skip with a clear warning instead
 of crashing — the rest of `unread` keeps working.
 
+YouTube videos **without captions** are transcribed from their audio,
+and downloading that audio needs a JavaScript runtime: yt-dlp uses it
+to solve YouTube's download challenge. Install [Deno](https://deno.com)
+(`brew install deno`, or `curl -fsSL https://deno.land/install.sh | sh`).
+Without it those downloads fail with `HTTP Error 403`. The Docker image
+already includes it.
+
 ## Other install methods
 
 ```bash

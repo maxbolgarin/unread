@@ -381,6 +381,7 @@ every secret masked.
 |---|---|
 | `Telegram session expired` / asks for code on every run | `unread init --force` (re-runs Telethon auth without re-prompting for keys) |
 | `yt-dlp DownloadError` (private / region-locked / format change) | `uv tool upgrade unread` — yt-dlp tracks YouTube changes; running an outdated wheel breaks first |
+| YouTube audio download fails with `HTTP Error 403: Forbidden` | yt-dlp needs a JS runtime to solve YouTube's challenge: install [Deno](https://deno.com) (the Docker image ships it). The log warns `ytdlp.warning … JavaScript runtime` when it's missing |
 | `ffmpeg not found` | Install per the platform table in [install.md](install.md); `unread doctor` confirms detection |
 | `OPENAI_API_KEY missing` but you set it elsewhere | The CLI reads `~/.unread/.env`, not `~/.zshrc`. Either edit `~/.unread/.env` or run `unread init` to persist via the wizard |
 | `attempt to write a readonly database` | `chmod -R 700 ~/.unread/storage` — the install dir lost write perms (sudo install, restored backup with wrong owner) |
