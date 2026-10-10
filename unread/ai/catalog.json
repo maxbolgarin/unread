@@ -1,0 +1,504 @@
+{
+  "schema": 1,
+  "updated": "2026-10-10",
+  "providers": {
+    "openai": [
+      {
+        "id": "gpt-6-astra",
+        "label": "GPT-6 Astra — flagship",
+        "role": "chat",
+        "input": 10.0,
+        "cached": 1.0,
+        "output": 50.0,
+        "context_window": 1050000,
+        "max_output_tokens": 128000,
+        "reasoning": true,
+        "vision": true,
+        "note": "Prices are the <=272k-input tier; above that OpenAI bills 2x input / 1.5x output."
+      },
+      {
+        "id": "gpt-6-sol",
+        "label": "GPT-6 Sol — balanced",
+        "role": "chat",
+        "input": 2.0,
+        "cached": 0.2,
+        "output": 10.0,
+        "context_window": 1050000,
+        "max_output_tokens": 128000,
+        "reasoning": true,
+        "vision": true,
+        "note": "Prices are the <=272k-input tier; above that OpenAI bills 2x input / 1.5x output."
+      },
+      {
+        "id": "gpt-6-luna",
+        "label": "GPT-6 Luna — cheapest, 1M context",
+        "role": "chat",
+        "input": 0.1,
+        "cached": 0.01,
+        "output": 0.5,
+        "context_window": 1050000,
+        "max_output_tokens": 128000,
+        "reasoning": true,
+        "vision": true,
+        "note": "Prices are the <=272k-input tier; above that OpenAI bills 2x input / 1.5x output."
+      },
+      {
+        "id": "gpt-5.6-sol",
+        "label": "GPT-5.6 Sol — flagship",
+        "role": "chat",
+        "input": 5.0,
+        "cached": 0.5,
+        "output": 30.0,
+        "context_window": 1050000,
+        "max_output_tokens": 128000,
+        "reasoning": true,
+        "note": "List rate. Promotional $4/$20 until 2026-11-21; we record list so cost errs high.",
+        "manual_until": "2026-11-21"
+      },
+      {
+        "id": "gpt-5.6-terra",
+        "label": "GPT-5.6 Terra — balanced",
+        "role": "chat",
+        "input": 2.0,
+        "cached": 0.2,
+        "output": 12.0,
+        "context_window": 1050000,
+        "max_output_tokens": 128000,
+        "reasoning": true
+      },
+      {
+        "id": "gpt-5.6-luna",
+        "label": "GPT-5.6 Luna — cheapest, 1M context",
+        "role": "chat",
+        "input": 0.2,
+        "cached": 0.02,
+        "output": 1.2,
+        "context_window": 1050000,
+        "max_output_tokens": 128000,
+        "reasoning": true
+      },
+      {
+        "id": "gpt-5.5",
+        "label": "GPT-5.5 — previous flagship (1M ctx)",
+        "role": "chat",
+        "input": 5.0,
+        "cached": 0.5,
+        "output": 30.0,
+        "context_window": 1000000,
+        "max_output_tokens": 16384,
+        "reasoning": true,
+        "vision": true
+      },
+      {
+        "id": "gpt-5.4",
+        "label": "GPT-5.4 — heavy reasoning",
+        "role": "chat",
+        "input": 2.5,
+        "cached": 0.25,
+        "output": 15.0,
+        "context_window": 1000000,
+        "max_output_tokens": 16384,
+        "reasoning": true
+      },
+      {
+        "id": "gpt-5.4-mini",
+        "label": "GPT-5.4 mini — balanced",
+        "role": "chat",
+        "input": 0.75,
+        "cached": 0.075,
+        "output": 4.5,
+        "context_window": 400000,
+        "max_output_tokens": 16384,
+        "reasoning": true,
+        "vision": true
+      },
+      {
+        "id": "gpt-5.4-nano",
+        "label": "GPT-5.4 nano — cheapest",
+        "role": "filter",
+        "input": 0.2,
+        "cached": 0.02,
+        "output": 1.25,
+        "context_window": 400000,
+        "max_output_tokens": 16384,
+        "reasoning": true,
+        "vision": true
+      },
+      {
+        "id": "gpt-4o",
+        "label": "GPT-4o — previous gen",
+        "role": "chat",
+        "input": 2.5,
+        "cached": 1.25,
+        "output": 10.0,
+        "context_window": 128000,
+        "max_output_tokens": 16384,
+        "vision": true
+      },
+      {
+        "id": "gpt-4o-mini",
+        "label": "GPT-4o mini — vision default",
+        "role": "vision",
+        "input": 0.15,
+        "cached": 0.075,
+        "output": 0.6,
+        "context_window": 128000,
+        "max_output_tokens": 16384
+      },
+      {
+        "id": "gpt-4o-mini-transcribe",
+        "label": "GPT-4o mini transcribe",
+        "role": "audio",
+        "input": 0.003
+      },
+      {
+        "id": "gpt-4o-transcribe",
+        "label": "GPT-4o transcribe",
+        "role": "audio",
+        "input": 0.006
+      },
+      {
+        "id": "whisper-1",
+        "label": "Whisper v1",
+        "role": "audio",
+        "input": 0.006
+      }
+    ],
+    "anthropic": [
+      {
+        "id": "claude-opus-5-5",
+        "label": "Claude Opus 5.5 — flagship (1M ctx)",
+        "role": "chat",
+        "input": 4.0,
+        "cached": 0.2,
+        "output": 20.0,
+        "context_window": 1000000,
+        "max_output_tokens": 16384,
+        "reasoning": true,
+        "vision": true
+      },
+      {
+        "id": "claude-sonnet-5-5",
+        "label": "Claude Sonnet 5.5 — balanced (1M ctx)",
+        "role": "chat",
+        "input": 2.0,
+        "cached": 0.2,
+        "output": 10.0,
+        "context_window": 1000000,
+        "max_output_tokens": 16384,
+        "reasoning": true,
+        "vision": true
+      },
+      {
+        "id": "claude-haiku-5-5",
+        "label": "Claude Haiku 5.5 — fast & cheap (1M ctx)",
+        "role": "filter",
+        "input": 0.1,
+        "cached": 0.01,
+        "output": 0.5,
+        "context_window": 1000000,
+        "max_output_tokens": 16384,
+        "reasoning": true,
+        "vision": true,
+        "note": "Prices are the <=100k-prompt tier; past 100k it bills $0.50/$2.50."
+      },
+      {
+        "id": "claude-haiku-4-5",
+        "label": "Claude Haiku 4.5 — previous gen",
+        "role": "filter",
+        "input": 1.0,
+        "cached": 0.1,
+        "output": 5.0,
+        "context_window": 200000,
+        "max_output_tokens": 8192,
+        "vision": true
+      },
+      {
+        "id": "claude-fable-5-1",
+        "label": "Claude Fable 5.1 — most capable, priciest",
+        "role": "chat",
+        "input": 10.0,
+        "cached": 0.25,
+        "output": 50.0,
+        "context_window": 1000000,
+        "max_output_tokens": 16384,
+        "reasoning": true,
+        "vision": true
+      },
+      {
+        "id": "claude-opus-4-7",
+        "label": "Claude Opus 4.7 — previous gen",
+        "role": "chat",
+        "input": 5.0,
+        "cached": 0.5,
+        "output": 25.0,
+        "context_window": 1000000,
+        "max_output_tokens": 16384,
+        "reasoning": true,
+        "vision": true
+      },
+      {
+        "id": "claude-sonnet-4-6",
+        "label": "Claude Sonnet 4.6 — previous gen",
+        "role": "chat",
+        "input": 3.0,
+        "cached": 0.3,
+        "output": 15.0,
+        "context_window": 200000,
+        "max_output_tokens": 16384,
+        "vision": true
+      }
+    ],
+    "google": [
+      {
+        "id": "gemini-3.8-flash",
+        "label": "Gemini 3.8 Flash — balanced",
+        "role": "chat",
+        "input": 1.5,
+        "cached": 0.15,
+        "output": 7.5,
+        "context_window": 1048576,
+        "max_output_tokens": 65536,
+        "vision": true,
+        "note": "List rate. Introductory $0.75/$3.75 until 2026-12-31; we record list so cost errs high.",
+        "manual_until": "2026-12-31"
+      },
+      {
+        "id": "gemini-3.1-pro-preview",
+        "label": "Gemini 3.1 Pro — frontier (preview)",
+        "role": "chat",
+        "input": 2.0,
+        "cached": 0.5,
+        "output": 12.0,
+        "context_window": 1000000,
+        "max_output_tokens": 32768,
+        "vision": true
+      },
+      {
+        "id": "gemini-3.7-flash",
+        "label": "Gemini 3.7 Flash — balanced",
+        "role": "chat",
+        "input": 0.75,
+        "cached": 0.075,
+        "output": 3.75,
+        "context_window": 1048576,
+        "max_output_tokens": 65536,
+        "vision": true
+      },
+      {
+        "id": "gemini-3.1-flash-lite-preview",
+        "label": "Gemini 3.1 Flash-Lite (preview)",
+        "role": "filter",
+        "input": 0.25,
+        "cached": 0.0625,
+        "output": 1.5,
+        "context_window": 1000000,
+        "max_output_tokens": 8192,
+        "vision": true
+      },
+      {
+        "id": "gemini-2.5-pro",
+        "label": "Gemini 2.5 Pro — deep reasoning",
+        "role": "chat",
+        "input": 1.25,
+        "cached": 0.31,
+        "output": 10.0,
+        "context_window": 1000000,
+        "max_output_tokens": 32768,
+        "vision": true
+      },
+      {
+        "id": "gemini-2.5-flash",
+        "label": "Gemini 2.5 Flash — balanced",
+        "role": "chat",
+        "input": 0.3,
+        "cached": 0.075,
+        "output": 2.5,
+        "context_window": 1000000,
+        "max_output_tokens": 8192,
+        "vision": true
+      },
+      {
+        "id": "gemini-2.5-flash-lite",
+        "label": "Gemini 2.5 Flash-Lite — cheapest",
+        "role": "filter",
+        "input": 0.1,
+        "cached": 0.025,
+        "output": 0.4,
+        "context_window": 1000000,
+        "max_output_tokens": 8192,
+        "vision": true
+      }
+    ],
+    "openrouter": [
+      {
+        "id": "openai/gpt-6-astra",
+        "label": "OpenRouter → GPT-6 Astra (flagship)",
+        "role": "chat",
+        "input": 10.0,
+        "cached": 1.0,
+        "output": 50.0,
+        "context_window": 1050000,
+        "max_output_tokens": 128000,
+        "reasoning": true
+      },
+      {
+        "id": "openai/gpt-6-sol",
+        "label": "OpenRouter → GPT-6 Sol",
+        "role": "chat",
+        "input": 2.0,
+        "cached": 0.2,
+        "output": 10.0,
+        "context_window": 1050000,
+        "max_output_tokens": 128000,
+        "reasoning": true
+      },
+      {
+        "id": "openai/gpt-6-luna",
+        "label": "OpenRouter → GPT-6 Luna",
+        "role": "chat",
+        "input": 0.1,
+        "cached": 0.01,
+        "output": 0.5,
+        "context_window": 1050000,
+        "max_output_tokens": 128000,
+        "reasoning": true
+      },
+      {
+        "id": "openai/gpt-5.6-sol",
+        "label": "OpenRouter → GPT-5.6 Sol (flagship)",
+        "role": "chat",
+        "input": 5.0,
+        "cached": 0.5,
+        "output": 30.0,
+        "context_window": 1050000,
+        "max_output_tokens": 128000,
+        "reasoning": true,
+        "note": "List rate. Promotional $4/$20 until 2026-11-21; we record list so cost errs high.",
+        "manual_until": "2026-11-21"
+      },
+      {
+        "id": "openai/gpt-5.6-terra",
+        "label": "OpenRouter → GPT-5.6 Terra",
+        "role": "chat",
+        "input": 2.0,
+        "cached": 0.2,
+        "output": 12.0,
+        "context_window": 1050000,
+        "max_output_tokens": 128000,
+        "reasoning": true
+      },
+      {
+        "id": "openai/gpt-5.6-luna",
+        "label": "OpenRouter → GPT-5.6 Luna",
+        "role": "chat",
+        "input": 0.2,
+        "cached": 0.02,
+        "output": 1.2,
+        "context_window": 1050000,
+        "max_output_tokens": 128000,
+        "reasoning": true
+      },
+      {
+        "id": "anthropic/claude-opus-5.5",
+        "label": "OpenRouter → Claude Opus 5.5",
+        "role": "chat",
+        "input": 4.0,
+        "cached": 0.2,
+        "output": 20.0,
+        "context_window": 1000000,
+        "max_output_tokens": 16384,
+        "reasoning": true,
+        "vision": true
+      },
+      {
+        "id": "anthropic/claude-sonnet-5.5",
+        "label": "OpenRouter → Claude Sonnet 5.5",
+        "role": "chat",
+        "input": 2.0,
+        "cached": 0.2,
+        "output": 10.0,
+        "context_window": 1000000,
+        "max_output_tokens": 16384,
+        "reasoning": true,
+        "vision": true
+      },
+      {
+        "id": "anthropic/claude-haiku-5.5",
+        "label": "OpenRouter → Claude Haiku 5.5",
+        "role": "filter",
+        "input": 0.1,
+        "cached": 0.01,
+        "output": 0.5,
+        "context_window": 1000000,
+        "max_output_tokens": 16384,
+        "reasoning": true,
+        "vision": true
+      },
+      {
+        "id": "anthropic/claude-haiku-4.5",
+        "label": "OpenRouter → Claude Haiku 4.5",
+        "role": "filter",
+        "input": 1.0,
+        "cached": 0.1,
+        "output": 5.0,
+        "context_window": 200000,
+        "max_output_tokens": 8192,
+        "vision": true
+      },
+      {
+        "id": "google/gemini-3.1-pro-preview",
+        "label": "OpenRouter → Gemini 3.1 Pro",
+        "role": "chat",
+        "input": 2.0,
+        "cached": 0.5,
+        "output": 12.0,
+        "context_window": 1000000,
+        "max_output_tokens": 32768,
+        "vision": true
+      },
+      {
+        "id": "google/gemini-3.8-flash",
+        "label": "OpenRouter → Gemini 3.8 Flash",
+        "role": "chat",
+        "input": 1.5,
+        "cached": 0.15,
+        "output": 7.5,
+        "context_window": 1048576,
+        "max_output_tokens": 65536,
+        "vision": true,
+        "note": "List rate. Introductory $0.75/$3.75 until 2026-12-31; we record list so cost errs high.",
+        "manual_until": "2026-12-31"
+      },
+      {
+        "id": "google/gemini-3.7-flash",
+        "label": "OpenRouter → Gemini 3.7 Flash",
+        "role": "chat",
+        "input": 0.75,
+        "cached": 0.075,
+        "output": 3.75,
+        "context_window": 1048576,
+        "max_output_tokens": 65536,
+        "vision": true
+      },
+      {
+        "id": "google/gemini-3.1-flash-lite-preview",
+        "label": "OpenRouter → Gemini 3.1 Flash-Lite",
+        "role": "filter",
+        "input": 0.25,
+        "cached": 0.0625,
+        "output": 1.5,
+        "context_window": 1000000,
+        "max_output_tokens": 8192,
+        "vision": true
+      },
+      {
+        "id": "openai/whisper-1",
+        "label": "OpenRouter → Whisper v1",
+        "role": "audio",
+        "input": 0.006
+      }
+    ],
+    "local": []
+  }
+}

@@ -94,3 +94,16 @@ async def test_stored_value_still_applies_without_the_env_var(tmp_path, monkeypa
     async with open_repo(db):
         pass
     assert get_settings().ai.chat_provider == "anthropic"
+
+
+def test_catalog_refresh_from_env(monkeypatch) -> None:
+    monkeypatch.setenv("UNREAD_AI_CATALOG_REFRESH_HOURS", "6")
+    monkeypatch.setenv("UNREAD_AI_CATALOG_URL", "https://example.test/catalog.json")
+    s = load_settings()
+    assert s.ai.catalog_refresh_hours == 6
+    assert s.ai.catalog_url == "https://example.test/catalog.json"
+
+
+def test_empty_catalog_url_disables_fetching(monkeypatch) -> None:
+    monkeypatch.setenv("UNREAD_AI_CATALOG_URL", "")
+    assert load_settings().ai.catalog_url == ""

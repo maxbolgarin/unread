@@ -50,6 +50,8 @@ services:
       UNREAD_AI_CHAT_MODEL: "${UNREAD_AI_CHAT_MODEL:-}"
       UNREAD_AI_FILTER_PROVIDER: "${UNREAD_AI_FILTER_PROVIDER:-}"
       UNREAD_AI_FILTER_MODEL: "${UNREAD_AI_FILTER_MODEL:-}"
+      # Model list / prices are re-fetched from the repo this often; 0 = off.
+      UNREAD_AI_CATALOG_REFRESH_HOURS: "${UNREAD_AI_CATALOG_REFRESH_HOURS:-24}"
 
       OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"

@@ -174,10 +174,28 @@ def _confirm_install(yes: bool) -> bool:
     return typed in ("y", "yes")
 
 
+def _refresh_model_catalog() -> None:
+    """Pull the latest model list / prices — no reinstall needed for those.
+
+    Best-effort: a failure is logged inside `refresh` and the command
+    carries on to the version check.
+    """
+    from unread.ai.catalog_sync import refresh
+    from unread.config import get_settings
+
+    ai = get_settings().ai
+    if not ai.catalog_url:
+        return
+    updated = asyncio.run(refresh(ai.catalog_url))
+    if updated:
+        console.print(_tf("update_catalog_refreshed", date=updated))
+
+
 def cmd_update(*, check: bool, yes: bool) -> None:
     """Sync entry point used by the Typer command wrapper in `cli.py`.
 
     Flow:
+      0. Refresh the model catalog (prices / new models) from the repo.
       1. Fetch latest from PyPI (async, run via `asyncio.run`).
       2. Compare against `__version__`.
       3. If equal → print "up to date" and return.
@@ -186,6 +204,7 @@ def cmd_update(*, check: bool, yes: bool) -> None:
          - Otherwise prompt (y/N or `--yes`) and run the detected upgrade
            subprocess. Unknown install method → print manual commands.
     """
+    _refresh_model_catalog()
     try:
         latest = asyncio.run(fetch_latest_version())
     except UpdateCheckError as e:

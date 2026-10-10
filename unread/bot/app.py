@@ -194,6 +194,7 @@ class BotApp:
         await prefs.load_all(self)
 
         self._wire_handlers()
+        self._start_catalog_refresh()
         session_state = (
             "[green]ready[/]"
             if self.user_session_ready
@@ -222,6 +223,22 @@ class BotApp:
             await self.bot_client.run_until_disconnected()
         finally:
             await self._shutdown()
+
+    def _start_catalog_refresh(self) -> None:
+        """Keep model names / prices current for the bot's whole lifetime.
+
+        A bot runs for months; without this every run is priced from the
+        catalog of the installed release. Tracked in `_tasks` so shutdown
+        cancels it with the rest.
+        """
+        from unread.ai.catalog_sync import refresh_loop
+
+        ai = self.settings.ai
+        if not ai.catalog_url or ai.catalog_refresh_hours <= 0:
+            return
+        task = asyncio.create_task(refresh_loop(ai.catalog_url, ai.catalog_refresh_hours))
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
 
     async def _start_bot_client(self) -> None:
         """Authenticate the bot-mode Telethon client.

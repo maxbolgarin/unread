@@ -315,6 +315,10 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "Skip the install confirmation prompt.",
         "ru": "Пропустить подтверждение установки.",
     },
+    "update_catalog_refreshed": {
+        "en": "✓ Model list and prices updated (catalog of {date}).",
+        "ru": "✓ Список моделей и цены обновлены (каталог от {date}).",
+    },
     "update_up_to_date": {
         "en": "✓ unread {version} is the latest release.",
         "ru": "✓ unread {version} — это последняя версия.",

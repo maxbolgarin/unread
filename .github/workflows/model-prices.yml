@@ -1,0 +1,53 @@
+name: Model prices
+
+# Weekly: diff `unread/ai/catalog.json` prices against OpenRouter's public
+# model list and open (or refresh) a PR. Merging the PR is what ships the
+# change — running bots fetch catalog.json from `main` every 24h
+# (`unread/ai/catalog_sync.py`), no release needed.
+#
+# Needs "Allow GitHub Actions to create and approve pull requests"
+# (Settings → Actions → General). PRs opened with GITHUB_TOKEN don't
+# trigger CI on their own; close/reopen or push to run it.
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Sync dependencies
+        run: uv sync
+
+      - name: Diff prices against OpenRouter
+        run: uv run python scripts/sync_model_prices.py --write --report "$RUNNER_TEMP/report.md"
+
+      - name: Show report
+        run: cat "$RUNNER_TEMP/report.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open PR
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: chore/model-prices
+          delete-branch: true
+          add-paths: unread/ai/catalog.json
+          commit-message: "chore(ai): sync model prices from OpenRouter"
+          title: "chore(ai): sync model prices from OpenRouter"
+          body-path: ${{ runner.temp }}/report.md
+          labels: model-catalog

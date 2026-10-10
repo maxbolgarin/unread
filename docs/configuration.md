@@ -272,6 +272,34 @@ Or, on a server or Docker container: `UNREAD_AI_CHAT_MODEL` /
 `--filter-model` → `ai.chat_model` / `ai.filter_model` → the preset's
 pin → `[openai] *_model_default`.
 
+### Model catalog updates
+
+The list of models and their prices ships with each release in
+`unread/ai/catalog.json`. A running `unread bot` re-fetches that file from
+the repo's `main` branch every 24 hours, and `unread update` refreshes it
+once, so new models and price changes arrive without upgrading. Other
+commands only read the last downloaded copy (from
+`~/.unread/storage/model_catalog.json`); they never wait on the network
+for it.
+
+```toml
+[ai]
+catalog_url = "https://raw.githubusercontent.com/maxbolgarin/unread/main/unread/ai/catalog.json"
+catalog_refresh_hours = 24               # 0 = never fetch; "" URL also disables
+```
+
+Env: `UNREAD_AI_CATALOG_URL`, `UNREAD_AI_CATALOG_REFRESH_HOURS`. A
+download is applied only if it validates and is no older than the
+catalog your version shipped with. `[pricing.chat.<model>]` entries
+still override it.
+
+Maintainers: the weekly `Model prices` workflow runs
+`scripts/sync_model_prices.py`, which compares catalog prices with
+OpenRouter's public model list and opens a PR with the changes, plus a
+list of new models to add by hand. A row with
+`"manual_until": "YYYY-MM-DD"` (a promo where we record the list rate) is
+left alone until that date.
+
 `UNREAD_CONFIG_PATH=/abs/path/config.toml` overrides the cwd-relative
 discovery.
 

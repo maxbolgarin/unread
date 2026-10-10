@@ -184,6 +184,17 @@ instead — the bot never asks for one you've already provided that way.
 Only the **primary owner** can rotate keys; credentials are bot-wide, so a
 second admin changing them would silently change everyone's runs.
 
+### Model list and prices stay current on their own
+
+The bot re-downloads the model catalog (names, prices, context windows)
+from this repo's `main` branch once a day, so a new model or a price
+change shows up in **🧠 Model** and in cost reports without rebuilding the
+image. The last good copy is cached in `~/.unread/storage/`, so a restart
+doesn't need the network, and a failed or malformed download keeps the
+catalog you already have. Turn it off with
+`UNREAD_AI_CATALOG_REFRESH_HOURS=0`, or point `UNREAD_AI_CATALOG_URL` at
+your own copy. Prices you set in `[pricing]` always win.
+
 ## Privacy & data flow
 
 The bot machine holds the same `~/.unread/` directory the CLI would:

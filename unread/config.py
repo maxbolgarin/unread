@@ -125,6 +125,13 @@ class AICfg(_StrictCfg):
     # key. Set this to True to acknowledge that you really do mean to send
     # your key to a custom host (corporate proxy, internal gateway, etc.).
     base_url_trusted: bool = False
+    # Model list + prices. `unread bot` re-fetches the catalog from here
+    # every `catalog_refresh_hours` (and `unread update` once), so new
+    # models and price changes reach a running deployment without a
+    # release. Empty URL or 0 hours turns fetching off; the catalog
+    # bundled with the installed version (plus `[pricing]`) still applies.
+    catalog_url: str = "https://raw.githubusercontent.com/maxbolgarin/unread/main/unread/ai/catalog.json"
+    catalog_refresh_hours: float = Field(default=24.0, ge=0)
 
 
 class OpenRouterCfg(_StrictCfg):
@@ -543,7 +550,7 @@ class ChatPricing(_StrictCfg):
     cached_input: float
     output: float
     # Input-context window in tokens. Optional: lets a model newer than
-    # the built-in catalog (`unread/ai/models.py`) chunk at its real size
+    # the built-in catalog (`unread/ai/catalog.json`) chunk at its real size
     # instead of the 128k fallback, without waiting for a release.
     context_window: int | None = Field(default=None, gt=0)
 
@@ -857,6 +864,10 @@ def load_settings(config_path: Path | str | None = None) -> Settings:
             raw["ai"][f"{slot}_provider"] = value
         if model := _env(f"UNREAD_AI_{slot.upper()}_MODEL"):
             raw["ai"][f"{slot}_model"] = model.strip()
+    if (catalog_url := _env("UNREAD_AI_CATALOG_URL")) is not None:
+        raw["ai"]["catalog_url"] = catalog_url.strip()
+    if catalog_hours := _env("UNREAD_AI_CATALOG_REFRESH_HOURS"):
+        raw["ai"]["catalog_refresh_hours"] = catalog_hours.strip()
 
     if bot_token := _env("UNREAD_BOT_TOKEN"):
         raw["bot"]["token"] = bot_token

@@ -1,8 +1,8 @@
 """Cost estimation for OpenAI chat and audio usage.
 
 Prices live in config.toml first; for any model missing there we fall
-back to the curated catalog in `unread.ai.models` (refreshed 2026-05-01)
-so picking a brand-new catalog model from `unread settings` doesn't
+back to the curated catalog in `unread.ai.models` (`catalog.json`, kept
+fresh by `unread.ai.catalog_sync`) so picking a brand-new catalog model from `unread settings` doesn't
 require also editing config.toml. A model unknown to both paths logs a
 warning and returns None — the pipeline still completes.
 """

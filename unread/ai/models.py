@@ -1,14 +1,16 @@
 """Per-provider model catalogue.
 
 Single source of truth for the settings picker, default pricing, and
-"is this model supported by this provider" checks. Refreshed against
-the provider docs on **2026-10-10**:
+"is this model supported by this provider" checks. The rows live in
+`catalog.json` (checked against the provider docs — OpenAI:
+platform.openai.com/docs/pricing, Anthropic:
+docs.claude.com/en/docs/about-claude/models, Google: ai.google.dev/pricing).
+A running bot re-fetches that file from the repo (see
+`unread.ai.catalog_sync`), and a weekly workflow proposes price changes
+to it from OpenRouter's public model list
+(`scripts/sync_model_prices.py`).
 
-  - OpenAI:   platform.openai.com/docs/pricing
-  - Anthropic: docs.claude.com/en/docs/about-claude/models
-  - Google:   ai.google.dev/pricing
-
-Adding a model here makes it appear in `unread settings` (under the
+Adding a model to `catalog.json` makes it appear in `unread settings` (under the
 matching provider) AND seeds a default pricing row for `unread stats`.
 The user can still pick a custom model name at the picker — the
 registry is a curated list, not a hard allow-list.
@@ -28,8 +30,10 @@ moves.
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,7 +47,7 @@ class ModelInfo:
     # Effective input-context window in tokens. 0 means "unknown — use the
     # 128k fallback". Wired through `model_context_window()` so the
     # chunker sizes prompts correctly for Claude / Gemini, not just
-    # OpenAI. Refreshed against vendor docs 2026-05-01.
+    # OpenAI.
     context_window: int = 0
     # Hard cap on a single completion's `max_tokens` (output tokens).
     # 0 means "unknown — use the orchestrator's 16k fallback". Used by
@@ -61,562 +65,174 @@ class ModelInfo:
     # leave this False; their reasoning toggles are different shapes
     # (extended thinking, etc.) and don't constrain `temperature`.
     reasoning: bool = False
+    # Accepts image input — folds the model into the vision picker
+    # alongside the explicit `role="vision"` rows.
+    vision: bool = False
 
 
-# ----------------------- OpenAI (refreshed 2026-10-10) ---------------------
+# ----------------------- Catalog data ------------------------------------
 #
-# GPT-5.6 Sol is at a promotional $4/$20 until 2026-11-21; we record the
-# $5/$30 list rate so cost reports err high rather than low once it ends.
+# The rows live in `catalog.json` next to this file, so the same file can
+# be shipped in the wheel AND fetched from the repo by a running bot
+# (`unread.ai.catalog_sync`) — a price change or a new model reaches a
+# long-lived deployment without a release. Per-row `note` fields carry
+# the caveats a flat row can't express (promo vs list rate, tiered
+# pricing past a prompt-size threshold).
 #
-# GPT-6 prices are the ≤272k-input tier. Above 272k input OpenAI bills
-# the whole request at 2x input / 1.5x output, which a flat catalog row
-# can't express — a single call past that line reports low.
+# `reasoning=True` means "rejects a custom `temperature`" (o-series, the
+# gpt-5+ family, Claude Opus 4.7 and every Claude 5.x). `max_output_tokens`
+# stays at 16k on Claude even where the model allows 128k: the adapter
+# doesn't stream, and the SDK refuses a non-streaming request with a very
+# large `max_tokens`. OpenRouter spells Claude versions with a DOT
+# (`claude-opus-5.5`), unlike Anthropic's own API (`claude-opus-5-5`).
 
-_OPENAI_MODELS: tuple[ModelInfo, ...] = (
-    ModelInfo(
-        "gpt-6-astra",
-        "GPT-6 Astra — flagship",
-        "chat",
-        10.00,
-        1.00,
-        50.00,
-        context_window=1_050_000,
-        max_output_tokens=128_000,
-        reasoning=True,
-    ),
-    ModelInfo(
-        "gpt-6-sol",
-        "GPT-6 Sol — balanced",
-        "chat",
-        2.00,
-        0.20,
-        10.00,
-        context_window=1_050_000,
-        max_output_tokens=128_000,
-        reasoning=True,
-    ),
-    ModelInfo(
-        "gpt-6-luna",
-        "GPT-6 Luna — cheapest, 1M context",
-        "chat",
-        0.10,
-        0.01,
-        0.50,
-        context_window=1_050_000,
-        max_output_tokens=128_000,
-        reasoning=True,
-    ),
-    ModelInfo(
-        "gpt-5.6-sol",
-        "GPT-5.6 Sol — flagship",
-        "chat",
-        5.00,
-        0.50,
-        30.00,
-        context_window=1_050_000,
-        max_output_tokens=128_000,
-        reasoning=True,
-    ),
-    ModelInfo(
-        "gpt-5.6-terra",
-        "GPT-5.6 Terra — balanced",
-        "chat",
-        2.00,
-        0.20,
-        12.00,
-        context_window=1_050_000,
-        max_output_tokens=128_000,
-        reasoning=True,
-    ),
-    ModelInfo(
-        "gpt-5.6-luna",
-        "GPT-5.6 Luna — cheapest, 1M context",
-        "chat",
-        0.20,
-        0.02,
-        1.20,
-        context_window=1_050_000,
-        max_output_tokens=128_000,
-        reasoning=True,
-    ),
-    ModelInfo(
-        "gpt-5.5",
-        "GPT-5.5 — previous flagship (1M ctx)",
-        "chat",
-        5.00,
-        0.50,
-        30.00,
-        context_window=1_000_000,
-        max_output_tokens=16_384,
-        reasoning=True,
-    ),
-    ModelInfo(
-        "gpt-5.4",
-        "GPT-5.4 — heavy reasoning",
-        "chat",
-        2.50,
-        0.25,
-        15.00,
-        context_window=1_000_000,
-        max_output_tokens=16_384,
-        reasoning=True,
-    ),
-    ModelInfo(
-        "gpt-5.4-mini",
-        "GPT-5.4 mini — balanced",
-        "chat",
-        0.75,
-        0.075,
-        4.50,
-        context_window=400_000,
-        max_output_tokens=16_384,
-        reasoning=True,
-    ),
-    ModelInfo(
-        "gpt-5.4-nano",
-        "GPT-5.4 nano — cheapest",
-        "filter",
-        0.20,
-        0.02,
-        1.25,
-        context_window=400_000,
-        max_output_tokens=16_384,
-        reasoning=True,
-    ),
-    ModelInfo(
-        "gpt-4o",
-        "GPT-4o — previous gen",
-        "chat",
-        2.50,
-        1.25,
-        10.00,
-        context_window=128_000,
-        max_output_tokens=16_384,
-    ),
-    ModelInfo(
-        "gpt-4o-mini",
-        "GPT-4o mini — vision default",
-        "vision",
-        0.15,
-        0.075,
-        0.60,
-        context_window=128_000,
-        max_output_tokens=16_384,
-    ),
-    # Audio. `input_price` carries $/minute; cached/output are unused;
-    # context window is irrelevant (file-based input). `max_output_tokens`
-    # left at 0 since the chat orchestrator never picks an audio model.
-    ModelInfo("gpt-4o-mini-transcribe", "GPT-4o mini transcribe", "audio", 0.003),
-    ModelInfo("gpt-4o-transcribe", "GPT-4o transcribe", "audio", 0.006),
-    ModelInfo("whisper-1", "Whisper v1", "audio", 0.006),
-)
+# Bumped only on a breaking change to the file's shape. New optional
+# fields don't bump it — older clients ignore keys they don't know.
+CATALOG_SCHEMA = 1
+
+_ROLES: frozenset[str] = frozenset({"chat", "filter", "audio", "vision"})
+# Ordered for UI consistency; see `supported_providers()`.
+_PROVIDERS: tuple[str, ...] = ("openai", "anthropic", "google", "openrouter", "local")
+_BUNDLED_CATALOG = Path(__file__).with_name("catalog.json")
 
 
-# ----------------------- Anthropic (refreshed 2026-10-10) ------------------
-#
-# `reasoning=True` on Claude means "rejects a custom `temperature`": Opus
-# 4.7 and every 5.x model 400 on sampling parameters. The Anthropic
-# adapter drops `temperature` for these, same as the OpenAI one does for
-# gpt-5. `max_output_tokens` stays at 16k even where the model allows
-# 128k: the adapter doesn't stream, and the SDK refuses a non-streaming
-# request with a very large `max_tokens`.
-#
-# Claude Haiku 5.5 prices are the ≤100k-prompt tier; past 100k it bills
-# $0.50/$2.50, which a flat row can't express, so long prompts report low.
-
-_ANTHROPIC_MODELS: tuple[ModelInfo, ...] = (
-    ModelInfo(
-        "claude-opus-5-5",
-        "Claude Opus 5.5 — flagship (1M ctx)",
-        "chat",
-        4.00,
-        0.20,
-        20.00,
-        context_window=1_000_000,
-        max_output_tokens=16_384,
-        reasoning=True,
-    ),
-    ModelInfo(
-        "claude-sonnet-5-5",
-        "Claude Sonnet 5.5 — balanced (1M ctx)",
-        "chat",
-        2.00,
-        0.20,
-        10.00,
-        context_window=1_000_000,
-        max_output_tokens=16_384,
-        reasoning=True,
-    ),
-    ModelInfo(
-        "claude-haiku-5-5",
-        "Claude Haiku 5.5 — fast & cheap (1M ctx)",
-        "filter",
-        0.10,
-        0.01,
-        0.50,
-        context_window=1_000_000,
-        max_output_tokens=16_384,
-        reasoning=True,
-    ),
-    ModelInfo(
-        "claude-haiku-4-5",
-        "Claude Haiku 4.5 — previous gen",
-        "filter",
-        1.00,
-        0.10,
-        5.00,
-        context_window=200_000,
-        max_output_tokens=8_192,
-    ),
-    ModelInfo(
-        "claude-fable-5-1",
-        "Claude Fable 5.1 — most capable, priciest",
-        "chat",
-        10.00,
-        0.25,
-        50.00,
-        context_window=1_000_000,
-        max_output_tokens=16_384,
-        reasoning=True,
-    ),
-    ModelInfo(
-        "claude-opus-4-7",
-        "Claude Opus 4.7 — previous gen",
-        "chat",
-        5.00,
-        0.50,
-        25.00,
-        context_window=1_000_000,
-        max_output_tokens=16_384,
-        reasoning=True,
-    ),
-    ModelInfo(
-        "claude-sonnet-4-6",
-        "Claude Sonnet 4.6 — previous gen",
-        "chat",
-        3.00,
-        0.30,
-        15.00,
-        context_window=200_000,
-        max_output_tokens=16_384,
-    ),
-)
+class CatalogError(ValueError):
+    """A catalog document that doesn't match the expected shape."""
 
 
-# ----------------------- Google (refreshed 2026-10-10) ---------------------
-#
-# Pricing for prompts ≤200k tokens. Gemini bills a higher tier on
-# >200k prompts; we surface the lower tier here since the analyzer
-# chunks ahead of any single call ever crossing the threshold.
-#
-# Gemini 3.8 Flash is at an introductory $0.75/$3.75 until 2026-12-31;
-# we record the $1.50/$7.50 list rate so cost reports err high.
-
-_GOOGLE_MODELS: tuple[ModelInfo, ...] = (
-    ModelInfo(
-        "gemini-3.8-flash",
-        "Gemini 3.8 Flash — balanced",
-        "chat",
-        1.50,
-        0.15,
-        7.50,
-        context_window=1_048_576,
-        max_output_tokens=65_536,
-    ),
-    ModelInfo(
-        "gemini-3.1-pro-preview",
-        "Gemini 3.1 Pro — frontier (preview)",
-        "chat",
-        2.00,
-        0.50,
-        12.00,
-        context_window=1_000_000,
-        max_output_tokens=32_768,
-    ),
-    ModelInfo(
-        "gemini-3.7-flash",
-        "Gemini 3.7 Flash — balanced",
-        "chat",
-        0.75,
-        0.075,
-        3.75,
-        context_window=1_048_576,
-        max_output_tokens=65_536,
-    ),
-    ModelInfo(
-        "gemini-3.1-flash-lite-preview",
-        "Gemini 3.1 Flash-Lite (preview)",
-        "filter",
-        0.25,
-        0.0625,
-        1.50,
-        context_window=1_000_000,
-        max_output_tokens=8_192,
-    ),
-    ModelInfo(
-        "gemini-2.5-pro",
-        "Gemini 2.5 Pro — deep reasoning",
-        "chat",
-        1.25,
-        0.31,
-        10.00,
-        context_window=1_000_000,
-        max_output_tokens=32_768,
-    ),
-    ModelInfo(
-        "gemini-2.5-flash",
-        "Gemini 2.5 Flash — balanced",
-        "chat",
-        0.30,
-        0.075,
-        2.50,
-        context_window=1_000_000,
-        max_output_tokens=8_192,
-    ),
-    ModelInfo(
-        "gemini-2.5-flash-lite",
-        "Gemini 2.5 Flash-Lite — cheapest",
-        "filter",
-        0.10,
-        0.025,
-        0.40,
-        context_window=1_000_000,
-        max_output_tokens=8_192,
-    ),
-)
+def _num(row: dict, key: str, kind: type, ceiling: float) -> float | int:
+    value = row.get(key, 0)
+    # bool is an int subclass; `"reasoning": true` in a price slot is a typo.
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise CatalogError(f"{row.get('id')!r}: {key} must be a number")
+    if kind is int and not float(value).is_integer():
+        raise CatalogError(f"{row.get('id')!r}: {key} must be an integer")
+    if not 0 <= value <= ceiling:
+        raise CatalogError(f"{row.get('id')!r}: {key}={value} out of range")
+    return kind(value)
 
 
-# ----------------------- OpenRouter ---------------------------------------
-#
-# OpenRouter routes to many backends; we list a curated cross-section of
-# the most popular models. Users can always pick "Custom…" to enter any
-# other vendor/model alias.
-
-_OPENROUTER_MODELS: tuple[ModelInfo, ...] = (
-    ModelInfo(
-        "openai/gpt-6-astra",
-        "OpenRouter → GPT-6 Astra (flagship)",
-        "chat",
-        10.00,
-        1.00,
-        50.00,
-        context_window=1_050_000,
-        max_output_tokens=128_000,
-        reasoning=True,
-    ),
-    ModelInfo(
-        "openai/gpt-6-sol",
-        "OpenRouter → GPT-6 Sol",
-        "chat",
-        2.00,
-        0.20,
-        10.00,
-        context_window=1_050_000,
-        max_output_tokens=128_000,
-        reasoning=True,
-    ),
-    ModelInfo(
-        "openai/gpt-6-luna",
-        "OpenRouter → GPT-6 Luna",
-        "chat",
-        0.10,
-        0.01,
-        0.50,
-        context_window=1_050_000,
-        max_output_tokens=128_000,
-        reasoning=True,
-    ),
-    # OpenRouter aliases mirror the underlying model's max_output_tokens
-    # cap (claude-opus → 16384, gemini-flash → 8192, etc.) — the router
-    # forwards the request to the upstream vendor whose limits are what
-    # actually matter. `reasoning=True` for the gpt-5 and Claude 5.x
-    # aliases for the same reason: the upstream rejects `temperature`.
-    #
-    # OpenRouter spells Claude versions with a DOT (`claude-opus-5.5`),
-    # unlike Anthropic's own API (`claude-opus-5-5`).
-    ModelInfo(
-        "openai/gpt-5.6-sol",
-        "OpenRouter → GPT-5.6 Sol (flagship)",
-        "chat",
-        5.00,
-        0.50,
-        30.00,
-        context_window=1_050_000,
-        max_output_tokens=128_000,
-        reasoning=True,
-    ),
-    ModelInfo(
-        "openai/gpt-5.6-terra",
-        "OpenRouter → GPT-5.6 Terra",
-        "chat",
-        2.00,
-        0.20,
-        12.00,
-        context_window=1_050_000,
-        max_output_tokens=128_000,
-        reasoning=True,
-    ),
-    ModelInfo(
-        "openai/gpt-5.6-luna",
-        "OpenRouter → GPT-5.6 Luna",
-        "chat",
-        0.20,
-        0.02,
-        1.20,
-        context_window=1_050_000,
-        max_output_tokens=128_000,
-        reasoning=True,
-    ),
-    ModelInfo(
-        "anthropic/claude-opus-5.5",
-        "OpenRouter → Claude Opus 5.5",
-        "chat",
-        4.00,
-        0.20,
-        20.00,
-        context_window=1_000_000,
-        max_output_tokens=16_384,
-        reasoning=True,
-    ),
-    ModelInfo(
-        "anthropic/claude-sonnet-5.5",
-        "OpenRouter → Claude Sonnet 5.5",
-        "chat",
-        2.00,
-        0.20,
-        10.00,
-        context_window=1_000_000,
-        max_output_tokens=16_384,
-        reasoning=True,
-    ),
-    ModelInfo(
-        "anthropic/claude-haiku-5.5",
-        "OpenRouter → Claude Haiku 5.5",
-        "filter",
-        0.10,
-        0.01,
-        0.50,
-        context_window=1_000_000,
-        max_output_tokens=16_384,
-        reasoning=True,
-    ),
-    ModelInfo(
-        "anthropic/claude-haiku-4.5",
-        "OpenRouter → Claude Haiku 4.5",
-        "filter",
-        1.00,
-        0.10,
-        5.00,
-        context_window=200_000,
-        max_output_tokens=8_192,
-    ),
-    ModelInfo(
-        "google/gemini-3.1-pro-preview",
-        "OpenRouter → Gemini 3.1 Pro",
-        "chat",
-        2.00,
-        0.50,
-        12.00,
-        context_window=1_000_000,
-        max_output_tokens=32_768,
-    ),
-    ModelInfo(
-        "google/gemini-3.8-flash",
-        "OpenRouter → Gemini 3.8 Flash",
-        "chat",
-        1.50,
-        0.15,
-        7.50,
-        context_window=1_048_576,
-        max_output_tokens=65_536,
-    ),
-    ModelInfo(
-        "google/gemini-3.7-flash",
-        "OpenRouter → Gemini 3.7 Flash",
-        "chat",
-        0.75,
-        0.075,
-        3.75,
-        context_window=1_048_576,
-        max_output_tokens=65_536,
-    ),
-    ModelInfo(
-        "google/gemini-3.1-flash-lite-preview",
-        "OpenRouter → Gemini 3.1 Flash-Lite",
-        "filter",
-        0.25,
-        0.0625,
-        1.50,
-        context_window=1_000_000,
-        max_output_tokens=8_192,
-    ),
-    # Audio. OpenRouter exposes Whisper-class endpoints under the
-    # `openai/...` namespace; pricing mirrors the upstream provider.
-    # Useful for users running Anthropic / Google as their chat slot
-    # who still want OpenAI-quality transcription via OpenRouter's key.
-    ModelInfo("openai/whisper-1", "OpenRouter → Whisper v1", "audio", 0.006),
-)
+def _parse_row(row: object) -> ModelInfo:
+    if not isinstance(row, dict):
+        raise CatalogError("model row must be an object")
+    model_id, label, role = row.get("id"), row.get("label", ""), row.get("role")
+    if not isinstance(model_id, str) or not model_id.strip() or len(model_id) > 200:
+        raise CatalogError(f"bad model id: {model_id!r}")
+    if not isinstance(label, str) or len(label) > 200:
+        raise CatalogError(f"{model_id!r}: bad label")
+    if role not in _ROLES:
+        raise CatalogError(f"{model_id!r}: unknown role {role!r}")
+    return ModelInfo(
+        model_id,
+        label or model_id,
+        role,
+        _num(row, "input", float, 10_000),
+        _num(row, "cached", float, 10_000),
+        _num(row, "output", float, 10_000),
+        context_window=_num(row, "context_window", int, 100_000_000),
+        max_output_tokens=_num(row, "max_output_tokens", int, 100_000_000),
+        reasoning=row.get("reasoning") is True,
+        vision=row.get("vision") is True,
+    )
 
 
-# ----------------------- Local --------------------------------------------
-#
-# Local servers (Ollama / LM Studio / vLLM) have no fixed catalog — the
-# user-installed model name is whatever they pulled. Picker shows a
-# Custom-only flow for this provider.
+def parse_catalog(data: object) -> tuple[str, dict[str, tuple[ModelInfo, ...]]]:
+    """Validate a catalog document → `(updated, {provider: rows})`.
 
-_LOCAL_MODELS: tuple[ModelInfo, ...] = ()
+    Strict on purpose: a remote file that fails any check is dropped
+    whole, and the previous catalog stays in force. Half-applying a
+    broken file could leave a model priced at $0.
+    """
+    if not isinstance(data, dict):
+        raise CatalogError("catalog must be a JSON object")
+    if data.get("schema") != CATALOG_SCHEMA:
+        raise CatalogError(f"unsupported catalog schema {data.get('schema')!r}")
+    updated = data.get("updated")
+    if not isinstance(updated, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", updated):
+        raise CatalogError(f"bad 'updated' date: {updated!r}")
+    providers = data.get("providers")
+    if not isinstance(providers, dict):
+        raise CatalogError("'providers' must be an object")
+    registry: dict[str, tuple[ModelInfo, ...]] = {}
+    for provider, rows in providers.items():
+        if provider not in _PROVIDERS:
+            continue  # a provider this version can't route to anyway
+        if not isinstance(rows, list):
+            raise CatalogError(f"{provider}: rows must be a list")
+        registry[provider] = tuple(_parse_row(r) for r in rows)
+    return updated, registry
 
 
-_REGISTRY: dict[str, tuple[ModelInfo, ...]] = {
-    "openai": _OPENAI_MODELS,
-    "anthropic": _ANTHROPIC_MODELS,
-    "google": _GOOGLE_MODELS,
-    "openrouter": _OPENROUTER_MODELS,
-    "local": _LOCAL_MODELS,
-}
+def _load_bundled() -> tuple[str, dict[str, tuple[ModelInfo, ...]]]:
+    updated, registry = parse_catalog(json.loads(_BUNDLED_CATALOG.read_text(encoding="utf-8")))
+    for provider in _PROVIDERS:
+        registry.setdefault(provider, ())
+    return updated, registry
 
 
-# IDs of chat-class models that also accept image input. The vision
-# picker folds these in alongside any `role="vision"` entries so users
-# of Anthropic / Google / OpenRouter can pick "claude-sonnet-4-6 for
-# image" without needing a parallel vision-only catalog entry.
-_VISION_CAPABLE_IDS: frozenset[str] = frozenset(
-    {
-        # OpenAI flagships (vision via chat completions image_url).
-        "gpt-6-astra",
-        "gpt-6-sol",
-        "gpt-6-luna",
-        "gpt-5.5",
-        "gpt-5.4-mini",
-        "gpt-5.4-nano",
-        "gpt-4o",
-        # Anthropic — every modern Claude accepts image blocks.
-        "claude-opus-5-5",
-        "claude-sonnet-5-5",
-        "claude-fable-5-1",
-        "claude-opus-4-7",
-        "claude-sonnet-4-6",
-        "claude-haiku-5-5",
-        "claude-haiku-4-5",
-        # Google — all Gemini 2.5 / 3.1 entries accept image parts.
-        "gemini-3.1-pro-preview",
-        "gemini-3.8-flash",
-        "gemini-3.7-flash",
-        "gemini-3.1-flash-lite-preview",
-        "gemini-2.5-pro",
-        "gemini-2.5-flash",
-        "gemini-2.5-flash-lite",
-        # OpenRouter mirrors — vendor-prefixed.
-        "anthropic/claude-opus-5.5",
-        "anthropic/claude-sonnet-5.5",
-        "anthropic/claude-haiku-5.5",
-        "anthropic/claude-haiku-4.5",
-        "google/gemini-3.8-flash",
-        "google/gemini-3.1-pro-preview",
-        "google/gemini-3.7-flash",
-        "google/gemini-3.1-flash-lite-preview",
-    }
-)
+_BUNDLED_UPDATED, _BUNDLED = _load_bundled()
+# Live view: the bundled catalog, possibly overlaid by a newer remote one.
+# Replaced wholesale (never mutated) so a concurrent reader sees either
+# the old or the new catalog, not a mix.
+_REGISTRY: dict[str, tuple[ModelInfo, ...]] = _BUNDLED
+_overlay_updated: str = ""
+
+
+def apply_overlay(updated: str, overlay: dict[str, tuple[ModelInfo, ...]]) -> bool:
+    """Layer a fetched catalog over the bundled one. Returns True if applied.
+
+    Ignored when it's older than what this install shipped with — a
+    cached download from before an upgrade must not roll prices back.
+    Overlay rows win by id and set the picker order; bundled rows the
+    overlay dropped are kept, so a config still pinning a retired model
+    keeps its pricing.
+    """
+    global _REGISTRY, _overlay_updated
+    if updated < _BUNDLED_UPDATED:
+        return False
+    merged: dict[str, tuple[ModelInfo, ...]] = {}
+    for provider, bundled in _BUNDLED.items():
+        rows = overlay.get(provider, ())
+        ids = {m.id for m in rows}
+        merged[provider] = tuple(rows) + tuple(m for m in bundled if m.id not in ids)
+    _REGISTRY = merged
+    _overlay_updated = updated
+    return True
+
+
+def reset_overlay() -> None:
+    """Drop any applied overlay (tests, or a disabled refresh)."""
+    global _REGISTRY, _overlay_updated
+    _REGISTRY = _BUNDLED
+    _overlay_updated = ""
+
+
+_cache_checked = False
+
+
+def _pools() -> dict[str, tuple[ModelInfo, ...]]:
+    """The catalog in force; picks up the last downloaded copy on first use.
+
+    Reading the cache here rather than at import keeps importing this
+    module free of disk access, and covers every entry point (CLI, bot,
+    tests) without each one remembering to load it.
+    """
+    global _cache_checked
+    if not _cache_checked:
+        _cache_checked = True
+        try:
+            from unread.ai.catalog_sync import load_cached
+
+            load_cached()
+        except Exception:  # a broken cache must never break a lookup
+            pass
+    return _REGISTRY
+
+
+def catalog_updated() -> str:
+    """Date of the catalog currently in force (overlay if applied)."""
+    _pools()
+    return _overlay_updated or _BUNDLED_UPDATED
 
 
 def models_for_provider(provider: str, *, role: str | None = None) -> list[ModelInfo]:
@@ -633,12 +249,12 @@ def models_for_provider(provider: str, *, role: str | None = None) -> list[Model
     on cheap options.
 
     For `role="vision"` we include the explicit `role="vision"` entry
-    (e.g. OpenAI's gpt-4o-mini) plus every chat-class model that's known
-    to accept image input via :data:`_VISION_CAPABLE_IDS`. This avoids
+    (e.g. OpenAI's gpt-4o-mini) plus every chat-class model flagged
+    `vision` in the catalog. This avoids
     duplicating Anthropic / Google catalog entries just to expose them
     under the vision picker.
     """
-    pool = _REGISTRY.get(provider.strip().lower(), ())
+    pool = _pools().get(provider.strip().lower(), ())
     if role is None:
         return list(pool)
     if role == "chat":
@@ -646,14 +262,14 @@ def models_for_provider(provider: str, *, role: str | None = None) -> list[Model
     if role == "filter":
         return [m for m in pool if m.role == "filter"]
     if role == "vision":
-        return [m for m in pool if m.role == "vision" or m.id in _VISION_CAPABLE_IDS]
+        return [m for m in pool if m.role == "vision" or m.vision]
     return [m for m in pool if m.role == role]
 
 
 def all_known_models() -> list[ModelInfo]:
     """Flat list of every (provider, model) pair we ship pricing for."""
     seen: dict[str, ModelInfo] = {}
-    for pool in _REGISTRY.values():
+    for pool in _pools().values():
         for m in pool:
             # Same id can appear under multiple providers (e.g. OpenRouter
             # mirrors). Keep the first occurrence so vanilla OpenAI rows
@@ -672,12 +288,12 @@ def find_model(model_id: str) -> ModelInfo | None:
     and context windows right for ids typed in by hand and for older
     OpenRouter rows the picker no longer offers.
     """
-    for pool in _REGISTRY.values():
+    for pool in _pools().values():
         for m in pool:
             if m.id == model_id:
                 return m
     vendor, sep, bare = (model_id or "").partition("/")
-    pool = _REGISTRY.get(vendor.lower(), ()) if sep and vendor.lower() != "openrouter" else ()
+    pool = _pools().get(vendor.lower(), ()) if sep and vendor.lower() != "openrouter" else ()
     candidates = (bare, bare.replace(".", "-")) if vendor.lower() == "anthropic" else (bare,)
     for candidate in candidates:
         for m in pool:
@@ -713,10 +329,10 @@ def provider_for_model(model_id: str) -> str | None:
     # tokenizer's safety margin.
     if "/" in raw:
         vendor = raw.split("/", 1)[0].lower()
-        if vendor in _REGISTRY or vendor in {"anthropic", "google", "openai"}:
+        if vendor in _PROVIDERS or vendor in {"anthropic", "google", "openai"}:
             return vendor
     # 2. Exact catalog match
-    for provider, pool in _REGISTRY.items():
+    for provider, pool in _pools().items():
         if any(m.id.lower() == lower for m in pool):
             return provider
     # 3. Heuristics
@@ -766,7 +382,7 @@ def rejects_temperature(model_id: str) -> bool:
 
 def supported_providers() -> tuple[str, ...]:
     """Provider names with a curated catalog (ordered for UI consistency)."""
-    return ("openai", "anthropic", "google", "openrouter", "local")
+    return _PROVIDERS
 
 
 # Per-provider safety multiplier applied to tiktoken counts. tiktoken
