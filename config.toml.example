@@ -45,6 +45,7 @@
 # `unread update` once, so new models / price changes need no upgrade.
 # catalog_url = "https://raw.githubusercontent.com/maxbolgarin/unread/main/unread/ai/catalog.json"
 # catalog_refresh_hours = 24  # 0 disables
+# live_pricing = true  # price models unknown to the catalog from OpenRouter's public list
 
 # [openrouter]
 # api_key = "sk-or-…"

@@ -61,6 +61,8 @@ def _cleanup_tests_home() -> None:
 # that specifically exercise the missing-credential path can call
 # `monkeypatch.delenv("OPENAI_API_KEY", raising=False)` to clear them.
 os.environ.setdefault("OPENAI_API_KEY", "sk-test-fake")
+# Tests use made-up model ids; never price them from OpenRouter over the network.
+os.environ.setdefault("UNREAD_AI_LIVE_PRICING", "0")
 os.environ.setdefault("TELEGRAM_API_ID", "111111")
 os.environ.setdefault("TELEGRAM_API_HASH", "fakehashfortests")
 

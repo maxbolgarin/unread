@@ -286,7 +286,13 @@ for it.
 [ai]
 catalog_url = "https://raw.githubusercontent.com/maxbolgarin/unread/main/unread/ai/catalog.json"
 catalog_refresh_hours = 24               # 0 = never fetch; "" URL also disables
+live_pricing = true                      # price unknown models from OpenRouter's public list
 ```
+
+A model that neither `[pricing]` nor the catalog knows is priced from
+OpenRouter's public model list on its first call (one request, no key),
+and the price is remembered in `~/.unread/storage/live_prices.json`.
+It is an estimate; `[pricing]` always wins. Env: `UNREAD_AI_LIVE_PRICING`.
 
 Env: `UNREAD_AI_CATALOG_URL`, `UNREAD_AI_CATALOG_REFRESH_HOURS`. A
 download is applied only if it validates and is no older than the

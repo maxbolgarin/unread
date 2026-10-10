@@ -132,6 +132,10 @@ class AICfg(_StrictCfg):
     # bundled with the installed version (plus `[pricing]`) still applies.
     catalog_url: str = "https://raw.githubusercontent.com/maxbolgarin/unread/main/unread/ai/catalog.json"
     catalog_refresh_hours: float = Field(default=24.0, ge=0)
+    # A model missing from `[pricing]` and the catalog is priced from
+    # OpenRouter's public model list (one request, then remembered under
+    # `~/.unread/storage/live_prices.json`). False keeps such models unpriced.
+    live_pricing: bool = True
 
 
 class OpenRouterCfg(_StrictCfg):
@@ -868,6 +872,8 @@ def load_settings(config_path: Path | str | None = None) -> Settings:
         raw["ai"]["catalog_url"] = catalog_url.strip()
     if catalog_hours := _env("UNREAD_AI_CATALOG_REFRESH_HOURS"):
         raw["ai"]["catalog_refresh_hours"] = catalog_hours.strip()
+    if live_pricing := _env("UNREAD_AI_LIVE_PRICING"):
+        raw["ai"]["live_pricing"] = live_pricing.strip().lower() not in ("0", "false", "no", "off")
 
     if bot_token := _env("UNREAD_BOT_TOKEN"):
         raw["bot"]["token"] = bot_token

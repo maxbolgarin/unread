@@ -637,8 +637,12 @@ async def _build_caption(started: float, elapsed: float) -> str:
         parts.append(f"{prompt}↓ + {completion}↑ tok")
         if cached:
             parts.append(f"({cached} cached)")
+    # Approximate: provider prices change, and a model priced from
+    # OpenRouter's list (`ai.live_pricing`) is their rate, not the vendor's.
     if cost:
-        parts.append(f"${cost:.4f}")
+        parts.append(f"≈${cost:.4f}")
+    elif prompt or completion:
+        parts.append("$?")
     return " | ".join(parts)
 
 
