@@ -229,13 +229,29 @@ def test_verdict_icons_get_a_colour_class() -> None:
     from unread.bot.pdf import _PDF_CSS
 
     seen = set()
-    for icon in ("✅", "❌", "⚠️", "🎭", "❓"):
+    icons = ("✅", "☑️", "🔸", "❌", "⚠️", "🎭", "❓")
+    for icon in icons:
         html = wrap_emoji_spans(f"<td>{icon} x</td>")
         m = re.search(rf'class="{EMOJI_CLASS} ({EMOJI_CLASS}-\w+)"', html)
         assert m, f"{icon} got no colour class: {html}"
         seen.add(m.group(1))
         assert f".{m.group(1)}" in _PDF_CSS, f"{m.group(1)} has no CSS rule"
-    assert len(seen) == 5, f"verdicts share a colour: {seen}"
+    assert len(seen) == len(icons), f"verdicts share a colour: {seen}"
+
+
+@pytest.mark.parametrize("language", ["en", "ru"])
+def test_every_factcheck_verdict_icon_has_a_colour(language: str) -> None:
+    """The icon list above is hand-kept. 1.9 added ☑️ and 🔸 to the
+    preset without it, and they came out as grey outlines next to the
+    coloured ones. Read the icons straight from the preset."""
+    from unread.bot._pdf_worker import _EMOJI_TONE
+
+    text = (Path(__file__).resolve().parents[1] / "presets" / language / "factcheck.md").read_text("utf-8")
+    section = next(s for s in text.split("\n## ") if s.startswith(("Verdicts", "Вердикты")))
+    icons = re.findall(r"^- (\S+) \*\*", section, re.M)
+    assert len(icons) == 7, icons
+    for icon in icons:
+        assert icon[0] in _EMOJI_TONE, f"{icon} has no colour class"
 
 
 def test_a_plain_emoji_gets_no_colour_class() -> None:
