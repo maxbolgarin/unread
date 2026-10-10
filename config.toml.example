@@ -41,6 +41,10 @@
 # rejects a type newer than your account's API version with a 400. Only the
 # `factcheck` preset uses it. Bump if Anthropic retires this version.
 # anthropic_web_search_tool = "web_search_20250305"
+# Model list + prices: `unread bot` re-fetches this every N hours and
+# `unread update` once, so new models / price changes need no upgrade.
+# catalog_url = "https://raw.githubusercontent.com/maxbolgarin/unread/main/unread/ai/catalog.json"
+# catalog_refresh_hours = 24  # 0 disables
 
 # [openrouter]
 # api_key = "sk-or-…"
@@ -187,9 +191,9 @@ vision_model = "gpt-4o-mini"
 # Keep entries for every model you actually use.
 # Optional `context_window = 1000000` on an entry sizes chunks for a model
 # newer than this release (unknown models otherwise assume 128k).
-# Rates last refreshed 2026-05-01. `unread/ai/models.py` ships the same
-# table for the model picker, so these entries here are advisory unless
-# you want to override them.
+# Rates last refreshed 2026-05-01. `unread/ai/catalog.json` ships current
+# rates for the model picker (and the bot keeps it fresh — see
+# `catalog_url` under [ai]), so these entries are only needed to override.
 
 # ----- OpenAI ($/1M tokens) -----
 [pricing.chat."gpt-5.5"]

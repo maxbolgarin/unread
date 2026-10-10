@@ -27,8 +27,8 @@ _SENTENCE_SPLIT = re.compile(r'(?<=[.!?])\s+(?=[A-ZА-Я"«])')
 _TRUNC_MARKER = "…[truncated]"
 
 # Legacy fallback table for OpenAI ids predating the per-provider catalog
-# in unread/ai/models.py. New entries should land in `ai/models.py` as a
-# `ModelInfo.context_window=` instead, so the chunker, settings picker,
+# in unread/ai/catalog.json. New entries should land there as a
+# `context_window` instead, so the chunker, settings picker,
 # and pricing table all read from the same source.
 MODEL_CONTEXT: dict[str, int] = {
     "gpt-4.1": 128_000,
