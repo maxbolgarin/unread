@@ -42,6 +42,8 @@ _EMOJI_RE = re.compile(
 # the verdict word next to the icon, so a greyscale print still reads.
 _EMOJI_TONE = {
     "\u2705": "ok",  # ✅ True
+    "\u2611": "mostly",  # ☑️ Mostly true
+    "\U0001f538": "minor",  # 🔸 Inaccurate
     "\u274c": "bad",  # ❌ False
     "\u26a0": "warn",  # ⚠ Misleading
     "\U0001f3ad": "spin",  # 🎭 Manipulated

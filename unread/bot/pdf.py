@@ -54,7 +54,7 @@ body {
     line-height: 1.45;
     color: #222;
 }
-/* The verdict icons, and only them. Symbola draws ✅ ❌ ⚠ 🎭 ❓ as
+/* The verdict icons, and only them. Symbola draws ✅ ☑ 🔸 ❌ ⚠ 🎭 ❓ as
    ordinary monochrome outlines, so they embed like any other glyph.
    Deliberately no colour emoji font in this list either: a colour font
    here renders as invisible rather than as a fallback box. On a host
@@ -68,6 +68,8 @@ body {
     line-height: 1;
 }
 .emoji-ok   { color: #1a7f37; }
+.emoji-mostly { color: #4f9a2c; }
+.emoji-minor  { color: #d4880f; }
 .emoji-bad  { color: #c0362c; }
 .emoji-warn { color: #b26a00; }
 .emoji-spin { color: #7048a8; }
