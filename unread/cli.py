@@ -159,6 +159,13 @@ class _UnreadTyper(typer.Typer):
     Typer 0.x — this is the only knob that does.
     """
 
+    def __init__(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        # Typer's crash screen prints every frame's locals by default,
+        # and `Settings` (API keys, bot token) is a local in most of
+        # them. `--debug` should show where it broke, not the secrets.
+        kwargs.setdefault("pretty_exceptions_show_locals", False)
+        super().__init__(*args, **kwargs)
+
     def command(self, *args, **kwargs):  # type: ignore[override]
         kwargs.setdefault("cls", _UnreadCommand)
         return super().command(*args, **kwargs)

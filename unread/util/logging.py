@@ -183,14 +183,68 @@ def _redact_processor(_logger: Any, _method_name: str, event_dict: dict) -> dict
     return event_dict
 
 
+# Root of the installed `unread` package, used to point a compact
+# traceback at our own innermost frame rather than yt-dlp's or httpx's.
+_PACKAGE_DIR = Path(__file__).resolve().parents[1]
+
+
+def _own_frame(tb: Any) -> str:
+    """`unread/x/y.py:12 in fn` for the innermost frame in our package."""
+    where = ""
+    while tb is not None:
+        code = tb.tb_frame.f_code
+        try:
+            rel = Path(code.co_filename).resolve().relative_to(_PACKAGE_DIR)
+        except ValueError:
+            rel = None
+        if rel is not None:
+            where = f"unread/{rel.as_posix()}:{tb.tb_lineno} in {code.co_name}"
+        tb = tb.tb_next
+    return where
+
+
+def _compact_exception(sio: Any, exc_info: Any) -> None:
+    """structlog exception renderer: one line per exception in the chain.
+
+    structlog's default is a Rich traceback with `show_locals=True`: every
+    frame's locals, so one failed yt-dlp download dumped thousands of
+    lines and every `Settings` object in scope — API keys and the bot
+    token included — past the redactor, which only sees event fields.
+    The root cause comes first, then each exception that wrapped it.
+    """
+    chain: list[BaseException] = []
+    exc = exc_info[1] if exc_info else None
+    while exc is not None and all(exc is not seen for seen in chain):
+        chain.append(exc)
+        exc = exc.__cause__ or (None if exc.__suppress_context__ else exc.__context__)
+    lines: list[str] = []
+    for i, err in enumerate(reversed(chain)):
+        msg = " ".join(str(err).split())
+        msg = _SECRET_VALUE_RE.sub(_REDACTED, msg)
+        if len(msg) > 500:
+            msg = msg[:500] + "…"
+        head = f"{type(err).__name__}: {msg}" if msg else type(err).__name__
+        where = _own_frame(err.__traceback__)
+        prefix = "  " if i == 0 else "  ↳ raised as "
+        lines.append(prefix + head + (f"  [{where}]" if where else ""))
+    sio.write("\n" + "\n".join(lines))
+
+
+def _exception_formatter(mode: str) -> Any:
+    """Full traceback (still without locals) in debug, one-liners otherwise."""
+    if mode == "debug":
+        return structlog.dev.plain_traceback
+    return _compact_exception
+
+
 # Module-level handle so repeat `setup_logging` calls swap the file
 # instead of stacking handlers. Each call closes the prior handler
 # (if any) before attaching a fresh one — keeps tests clean and avoids
 # leaking file descriptors when the wizard re-runs `setup_logging`.
 _FILE_HANDLER: logging.handlers.RotatingFileHandler | None = None
-# Plain-text renderer mirrors the console one without ANSI colors. Built
-# once and reused by the file-emitting structlog processor.
-_PLAIN_RENDERER = structlog.dev.ConsoleRenderer(colors=False)
+# Plain-text renderer mirrors the console one without ANSI colors.
+# Rebuilt by `setup_logging` so its exception format follows the mode.
+_PLAIN_RENDERER = structlog.dev.ConsoleRenderer(colors=False, exception_formatter=_compact_exception)
 
 
 def _close_file_handler() -> None:
@@ -351,6 +405,9 @@ def setup_logging(mode: str = "normal") -> None:
     ):
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
+    global _PLAIN_RENDERER
+    exception_formatter = _exception_formatter(mode)
+    _PLAIN_RENDERER = structlog.dev.ConsoleRenderer(colors=False, exception_formatter=exception_formatter)
     file_handler = _resolve_file_handler(level)
 
     processors: list[Any] = [
@@ -364,7 +421,7 @@ def setup_logging(mode: str = "normal") -> None:
         # already scrubbed) and BEFORE the colored ConsoleRenderer
         # (which mutates the event dict).
         processors.append(_file_emit_processor_factory(file_handler))
-    processors.append(structlog.dev.ConsoleRenderer(colors=True))
+    processors.append(structlog.dev.ConsoleRenderer(colors=True, exception_formatter=exception_formatter))
 
     structlog.configure(
         wrapper_class=structlog.make_filtering_bound_logger(level),
