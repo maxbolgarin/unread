@@ -2373,6 +2373,58 @@ def _format_transcript_provenance(result: AnalysisResult, *, language: str = "")
     return lang or kind_label
 
 
+def _format_tokens_value(result: AnalysisResult, *, language: str | None = None) -> str:
+    """`26 599 in (7 215 cached, 27%) + 4 607 out`, or "" when no call was made."""
+    prompt = result.prompt_tokens
+    completion = result.completion_tokens
+    if not (prompt or completion):
+        return ""
+    value = _tf("report_meta_tokens_in", language, n=f"{prompt:,}".replace(",", " "))
+    if result.cached_tokens and prompt:
+        value += (
+            " ("
+            + _tf(
+                "report_meta_tokens_cached",
+                language,
+                n=f"{result.cached_tokens:,}".replace(",", " "),
+                pct=round(100 * result.cached_tokens / prompt),
+            )
+            + ")"
+        )
+    value += " + " + _tf("report_meta_tokens_out", language, n=f"{completion:,}".replace(",", " "))
+    return value
+
+
+def _format_cost_value(result: AnalysisResult, *, language: str | None = None) -> str:
+    """Cost row: total, split into analysis + enrichment, flagged when unpriced.
+
+    A model missing from both config.toml pricing and the catalog prices
+    at nothing, which used to render as a bare `$0` — indistinguishable
+    from a free cache hit.
+    """
+    analysis_cost = result.total_cost_usd
+    unpriced = ", ".join(f"`{m}`" for m in result.unpriced_models)
+    if unpriced and not analysis_cost and not result.enrich_cost_usd:
+        return _tf("report_meta_cost_unknown", language, model=unpriced)
+    prefix = "≥ " if unpriced else ""
+    if result.enrich_cost_usd:
+        total = analysis_cost + result.enrich_cost_usd
+        value = prefix + _tf(
+            "report_meta_cost_split",
+            language,
+            total=_fmt_cost_precise(total),
+            analysis=_fmt_cost_precise(analysis_cost),
+            enrich=_fmt_cost_precise(result.enrich_cost_usd),
+        )
+    else:
+        value = prefix + _fmt_cost_precise(analysis_cost)
+    if unpriced:
+        value += " " + _tf("report_meta_cost_partial", language, model=unpriced)
+    elif not analysis_cost and result.cache_hits and not result.cache_misses:
+        value += " " + _t("report_meta_cost_cached", language)
+    return value
+
+
 def _analyze_meta_rows(result: AnalysisResult, *, title: str | None) -> list[tuple[str, str]]:
     """Build the (i18nized label, value) row list for an analyze report.
 
@@ -2409,7 +2461,10 @@ def _analyze_meta_rows(result: AnalysisResult, *, title: str | None) -> list[tup
         )
         if chat_link:
             rows.append((_t("report_meta_link", lang), chat_link))
-    rows.append((_t("report_meta_period", lang), _fmt_period_header(result.period, language=lang)))
+    # A period only means something for a chat; a video / page / file is
+    # analyzed whole, so "unread / full history" there is just noise.
+    if kind == "chat":
+        rows.append((_t("report_meta_period", lang), _fmt_period_header(result.period, language=lang)))
 
     msg_value = str(result.msg_count)
     if result.raw_msg_count and result.raw_msg_count != result.msg_count:
@@ -2439,13 +2494,24 @@ def _analyze_meta_rows(result: AnalysisResult, *, title: str | None) -> list[tup
     if result.chunk_count:
         rows.append((_t("report_meta_chunks", lang), str(result.chunk_count)))
 
+    # Local response cache: only worth a row when it actually served
+    # something — "0/1 hits" next to a provider prompt-cache discount
+    # reads as "the cache didn't work". The provider's cached tokens go
+    # on the token row below.
     total_calls = result.cache_hits + result.cache_misses
-    if total_calls:
+    if result.cache_hits:
         rows.append(
             (
                 _t("report_meta_cache", lang),
                 _tf("report_meta_cache_hits_of", lang, hits=result.cache_hits, total=total_calls),
             )
+        )
+    tokens_value = _format_tokens_value(result, language=lang)
+    if tokens_value:
+        rows.append((_t("report_meta_tokens", lang), tokens_value))
+    if result.elapsed_s:
+        rows.append(
+            (_t("report_meta_elapsed", lang), _tf("report_meta_elapsed_value", lang, s=result.elapsed_s))
         )
 
     if result.enrich_kinds:
@@ -2474,17 +2540,7 @@ def _analyze_meta_rows(result: AnalysisResult, *, title: str | None) -> list[tup
         bits = ", ".join(f"{k}: {v}" for k, v in sorted(result.redact_counts.items()))
         rows.append((_t("report_meta_redact", lang), bits))
 
-    analysis_cost = result.total_cost_usd
-    if result.enrich_cost_usd:
-        total = analysis_cost + result.enrich_cost_usd
-        cost_value = (
-            f"{_fmt_cost_precise(total)} "
-            f"(analysis {_fmt_cost_precise(analysis_cost)} + "
-            f"enrichment {_fmt_cost_precise(result.enrich_cost_usd)})"
-        )
-    else:
-        cost_value = _fmt_cost_precise(analysis_cost)
-    rows.append((_t("report_meta_cost", lang), cost_value))
+    rows.append((_t("report_meta_cost", lang), _format_cost_value(result, language=lang)))
 
     rows.append((_t("report_meta_generated", lang), datetime.now().strftime("%Y-%m-%d %H:%M")))
     return rows
