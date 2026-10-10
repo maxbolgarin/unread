@@ -20,53 +20,52 @@ if TYPE_CHECKING:
     from unread.bot.app import BotApp
 
 
-_SLASH_COMMANDS = """\
-Slash commands:
-`/help` — this message
-`/ping` — health check
-`/settings` — show current sticky + default settings for this chat
-`/preset <name>` — sticky preset (e.g. `/preset digest`); bare `/preset` clears
-`/lang <code>` — your language for analyses, report headings and transcripts (e.g. `/lang en`); bare clears
-`/enrich <list|all|none>` — sticky extra enrichments for TG chats (e.g. `image,link`)
-`/window <day|week|month|msg|from_msg|none>` — sticky default TG window
-`/format <pdf|md|rich>` — how reports come back:
-   • `pdf` — rendered document, best on phones (default)
-   • `md` — the raw Markdown file
-   • `rich` — the report in the chat itself, tables and all, nothing to download
-   bare `/format` restores the default
-`/confirm on|off` — toggle the pre-run confirm panel (default: on)
-`/upload_session` — install your Telegram user session (one-time)
-`/stop` — cancel the run currently in progress in this chat
-`/cancel` — drop any pending `/upload_session`
-"""
-
 # Telethon's default markdown parser is MarkdownV1-ish: **double**
 # asterisks for bold, `backticks` for inline code. Single asterisks
 # render literally — don't use them.
 
-_HELP_TEXT_FULL = """\
-**unread bot** — send me one of:
-• a file (PDF, audio, video, text, code, …)
-• a voice / video message → summary, or just the transcript (as a file or plain text)
-• a web URL → I'll summarize the page
-• a YouTube URL → I'll summarize the transcript
-• a forwarded Telegram message → I'll analyze its contents
-• a `t.me/<chat>/<msg>` link → I'll pull the chat and analyze
+_SLASH_COMMANDS = """\
+⚙️ **Settings** — `/settings` opens a menu with buttons for all of these:
+/lang `<code>` — language of reports and transcripts (`en`, `ru`, …)
+/format `pdf|md|rich` — PDF, Markdown file, or the report right in the chat
+/preset `<name>` — kind of report, e.g. `digest`, `tldr`
+/window `day|week|month|msg|from_msg` — period to read in Telegram chats
+/enrich `image,doc,link,video|all|none` — media to read in Telegram chats
+/confirm `on|off` — ask before each run
+Send a command with no value to reset it to the default.
 
+🛠 **Other**
+/stop — cancel the run in progress
+/cancel — abort a pending prompt
+/upload_session — install your Telegram session (one-time)
+/ping — check the bot is alive
+/help — this message
 """
 
-_HELP_TEXT_NO_SESSION = """\
-**unread bot** — send me one of:
-• a file (PDF, audio, video, text, code, …)
-• a voice / video message → summary, or just the transcript (as a file or plain text)
-• a web URL → I'll summarize the page
-• a YouTube URL → I'll summarize the transcript
+_INPUTS = """\
+👋 **unread** — send me something and I'll read it for you:
+📄 a file — PDF, audio, video, text, code, …
+🎙 a voice or video message — summary or transcript
+🌐 a web link — page summary
+▶️ a YouTube link — video summary or fact-check
+"""
 
-⚠️ **No Telegram user session installed**, so I can't read your private chats. \
-Forwarded messages, `t.me/<chat>/<msg>` links, and `@channel` refs won't work \
-until you run `/upload_session` and send me your `session.sqlite` file.
+_HELP_TEXT_FULL = (
+    _INPUTS
+    + """\
+💬 a forwarded message, `t.me/<chat>/<msg>` link or `@channel` — chat analysis
 
 """
+)
+
+_HELP_TEXT_NO_SESSION = (
+    _INPUTS
+    + """
+⚠️ **Telegram chats are off**: no user session installed, so forwards, \
+`t.me/...` links and `@channel` refs won't work. Run /upload_session once to fix.
+
+"""
+)
 
 
 def _build_help_text(app: BotApp) -> str:
@@ -401,11 +400,14 @@ async def handle(
 
     if cmd == "cancel":
         chat_state = app._chat_state.setdefault(event.chat_id, {})
-        had_pending = chat_state.pop("pending_session_upload", False)
-        chat_state.pop("pending_model", None)
-        chat_state.pop("pending_model_at", None)
-        if had_pending:
+        had_upload = chat_state.pop("pending_session_upload", False)
+        had_prompt = bool(chat_state.pop("pending_model", None) or chat_state.pop("pending_api_key", None))
+        for key in ("pending_model", "pending_model_at", "pending_api_key", "pending_api_key_at"):
+            chat_state.pop(key, None)
+        if had_upload:
             await event.reply("Session-upload cancelled.")
+        elif had_prompt:
+            await event.reply("Cancelled — nothing was changed.")
         else:
             await event.reply("Nothing to cancel.")
         return

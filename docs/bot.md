@@ -104,17 +104,16 @@ Fact-check isn't YouTube-only — `/preset factcheck` makes it the default for e
 |---|---|
 | `/help` | Show the input list + this command list. |
 | `/ping` | Health check — reply `pong`. |
-| `/settings` | Show current sticky settings (preset, language, enrich, window) + their defaults. |
+| `/settings` | Show this chat's settings with a button for each: language, format, preset, period, media, confirm, plus the bot-wide AI provider, model and API key. Every slash command below can also be changed from there. |
 | `/preset <name>` | Sticky preset for this chat (e.g. `/preset digest`). Bare `/preset` clears the override. Names match the CLI: `summary`, `tldr`, `digest`, `highlights`, `quotes`, `links`, `action_items`, `decisions`, `questions`, `reactions`, `factcheck`, `video`, `video_summary`, `website`. |
 | `/lang <code>` | Sticky report language (e.g. `/lang en`, `/lang ru`). Bare clears. |
 | `/enrich <list\|all\|none>` | Sticky extra enrichments for Telegram chat analyses. `/enrich image,link` turns those two on; `/enrich all` enables every kind; `/enrich none` strips even the defaults. |
 | `/window <day\|week\|month\|msg\|from_msg\|none>` | Sticky default time window for TG-chat analyses. |
 | `/format <pdf\|md\|rich>` | How reports come back. `pdf` — rendered document, best on phones (default). `md` — the raw Markdown file. `rich` — the report in the chat itself, nothing to download. Telegram renders the Markdown natively (tables, headings, lists) in one message of up to 32768 characters, using the rich messages added in Bot API 10.1. Where that isn't available — an older server, or a client that can't draw it — the report is flattened to the bold/italic/link subset Telethon can send and split at the server's message limit, never mid-heading. Bare `/format` restores the default. |
-| `/settings` | Show this chat's settings, and change the AI provider, model and API key from an inline menu. Model rows show prices so you don't land on a flagship by accident. |
 | `/stop` | Cancel the run in progress in this chat. Only yours — another admin's run is untouched. |
 | `/confirm on\|off` | Toggle the pre-run confirm panel (default: on). |
 | `/upload_session` | Install your Telegram user session (one-time). The bot waits for you to send `~/.unread/storage/session.sqlite` as a Telegram document. |
-| `/cancel` | Drop any pending `/upload_session` state. |
+| `/cancel` | Abort a pending prompt: `/upload_session`, or a model id / API key the bot is waiting for. |
 
 Sticky settings are **per chat and persistent** — stored in `data.sqlite::bot_chat_settings` and restored at startup, so a `docker compose up` doesn't reset them. Each admin has their own 1:1 chat with the bot, so each admin has their own settings.
 
@@ -167,7 +166,10 @@ Add someone only if you're fine with them spending your API budget. They can't r
 ### Changing provider, model and keys from the bot
 
 A container has its own `~/.unread`, so `unread settings` on your laptop
-does **not** reach a deployed bot. `/settings` gives you an inline menu:
+does **not** reach a deployed bot. `/settings` gives you an inline menu.
+The per-chat rows (🌐 Language, 📄 Format, 🎛 Preset, 📅 Period, 🖼 Media,
+✅ Confirm) set the same values as the slash commands, for your chat only.
+The AI rows are bot-wide:
 
 - **🔀 Provider** — openai / openrouter / anthropic / google / local. Applies
   immediately, no restart, and is persisted so it survives one.

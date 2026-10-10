@@ -182,3 +182,76 @@ def test_looks_like_model_id_rejects_junk(raw) -> None:
     from unread.bot.settings_menu import looks_like_model_id
 
     assert not looks_like_model_id(raw)
+
+
+# --- per-chat settings in the menu ---------------------------------------------
+
+
+def test_root_menu_has_a_button_for_every_chat_setting(settings) -> None:
+    _text, buttons = build_settings_menu(chat_state={}, settings=settings, panel_msg_id=1)
+    actions = {parse_settings_callback(b.data)[0] for row in buttons for b in row}
+    assert {"S_LANGS", "S_FMTS", "S_PRSTS", "S_WINS", "S_MEDS", "S_CONF", "S_CLOSE"} <= actions
+
+
+def test_every_menu_button_fits_telegram_callback_limit(settings) -> None:
+    from unread.bot.settings_menu import CHAT_MENU_BUILDERS
+
+    for builder in (build_settings_menu, *CHAT_MENU_BUILDERS.values()):
+        _text, buttons = builder(chat_state={}, settings=settings, panel_msg_id=2**31 - 1)
+        for row in buttons:
+            for b in row:
+                assert len(b.data) <= 64, b.data
+
+
+def test_sub_menu_marks_the_sticky_value(settings) -> None:
+    from unread.bot.settings_menu import build_format_menu
+
+    _text, buttons = build_format_menu(chat_state={"report_format": "md"}, settings=settings, panel_msg_id=1)
+    marked = [parse_settings_callback(b.data)[2] for row in buttons for b in row if b.text.startswith("✓")]
+    assert marked == ["md"]
+
+
+def test_preset_menu_hides_routing_only_presets(settings) -> None:
+    from unread.bot.settings_menu import build_preset_menu
+
+    _text, buttons = build_preset_menu(chat_state={}, settings=settings, panel_msg_id=1)
+    values = {parse_settings_callback(b.data)[2] for row in buttons for b in row}
+    assert "digest" in values
+    assert "single_msg" not in values
+
+
+@pytest.mark.parametrize(
+    ("action", "value", "expected"),
+    [
+        ("S_LANG", "ru", ("report_language", "ru")),
+        ("S_LANG", "", ("report_language", "")),
+        ("S_FMT", "rich", ("report_format", "rich")),
+        ("S_WIN", "7d", ("tg_window", "7d")),
+        ("S_PRST", "digest", ("preset", "digest")),
+        ("S_CONF", None, ("confirm_disabled", True)),
+    ],
+)
+def test_chat_setting_change_maps_taps_to_sticky_values(action, value, expected) -> None:
+    from unread.bot.settings_menu import chat_setting_change
+
+    assert chat_setting_change(action, value, {}) == expected
+
+
+def test_media_tap_toggles_one_kind() -> None:
+    from unread.bot.settings_menu import chat_setting_change
+
+    assert chat_setting_change("S_MED", "link", {"enrich_extras": {"image"}}) == (
+        "enrich_extras",
+        {"image", "link"},
+    )
+    assert chat_setting_change("S_MED", "image", {"enrich_extras": {"image"}}) == ("enrich_extras", set())
+
+
+@pytest.mark.parametrize(
+    ("action", "value"), [("S_FMT", "docx"), ("S_WIN", "1y"), ("S_MED", "audio"), ("S_PRST", "nope")]
+)
+def test_chat_setting_change_rejects_values_the_menu_never_offers(action, value) -> None:
+    from unread.bot.settings_menu import chat_setting_change
+
+    with pytest.raises(ValueError):
+        chat_setting_change(action, value, {})
