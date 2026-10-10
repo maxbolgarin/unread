@@ -40,7 +40,8 @@ def test_youtube_panel_offers_analyze_transcript_and_factcheck():
     assert "analyze" in labels
     assert "transcript" in labels
     assert "fact" in labels
-    assert len(flat) == 3
+    assert "summary" in labels
+    assert len(flat) == 4
 
 
 def test_factcheck_button_encodes_its_own_action():
