@@ -1583,9 +1583,18 @@ _STRINGS: dict[str, dict[str, str]] = {
     "report_meta_chunks": {"en": "**Chunks:**", "ru": "**Чанков:**"},
     "report_meta_cache": {"en": "**Cache:**", "ru": "**Кэш:**"},
     "report_meta_cache_hits_of": {
-        "en": "{hits}/{total} hits",
-        "ru": "{hits}/{total} попаданий",
+        "en": "{hits}/{total} responses from local cache",
+        "ru": "{hits}/{total} ответов из локального кэша",
     },
+    "report_meta_tokens": {"en": "**Tokens:**", "ru": "**Токены:**"},
+    "report_meta_tokens_in": {"en": "{n} in", "ru": "{n} вход"},
+    "report_meta_tokens_cached": {
+        "en": "{n} from provider cache, {pct}%",
+        "ru": "{n} из кэша провайдера, {pct}%",
+    },
+    "report_meta_tokens_out": {"en": "{n} out", "ru": "{n} выход"},
+    "report_meta_elapsed": {"en": "**Time:**", "ru": "**Время:**"},
+    "report_meta_elapsed_value": {"en": "{s:.1f}s", "ru": "{s:.1f} с"},
     "report_meta_enrichment": {"en": "**Enrichment:**", "ru": "**Обогащение:**"},
     "report_meta_enrichment_detail": {"en": "**Enrichment detail:**", "ru": "**Детали обогащения:**"},
     "transcript_lang_fallback": {
@@ -1615,6 +1624,22 @@ _STRINGS: dict[str, dict[str, str]] = {
         "ru": "**Скрыто PII (только во входе LLM):**",
     },
     "report_meta_cost": {"en": "**Cost:**", "ru": "**Стоимость:**"},
+    "report_meta_cost_split": {
+        "en": "{total} (analysis {analysis} + enrichment {enrich})",
+        "ru": "{total} (анализ {analysis} + обогащение {enrich})",
+    },
+    "report_meta_cost_unknown": {
+        "en": "unknown — no price for {model} (add it under [pricing.chat] in config.toml)",
+        "ru": "неизвестна — нет цены для {model} (добавьте в [pricing.chat] в config.toml)",
+    },
+    "report_meta_cost_partial": {
+        "en": "— no price for {model}, those calls are not counted",
+        "ru": "— нет цены для {model}, эти вызовы не учтены",
+    },
+    "report_meta_cost_cached": {
+        "en": "(served from local cache)",
+        "ru": "(ответ из локального кэша)",
+    },
     "report_meta_generated": {"en": "**Generated:**", "ru": "**Создано:**"},
     "report_summary_run": {"en": "Run", "ru": "Запуск"},
     # ---- Ask report header (mirrors report_meta_*; only ask-specific keys live here) ----

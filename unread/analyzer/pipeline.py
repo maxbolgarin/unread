@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -342,6 +343,36 @@ class AnalysisResult:
     # `chat_username` wins when both are set.
     chat_username: str | None = None
     chat_internal_id: int | None = None
+    # Token usage of the LLM calls this run actually made (local cache
+    # hits cost nothing and add nothing). `cached_tokens` is the
+    # provider-side prompt cache, a subset of `prompt_tokens` — distinct
+    # from `cache_hits`, which counts whole responses served from the
+    # local analysis cache.
+    prompt_tokens: int = 0
+    cached_tokens: int = 0
+    completion_tokens: int = 0
+    # Models that made calls but have no price in config.toml or the
+    # catalog — `total_cost_usd` leaves their calls out.
+    unpriced_models: list[str] = field(default_factory=list)
+    elapsed_s: float = 0.0
+
+
+@dataclass(slots=True)
+class RunUsage:
+    """Token tally accumulated across one run's LLM calls."""
+
+    prompt_tokens: int = 0
+    cached_tokens: int = 0
+    completion_tokens: int = 0
+    unpriced_models: list[str] = field(default_factory=list)
+
+    def as_result_fields(self) -> dict[str, Any]:
+        return {
+            "prompt_tokens": self.prompt_tokens,
+            "cached_tokens": self.cached_tokens,
+            "completion_tokens": self.completion_tokens,
+            "unpriced_models": list(self.unpriced_models),
+        }
 
 
 @dataclass(slots=True)
@@ -536,6 +567,7 @@ async def _call_cached(
     use_cache: bool,
     disable_truncation_retry: bool = False,
     web_search: bool = False,
+    usage: RunUsage | None = None,
 ) -> tuple[str, float, bool, bool]:
     """Return (text, cost, was_cache_hit, truncated). Writes cache and usage log on miss.
 
@@ -569,6 +601,12 @@ async def _call_cached(
         context={**run_context, "batch_hash": bhash},
         disable_truncation_retry=disable_truncation_retry,
     )
+    if usage is not None:
+        usage.prompt_tokens += int(res.prompt_tokens or 0)
+        usage.cached_tokens += int(res.cached_tokens or 0)
+        usage.completion_tokens += int(res.completion_tokens or 0)
+        if res.cost_usd is None and model not in usage.unpriced_models:
+            usage.unpriced_models.append(model)
     if use_cache and not res.truncated:
         # Don't cache truncated results — caching a partial summary would
         # silently poison every future run of the same query.
@@ -630,6 +668,7 @@ async def run_analysis(
     via `core.pipeline.prepare_chat_run`). When None (default), falls
     back to the legacy path that does it all internally.
     """
+    started = time.monotonic()
     settings = get_settings()
     if language is None:
         language = _resolve_language(settings)
@@ -926,6 +965,7 @@ async def run_analysis(
     total_cost = 0.0
     cache_hits = 0
     cache_misses = 0
+    usage = RunUsage()
     batch_hashes: list[str] = []
     any_truncated = False
 
@@ -977,6 +1017,7 @@ async def run_analysis(
                 web_search=web_search_on,
                 use_cache=opts.use_cache,
                 disable_truncation_retry=opts.disable_truncation_retry,
+                usage=usage,
             ),
         )
         total_cost += cost
@@ -1024,6 +1065,8 @@ async def run_analysis(
             redact_counts=dict(redact_stats),
             chat_username=chat_username,
             chat_internal_id=chat_internal_id,
+            elapsed_s=time.monotonic() - started,
+            **usage.as_result_fields(),
         )
 
     # --- Map-reduce branch
@@ -1097,6 +1140,7 @@ async def run_analysis(
                         run_context={**run_ctx, "phase": "analyze_map"},
                         use_cache=opts.use_cache,
                         disable_truncation_retry=opts.disable_truncation_retry,
+                        usage=usage,
                     )
                 return bh, t, c, hit, tr
             finally:
@@ -1166,6 +1210,7 @@ async def run_analysis(
             web_search=web_search_on,
             use_cache=opts.use_cache,
             disable_truncation_retry=opts.disable_truncation_retry,
+            usage=usage,
         ),
     )
     total_cost += cost
@@ -1214,6 +1259,8 @@ async def run_analysis(
         redact_counts=dict(redact_stats),
         chat_username=chat_username,
         chat_internal_id=chat_internal_id,
+        elapsed_s=time.monotonic() - started,
+        **usage.as_result_fields(),
     )
 
 
