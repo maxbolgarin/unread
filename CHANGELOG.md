@@ -1,3 +1,14 @@
+## [1.10.0](https://github.com/maxbolgarin/unread/compare/v1.9.0...v1.10.0) (2026-10-10)
+
+### 🚀 Features
+
+* **youtube:** add an overall verdict to the video analysis ([e236808](https://github.com/maxbolgarin/unread/commit/e236808b7136e2ace6656debd200178f2543512f))
+* **bot:** make every setting changeable from the /settings menu ([4cf4baa](https://github.com/maxbolgarin/unread/commit/4cf4baa7cb07cf29eb029df7bc2c7db232e1ef2b))
+
+### 🐛 Bug Fixes
+
+* **pdf:** colour the Mostly true and Inaccurate verdict icons ([c555e98](https://github.com/maxbolgarin/unread/commit/c555e98813d92ce430237409acab7ccd077b3804))
+
 ## [1.9.0](https://github.com/maxbolgarin/unread/compare/v1.8.0...v1.9.0) (2026-10-10)
 
 ### 🚀 Features
