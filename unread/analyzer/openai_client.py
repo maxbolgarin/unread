@@ -25,7 +25,7 @@ from unread.ai import ChatProvider, ChatResult, make_chat_provider
 from unread.config import get_settings
 from unread.db.repo import Repo
 from unread.util.logging import get_logger
-from unread.util.pricing import chat_cost
+from unread.util.pricing import chat_cost, chat_pricing_for
 
 log = get_logger(__name__)
 
@@ -75,6 +75,16 @@ def _retry_cap_for(model: str) -> int:
     return _MAX_RETRY_TOKENS_FALLBACK
 
 
+async def _ensure_price(model: str) -> None:
+    """Learn a price for a model the catalog doesn't know (one fetch per process)."""
+    settings = get_settings()
+    if not settings.ai.live_pricing or chat_pricing_for(model, settings) is not None:
+        return
+    from unread.ai.live_pricing import ensure
+
+    await ensure(model)
+
+
 async def _one_call(
     provider: ChatProvider,
     *,
@@ -108,6 +118,7 @@ async def _one_call(
     if web_search:
         chat_kwargs["web_search"] = True
     raw = await provider.chat(**chat_kwargs)
+    await _ensure_price(model)
     cost = chat_cost(model, raw.prompt_tokens, raw.cached_tokens, raw.completion_tokens)
     finish = "length" if raw.truncated else None
     log_context: dict[str, Any] = {**(context or {}), "provider": provider.name}

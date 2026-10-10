@@ -22,9 +22,16 @@ def chat_pricing_for(model: str, settings: Settings) -> ChatPricing | None:
     if row is not None:
         return row
     info = find_model(model)
-    if info is None or info.role == "audio":
+    if info is not None and info.role != "audio":
+        return ChatPricing(input=info.input_price, cached_input=info.cached_price, output=info.output_price)
+    if info is not None:
         return None
-    return ChatPricing(input=info.input_price, cached_input=info.cached_price, output=info.output_price)
+    # Last resort: a price learned from OpenRouter's public list
+    # (`unread.ai.live_pricing`). Read-only here — fetching is async and
+    # happens in `chat_complete` before cost is computed.
+    from unread.ai.live_pricing import lookup
+
+    return lookup(model)
 
 
 def chat_cost(
