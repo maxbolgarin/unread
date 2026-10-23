@@ -13,7 +13,7 @@
 #
 # Environment overrides:
 #   ENV_FILE         — local env file to copy as .env.bot (default: .env.bot)
-#   COMPOSE_FILE     — local compose file (default: docker-compose.bot.prod.yml)
+#   COMPOSE_FILE     — local compose file (default: docker-compose.bot.yml)
 #   REMOTE_DIR       — remote target dir (default: /srv/unread-bot or the
 #                      positional arg if given)
 #   SKIP_RESTART=1   — copy files only; don't run docker compose remotely
@@ -97,4 +97,4 @@ docker compose --env-file .env.bot ps
 EOF
 
 echo "✓ deploy complete"
-echo "  tail logs:   ${SSH[*]} $REMOTE_HOST 'cd $REMOTE_DIR && docker compose logs -f'"
+echo "  tail logs:   ${SSH[*]} $REMOTE_HOST 'cd $REMOTE_DIR && docker compose --env-file .env.bot logs -f'"

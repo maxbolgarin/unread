@@ -1,81 +1,81 @@
-# Run `unread bot` as a long-running container via the generic
-# `unread` image. Pulls from GHCR — does NOT build from source. The
-# image is published by .github/workflows/image.yml on every
-# semantic-release tag and on pushes to main.
+# The unread Telegram bot as a Docker Compose service. Pulls the prebuilt
+# image from GHCR — nothing is built from source.
 #
-# Quick start on a fresh VM:
-#   1. docker login ghcr.io   # only needed if you kept the image private
-#   2. cp .env.bot.example .env.bot && $EDITOR .env.bot
-#   3. docker compose -f docker-compose.bot.yml --env-file .env.bot pull
-#   4. docker compose -f docker-compose.bot.yml --env-file .env.bot up -d
+# Easiest: the installer writes this file and its .env for you, starts the
+# bot and adds an `unread-bot` command to manage it:
+#   curl -fsSL https://raw.githubusercontent.com/maxbolgarin/unread/main/scripts/install-bot-docker.sh | bash
 #
-# Updates (see docs/bot-vm-deploy.md → "Updating a running bot"):
-#   cd ~/unread
-#   DOCKER_CONFIG=~/.docker-anon docker compose -f docker-compose.bot.yml --env-file .env.bot pull
-#   DOCKER_CONFIG=~/.docker-anon docker compose -f docker-compose.bot.yml --env-file .env.bot up -d
-# The empty DOCKER_CONFIG (one-time: mkdir -p ~/.docker-anon && echo '{}' >
-# ~/.docker-anon/config.json) pulls the public image anonymously, so a VM
-# already logged in to ghcr.io for other private images doesn't get
-# "denied". On a VM with no ghcr.io login, drop the DOCKER_CONFIG prefix.
+# By hand, in an empty directory:
+#   curl -fsSLo docker-compose.yml https://raw.githubusercontent.com/maxbolgarin/unread/main/docker-compose.bot.yml
+#   curl -fsSLo .env https://raw.githubusercontent.com/maxbolgarin/unread/main/.env.bot.example
+#   nano .env                  # fill in the required values
+#   docker compose up -d
+#   docker compose logs -f     # wait for "✓ bot ready"
 #
-# NOTE: `UNREAD_BOT_TOKEN` below uses the `:?` required-variable form, so
-# EVERY compose subcommand needs `--env-file .env.bot` — not just `up`.
-# Without it even `logs` fails with "required variable ... is missing a
-# value". `docker logs <container>` sidesteps compose entirely.
+# Compose reads `.env` from this directory by itself, so plain
+# `docker compose <command>` works. (From a repo checkout with `.env.bot`
+# instead, pass `-f docker-compose.bot.yml --env-file .env.bot` to EVERY
+# command — the required values below are checked on each one.)
 #
-# Logs:    docker compose -f docker-compose.bot.yml --env-file .env.bot logs -f
-#          docker logs unread-unread-bot-1 --tail 30
-# Status:  docker compose -f docker-compose.bot.yml --env-file .env.bot ps
-# Stop:    docker compose -f docker-compose.bot.yml --env-file .env.bot down
+# Update:  docker compose pull && docker compose up -d
+# Guide:   https://github.com/maxbolgarin/unread/blob/main/docs/bot-vm-deploy.md
 
 services:
   unread-bot:
-    # Override with UNREAD_BOT_IMAGE in the env file to pin a specific
-    # version (e.g. ghcr.io/maxbolgarin/unread:1.4.2). Default tracks
-    # `:latest`, which moves on every semantic-release.
+    # Pin a version with UNREAD_BOT_IMAGE (e.g. ghcr.io/maxbolgarin/unread:1.10.0).
+    # `:latest` moves on every release; `docker compose pull` fetches it.
     image: "${UNREAD_BOT_IMAGE:-ghcr.io/maxbolgarin/unread:latest}"
-    # Image has no ENTRYPOINT — it's a generic CLI runtime. Tell
-    # compose to run the bot subcommand.
+    # The image is a generic `unread` runtime; this picks the bot.
     command: ["unread", "bot", "run"]
     restart: unless-stopped
-    pull_policy: always
+    # Reap ffmpeg / PDF-worker children and hand `docker stop` to the bot
+    # right away instead of waiting out the 10 s kill timeout.
+    init: true
     environment:
-      TELEGRAM_API_ID: "${TELEGRAM_API_ID:?TELEGRAM_API_ID is required}"
-      TELEGRAM_API_HASH: "${TELEGRAM_API_HASH:?TELEGRAM_API_HASH is required}"
+      # --- Required ---------------------------------------------------
+      UNREAD_BOT_TOKEN: "${UNREAD_BOT_TOKEN:?UNREAD_BOT_TOKEN is required (see .env.bot.example)}"
+      TELEGRAM_API_ID: "${TELEGRAM_API_ID:?TELEGRAM_API_ID is required (see .env.bot.example)}"
+      TELEGRAM_API_HASH: "${TELEGRAM_API_HASH:?TELEGRAM_API_HASH is required (see .env.bot.example)}"
+      # Who may use the bot: one id, or several separated by commas. Can be
+      # left empty only when a Telegram user session is installed.
+      UNREAD_BOT_OWNER_ID: "${UNREAD_BOT_OWNER_ID:-}"
 
-      # Which provider/model the bot uses. The container has its own
-      # ~/.unread, so `unread settings` on your laptop does NOT reach it —
-      # set the provider here or the bot falls back to openai.
-      UNREAD_AI_CHAT_PROVIDER: "${UNREAD_AI_CHAT_PROVIDER:-}"
-      UNREAD_AI_CHAT_MODEL: "${UNREAD_AI_CHAT_MODEL:-}"
-      UNREAD_AI_FILTER_PROVIDER: "${UNREAD_AI_FILTER_PROVIDER:-}"
-      UNREAD_AI_FILTER_MODEL: "${UNREAD_AI_FILTER_MODEL:-}"
-      # Model list / prices are re-fetched from the repo this often; 0 = off.
-      UNREAD_AI_CATALOG_REFRESH_HOURS: "${UNREAD_AI_CATALOG_REFRESH_HOURS:-24}"
-
+      # --- AI: at least one key ---------------------------------------
       OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
       GOOGLE_API_KEY: "${GOOGLE_API_KEY:-}"
       OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
 
-      UNREAD_BOT_TOKEN: "${UNREAD_BOT_TOKEN:?UNREAD_BOT_TOKEN is required}"
-      # One id, or several separated by commas ("111,222"). First =
-      # primary owner (the account whose TG session gets read).
-      UNREAD_BOT_OWNER_ID: "${UNREAD_BOT_OWNER_ID:-}"
+      # --- AI routing (optional; unset = openai) -----------------------
+      # A value here outranks the bot's /settings menu.
+      UNREAD_AI_CHAT_PROVIDER: "${UNREAD_AI_CHAT_PROVIDER:-}"
+      UNREAD_AI_CHAT_MODEL: "${UNREAD_AI_CHAT_MODEL:-}"
+      UNREAD_AI_FILTER_PROVIDER: "${UNREAD_AI_FILTER_PROVIDER:-}"
+      UNREAD_AI_FILTER_MODEL: "${UNREAD_AI_FILTER_MODEL:-}"
+      UNREAD_AI_VISION_PROVIDER: "${UNREAD_AI_VISION_PROVIDER:-}"
+      UNREAD_AI_VISION_MODEL: "${UNREAD_AI_VISION_MODEL:-}"
+      UNREAD_AI_AUDIO_PROVIDER: "${UNREAD_AI_AUDIO_PROVIDER:-}"
+      UNREAD_AI_AUDIO_MODEL: "${UNREAD_AI_AUDIO_MODEL:-}"
+      # Model list / prices are re-fetched from the repo this often; 0 = off.
+      UNREAD_AI_CATALOG_REFRESH_HOURS: "${UNREAD_AI_CATALOG_REFRESH_HOURS:-24}"
+
+      # --- Bot tuning (optional) --------------------------------------
       UNREAD_BOT_CONCURRENCY: "${UNREAD_BOT_CONCURRENCY:-2}"
       UNREAD_BOT_DEFAULT_PRESET: "${UNREAD_BOT_DEFAULT_PRESET:-}"
       UNREAD_BOT_MAX_FILE_MB: "${UNREAD_BOT_MAX_FILE_MB:-100}"
-      # "pdf" (default) or "md" — choose the bot's report attachment
-      # format. Runtime auto-falls-back to "md" when weasyprint can't
-      # render (e.g. libpango missing); set this to "md" explicitly to
-      # skip the render attempt entirely.
+      # "pdf" (default) or "md". Falls back to "md" by itself when the PDF
+      # renderer is unavailable.
       UNREAD_BOT_REPORT_FORMAT: "${UNREAD_BOT_REPORT_FORMAT:-pdf}"
     volumes:
-      # Reports, cache, secrets DB, and the uploaded user session
-      # persist across container restarts and image updates. SCP your
-      # existing ~/.unread/storage/session.sqlite onto the VM into this
-      # named volume's mountpoint to skip the /upload_session bootstrap.
+      # Reports, cache, settings, secrets and the optional Telegram user
+      # session. Survives restarts and image updates.
       - unread_state:/root/.unread
+    # Keep container logs from slowly filling a small VM disk.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   unread_state:
