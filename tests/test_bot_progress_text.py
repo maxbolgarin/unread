@@ -65,19 +65,28 @@ def test_source_label_is_included(settings) -> None:
 
 
 def test_line_shows_the_model_the_run_will_actually_use(settings) -> None:
-    """`final_model = model_override or preset.final_model or config`, so a
-    preset's pin WINS over `ai.chat_model`. Showing `resolve_chat_model`
-    advertised `openai/gpt-5.6-luna` while the run sent bare
-    `gpt-5.6-luna` — a progress line that names the wrong model is worse
-    than one that names none."""
+    """The line must name what `effective_models` sends. It once showed
+    `resolve_chat_model`'s id while the run sent the preset pin — a
+    progress line that names the wrong model is worse than one that names
+    none. On OpenRouter the bare OpenAI pin is foreign, so the run (and
+    the line) use OpenRouter's own `openai/…` default."""
+    from unread.analyzer.pipeline import effective_models
     from unread.analyzer.prompts import get_presets
 
+    final, _ = effective_models(get_presets("en")["factcheck"], settings)
+    line = run_status_line(preset="factcheck", settings=settings, source="video")
+    assert f"`{final}`" in line
+    assert final.startswith("openai/")
+
+
+def test_line_shows_the_bare_pin_on_openai(settings) -> None:
+    """On OpenAI the preset pin is a native id and still wins."""
+    from unread.analyzer.prompts import get_presets
+
+    settings.ai.chat_provider = "openai"
     pinned = get_presets("en")["factcheck"].final_model
     line = run_status_line(preset="factcheck", settings=settings, source="video")
-    assert pinned in line
-    # The provider-resolved id is a SUPERSTRING of the pinned one
-    # (`openai/gpt-5.6-luna` vs `gpt-5.6-luna`), so a plain `in` check
-    # passes either way. Assert the prefixed form is absent.
+    assert f"`{pinned}`" in line
     assert "openai/" not in line
 
 

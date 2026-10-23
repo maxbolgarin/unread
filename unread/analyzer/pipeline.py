@@ -133,21 +133,75 @@ def effective_models(
       1. explicit override (`--model` / `--filter-model`)
       2. config `ai.chat_model` / `ai.filter_model` (or the matching
          `UNREAD_AI_*_MODEL` env var)
-      3. the preset's `final_model` / `filter_model` pin
-      4. legacy `openai.*_model_default`
+      3. the preset's `final_model` / `filter_model` pin, when the slot's
+         provider can serve it
+      4. the slot provider's default (legacy `openai.*_model_default`
+         on openai)
 
     Config beats the preset pin so switching to a newer model is a
     config edit, not a release: every shipped preset pins a model, and
     when the pin won, `ai.chat_model` had no effect on analysis at all.
+
+    Every shipped preset pins an OpenAI id, so without the provider check
+    in 3 and 4 a provider picked without a model (`unread init`, or
+    `UNREAD_AI_CHAT_PROVIDER` alone) sent `gpt-5.6-luna` to Anthropic /
+    Gemini / OpenRouter and failed every run.
     """
     ai = getattr(settings, "ai", None)
     cfg_final = (getattr(ai, "chat_model", "") or "").strip()
     cfg_filter = (getattr(ai, "filter_model", "") or "").strip()
-    final_model = model_override or cfg_final or preset.final_model or settings.openai.chat_model_default
+    final_model = (
+        model_override
+        or cfg_final
+        or _preset_pin(preset.final_model, settings, "chat")
+        or _slot_default(settings, "chat")
+    )
     filter_model = (
-        filter_model_override or cfg_filter or preset.filter_model or settings.openai.filter_model_default
+        filter_model_override
+        or cfg_filter
+        or _preset_pin(preset.filter_model, settings, "filter")
+        or _slot_default(settings, "filter")
     )
     return final_model, filter_model
+
+
+def _slot_provider(settings: Any, slot: str) -> str:
+    """Provider the `chat` / `filter` slot routes to ("openai" when unset)."""
+    if getattr(settings, "ai", None) is None:
+        return "openai"
+    from unread.ai.providers import _resolve_provider_name
+
+    return _resolve_provider_name(settings, slot)
+
+
+def _preset_pin(pin: str, settings: Any, slot: str) -> str:
+    """The preset's model pin, or "" when the slot's provider can't serve it.
+
+    A pin the catalog files under other providers only is foreign here
+    (Anthropic 404s on `gpt-5.6-luna`, OpenRouter wants `openai/…`). An
+    id the catalog doesn't know — a custom preset's own pick — is trusted,
+    and so is anything sent to `local`, whose server names its own models.
+    """
+    provider = _slot_provider(settings, slot)
+    if not pin or provider in ("openai", "local"):
+        return pin
+    from unread.ai.models import all_known_models, models_for_provider
+
+    if any(m.id == pin for m in models_for_provider(provider)):
+        return pin
+    return "" if any(m.id == pin for m in all_known_models()) else pin
+
+
+def _slot_default(settings: Any, slot: str) -> str:
+    """Last-resort model for a slot: the legacy OpenAI default on openai,
+    otherwise the provider's own default (what `/settings` would pin)."""
+    provider = _slot_provider(settings, slot)
+    if provider == "openai":
+        return settings.openai.chat_model_default if slot == "chat" else settings.openai.filter_model_default
+    from unread.ai.providers import _provider_class_defaults
+
+    chat, filt = _provider_class_defaults(provider)
+    return chat if slot == "chat" else filt
 
 
 def estimate_cost(
