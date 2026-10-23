@@ -485,8 +485,8 @@ def compose_system_prompt(
          topics" rule.
       4. Preset system — the specific task (summarize, extract links, etc.).
 
-    Build order is `system → static_context → dynamic` (CLAUDE.md
-    invariant #2) — unchanged.
+    Build order is `system → static_context → dynamic` (prompt-cache
+    hygiene, see `openai_client.build_messages`) — unchanged.
     """
     _ = source_kind  # currently informational; preset bodies handle kind-specific guidance
     parts: list[str] = [_load_base_system(language)]

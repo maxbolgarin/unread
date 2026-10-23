@@ -1,8 +1,9 @@
 # Contributing to `unread`
 
-Thanks for considering a contribution. This file is the short version
-for first-time contributors. The architecture-deep `CLAUDE.md` at the
-repo root is the source of truth for invariants and module layout.
+Thanks for considering a contribution. This file covers the dev setup,
+tests, commit and PR conventions, and adding a preset or an AI
+provider. For how the pipeline fits together, see
+[How it works](docs/configuration.md#how-it-works).
 
 ## Development setup
 
@@ -67,7 +68,8 @@ users to migrate yet, but be deliberate when 1.0 is out.
 - Run `ruff check`, `ruff format --check`, and `pytest -q` locally
   before opening the PR.
 - If you change architecture (new module, moved responsibility,
-  changed invariant) update `CLAUDE.md` in the same PR.
+  changed invariant), update the docs that describe it (`docs/`,
+  this file) in the same PR.
 - The PR description should explain *why* — bugs and refactors decay,
   but the rationale stays useful.
 
@@ -104,10 +106,19 @@ Preset language directories are autonomous: a preset added to
 3. Add a test in `tests/test_ai_providers.py` covering provider
    selection, model resolution, and the missing-credential path.
 
-If your provider doesn't supply Whisper / vision / embeddings, the
-existing OpenAI special-cases in `enrich/audio.py`, `enrich/image.py`,
-and `ask/embeddings.py` will continue to gate on `settings.openai.api_key`
-— that's intentional, see `CLAUDE.md` "AI provider routing".
+Each task has its own provider slot under `[ai]` (`chat_provider`,
+`filter_provider`, `audio_provider`, `vision_provider`, resolved in
+`unread/ai/providers.py`), so a new provider doesn't have to cover
+them all. The gaps are intentional:
+
+- Audio runs only on providers in `_AUDIO_PROVIDERS` (an
+  OpenAI-compatible `audio.transcriptions` API); any other choice
+  falls back to OpenAI.
+- Images go through a separate adapter: add one to
+  `make_vision_provider` in `unread/ai/vision_provider.py` if your
+  provider accepts images.
+- Embeddings for `ask --semantic` always use OpenAI and need
+  `settings.openai.api_key`.
 
 ## Reporting bugs and requesting features
 

@@ -11,7 +11,8 @@ bot loads the primary owner's already-bootstrapped Telethon user session
 — so `t.me/...` links and `/upload_session` are restricted to that one
 account, while extra admins get the file / URL / YouTube surface.
 
-See the architecture map in CLAUDE.md ("Bot") for the full layout.
+What the bot does for its users (inputs, the confirm panel, slash
+commands, who can use it) is documented in `docs/bot.md`.
 """
 
 from __future__ import annotations

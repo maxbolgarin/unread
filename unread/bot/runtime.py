@@ -104,8 +104,8 @@ def effective_language(chat_state: dict, settings: Settings) -> str:
     """UI/display language for this chat — sticky `/lang` → `locale.language`.
 
     Deliberately reads the SAME sticky key as `effective_report_language`.
-    The three language axes stay independent in config (see the "Three
-    language axes" section in CLAUDE.md); this is the bot choosing to
+    The three language axes stay independent in config (see "Language"
+    in docs/configuration.md); this is the bot choosing to
     derive both of its axes from one per-admin choice, because a chat has
     exactly one human in it and asking them to set two languages would be
     a worse product.
