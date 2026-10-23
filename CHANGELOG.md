@@ -1,3 +1,14 @@
+## [1.12.0](https://github.com/maxbolgarin/unread/compare/v1.11.0...v1.12.0) (2026-10-23)
+
+### 🚀 Features
+
+* **bot:** masked key input, more allowed people, model picker shows the default ([f4bb9d1](https://github.com/maxbolgarin/unread/commit/f4bb9d15f3572ab0199f5ee2144391c78e87dc7f))
+* **bot:** model panel loads the provider's model list ([a833a69](https://github.com/maxbolgarin/unread/commit/a833a69611733ac3ef944c9dd1a0eab8bdca550f))
+
+### ⚙️ Continuous Integration
+
+* install ffmpeg from a static build instead of apt ([a328ee5](https://github.com/maxbolgarin/unread/commit/a328ee5e00eeefc1ccb4752887a86a31b8ddac56))
+
 ## [1.11.0](https://github.com/maxbolgarin/unread/compare/v1.10.0...v1.11.0) (2026-10-23)
 
 ### 🚀 Features
