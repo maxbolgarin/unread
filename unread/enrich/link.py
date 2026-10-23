@@ -27,7 +27,8 @@ except ImportError:
     _HAS_BS4 = False
     BeautifulSoup = None  # type: ignore[assignment,misc]
 
-from unread.analyzer.openai_client import build_messages, chat_complete, make_client
+from unread.ai.providers import ProviderUnavailableError, resolve_filter
+from unread.analyzer.openai_client import build_messages, chat_complete, make_filter_client
 from unread.config import get_settings
 from unread.db.repo import Repo
 from unread.enrich.base import EnrichResult
@@ -205,6 +206,23 @@ async def enrich_url(
             cache_hit=True,
         )
 
+    # A cheap pass: provider and model both come from the filter slot, so
+    # the model is one that provider serves. Built before the fetch so a
+    # slot without a key skips the URL (like an image with no vision key)
+    # instead of downloading a page nothing can summarize.
+    filter_provider, filter_model = resolve_filter(settings)
+    try:
+        oai = make_filter_client()
+    except ProviderUnavailableError as e:
+        log.warning(
+            "enrich.link.skipped_no_key",
+            provider=filter_provider,
+            url=normalized,
+            err=str(e),
+            hint="run `unread settings` and set the filter slot's API key",
+        )
+        return None
+
     timeout = timeout_sec if timeout_sec is not None else settings.enrich.link_fetch_timeout_sec
     html = await _fetch(normalized, timeout)
     if html is None:
@@ -213,14 +231,13 @@ async def enrich_url(
     if not body.strip():
         return None
 
-    used_model = model or settings.enrich.link_model or settings.openai.filter_model_default
+    used_model = model or settings.enrich.link_model or filter_model
     # Fall back through report_language → language so a multi-axis user
     # who set `report_language=ru` but kept UI English still gets RU
     # link summaries.
     lang = (language or settings.locale.report_language or settings.locale.language or "en").lower()
     title_lbl, content_lbl, summary_lbl = _USER_LABELS.get(lang, _USER_LABELS["en"])
     sys_prompt = _SYSTEM_PROMPT.get(lang, _SYSTEM_PROMPT["en"])
-    oai = make_client()
     user_text = f"URL: {normalized}\n{title_lbl + title if title else ''}\n\n{content_lbl}{body}{summary_lbl}"
     messages = build_messages(sys_prompt, "", user_text)
     res = await chat_complete(

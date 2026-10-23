@@ -213,8 +213,9 @@ async def _self_check(
 ) -> tuple[str, str | None]:
     """Cheap-model audit pass over an analysis report.
 
-    Sends source messages + the produced analysis to `filter_model_default`
-    (gpt-5.4-nano-class) with a system prompt asking for unsupported
+    Sends source messages + the produced analysis to the filter slot's
+    provider and model (`resolve_filter`: `openai.filter_model_default`
+    on OpenAI) with a system prompt asking for unsupported
     claims. Output is a short markdown bullet list, or "All claims
     supported." for a clean run. Caller appends as `## Verification`
     (heading translated via i18n using the UI `language`, NOT
@@ -231,17 +232,21 @@ async def _self_check(
     human-readable description so the caller can surface that the
     audit step did NOT silently pass.
     """
+    from unread.ai.providers import resolve_filter
     from unread.analyzer.formatter import format_messages
-    from unread.analyzer.openai_client import build_messages, chat_complete, make_client
+    from unread.analyzer.openai_client import build_messages, chat_complete, make_filter_client
 
     settings = get_settings()
-    used_model = settings.openai.filter_model_default
+    # Model and provider both from the filter slot. The OpenAI default
+    # this used to send went to whatever provider was active, and
+    # Anthropic / Gemini / OpenRouter reject it.
+    used_model = resolve_filter(settings)[1]
     sys_prompt = _VERIFY_SYSTEM.get(report_language, _VERIFY_SYSTEM["en"])
     head, mid, tail = _VERIFY_USER_TEMPLATE.get(report_language, _VERIFY_USER_TEMPLATE["en"])
     formatted_msgs = format_messages(messages, language=report_language)
     user_text = f"{head}{formatted_msgs}{mid}{result.final_result}{tail}"
     try:
-        oai = make_client()
+        oai = make_filter_client()
         res = await chat_complete(
             oai,
             repo=repo,
