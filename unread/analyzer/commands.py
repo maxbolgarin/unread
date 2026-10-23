@@ -1496,9 +1496,10 @@ async def _run_single(
 
     # `source_language` intentionally NOT passed to `prepare_chat_run`:
     # the source-language hint is consumed only by `compose_system_prompt`
-    # in the analyzer, not by the prep pipeline (per CLAUDE.md, "not
-    # plumbed into the enricher"). It's threaded through to `run_analysis`
-    # below — that's the right place for it.
+    # in the analyzer, not by the prep pipeline (the enricher deliberately
+    # doesn't take it; Whisper reads its own `openai.audio_language`).
+    # It's threaded through to `run_analysis` below — that's the right
+    # place for it.
     prepared = await prepare_chat_run(
         client=client,
         repo=repo,

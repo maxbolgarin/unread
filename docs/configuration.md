@@ -440,9 +440,10 @@ uv run ruff check .           # lint
 uv run ruff format --check .  # format check (CI runs this)
 ```
 
-Contributor guide — invariants, caching layers, preset format, schema,
-and editing hazards — lives in [`CLAUDE.md`](../CLAUDE.md). Read it
-before changing the pipeline, DB layer, or preset prompts.
+Contributor guide — dev setup, commit conventions, presets and their
+cache versions, adding an AI provider — lives in
+[CONTRIBUTING.md](https://github.com/maxbolgarin/unread/blob/main/CONTRIBUTING.md).
+The pipeline itself is sketched in [How it works](#how-it-works) above.
 
 Run `unread doctor` after any pull or env change — it surfaces the
 common breakage points (missing ffmpeg, broken Telegram session,

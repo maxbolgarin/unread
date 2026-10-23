@@ -478,8 +478,9 @@ async def cmd_ask(
         # (--enrich / --enrich-all / --no-enrich); shares the same
         # `EnrichOpts` builder + `enrich_messages` orchestrator that
         # `core/pipeline.prepare_chat_run` uses. ask deliberately keeps
-        # its own pipeline (per CLAUDE.md invariant 9) so this is a thin
-        # call into the shared helper, not a re-implementation.
+        # its own pipeline (retrieval → optional rerank → one LLM call,
+        # no map-reduce) so this is a thin call into the shared helper,
+        # not a re-implementation.
         if chat_ids:
             from unread.analyzer.commands import build_enrich_opts as _build_enrich_opts
             from unread.enrich.pipeline import enrich_messages

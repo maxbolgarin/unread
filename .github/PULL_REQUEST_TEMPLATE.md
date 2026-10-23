@@ -25,6 +25,6 @@ Thanks for contributing! Please:
 ## Checklist
 
 - [ ] PR title uses a Conventional Commits prefix
-- [ ] Updated `CLAUDE.md` if architecture / invariants changed
+- [ ] Updated the docs (`docs/`, `CONTRIBUTING.md`) if architecture / invariants changed
 - [ ] Added or updated tests for the change
 - [ ] No new network calls inside tests
