@@ -69,11 +69,18 @@ to your own Telegram account; do that later only if you want the bot to
 read `t.me/…` chat links too. Afterwards, `unread-bot status | logs | update | config`
 manages it.
 
+Already use the CLI? Skip Docker and run the bot from it; it becomes a
+systemd service where the machine has one:
+
+```bash
+unread bot setup && unread bot start
+```
+
 <p align="center">
   <img src="https://raw.githubusercontent.com/maxbolgarin/unread/main/.github/examples/bot.jpg" alt="The bot replying to a voice message with a summary and a PDF report" width="280">
 </p>
 
-More: [what the bot does](docs/bot.md) · [other ways to deploy it](docs/bot-vm-deploy.md) (Compose by hand, systemd, your laptop)
+More: [what the bot does](docs/bot.md) · [other ways to deploy it](docs/bot-vm-deploy.md) (Compose by hand, systemd, your own computer)
 
 ## Highlights
 

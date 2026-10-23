@@ -229,7 +229,15 @@ and starts the bot:
 curl -fsSL https://raw.githubusercontent.com/maxbolgarin/unread/main/scripts/install-bot-docker.sh | bash
 ```
 
-Then `unread-bot status | logs | update | config` manages it. For
-Compose by hand, the native systemd install, running it on your own
-computer, and adding a Telegram session, see
-[`bot-vm-deploy.md`](bot-vm-deploy.md).
+Then `unread-bot status | logs | update | config` manages it.
+
+Already use the CLI? Run the bot from it, no Docker needed — it becomes
+a systemd user service where the machine has one, a background process
+otherwise:
+
+```bash
+unread bot setup && unread bot start
+```
+
+Compose by hand, all the `unread bot` commands, and adding a Telegram
+session are in [`bot-vm-deploy.md`](bot-vm-deploy.md).
