@@ -20,8 +20,11 @@ one way to run it:
 - **An AI key.** OpenAI (the default, and the one that transcribes voice
   and video), Anthropic, Google Gemini or OpenRouter.
 - **A Telegram API id + hash.** Free at <https://my.telegram.org> →
-  *API development tools* → create an app (any name). Telegram asks
-  every app that connects to it for these, bots included.
+  *API development tools* → create an app (any name). The bot talks to
+  Telegram over MTProto, the protocol Telegram's own apps use, instead
+  of the plain Bot API, which can't download files over 20 MB. MTProto
+  needs an app id and hash even for a bot; your own account isn't
+  involved.
 
 **Not needed: a Telegram user session.** Without one the bot handles
 files, voice and video messages, web links, YouTube and forwarded
@@ -43,7 +46,8 @@ It walks you through:
 2. **Bot token**: checked with Telegram right away.
 3. **Owner**: open your new bot and press *Start*; the installer picks
    up your id from that message and asks you to confirm. You can also
-   type the id.
+   type the id. Then it asks for anyone else who should be able to use
+   the bot (their ids, comma-separated; Enter skips).
 4. **AI**: pick a provider and paste its key. With anything but OpenAI
    it offers to add an OpenAI key for voice transcription; Enter skips.
 5. **Telegram API id + hash.**
@@ -78,6 +82,7 @@ The installer adds an `unread-bot` command:
 | `unread-bot update` | Download the latest release and restart |
 | `unread-bot restart` | Restart; also applies edits to `.env` |
 | `unread-bot config` | Open `.env` in an editor, then apply it |
+| `unread-bot users` | Who may use the bot; `users add ID` / `users remove ID` change it and restart |
 | `unread-bot stop` / `start` | Stop or start the bot |
 | `unread-bot doctor` | Check the setup from inside the container |
 | `unread-bot uninstall` | Remove the bot; asks before deleting any data |
@@ -86,7 +91,10 @@ It's a thin wrapper around Docker Compose, so `cd ~/unread-bot && docker compose
 works just as well.
 
 Day-to-day settings live in the bot itself: send `/settings` to change
-the language, report format, preset, AI provider, model and key.
+the language, report format, preset, AI provider and key. **🧠 Model**
+there picks the AI model: tap one of the listed models (prices shown) or
+send any model id. Until you pick one, runs use the default it names
+(`gpt-5.6-luna` on OpenAI).
 
 ## 2. Docker Compose by hand
 
@@ -226,6 +234,7 @@ read `t.me/…` links right away.
 | `unread bot logs` | Recent log lines; `-f` to follow, `-n 200` for more |
 | `unread bot restart` | Restart; picks up changed settings and upgrades |
 | `unread bot stop` | Stop it (the service won't come back at boot) |
+| `unread bot users` | Who may use the bot; `users add ID` / `users remove ID` change it |
 | `unread bot run` | Run in the foreground instead, for debugging |
 
 Only one copy runs per install: `unread bot run` refuses to start next

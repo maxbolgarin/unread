@@ -5534,6 +5534,16 @@ def bot_status_cmd() -> None:
     cmd_bot_status()
 
 
+@bot_app.command(name="users", help=_t("cmd_bot_users"))
+def bot_users_cmd(
+    action: str = typer.Argument("list", help="list, add or remove."),
+    ids: list[str] = typer.Argument(None, help="Telegram ids, e.g. 123456789 or 111,222."),
+) -> None:
+    from unread.bot.commands import cmd_bot_users
+
+    cmd_bot_users(action, ids)
+
+
 @bot_app.command(name="logs", help=_t("cmd_bot_logs"))
 def bot_logs_cmd(
     lines: int = typer.Option(100, "--lines", "-n", help="How many recent lines to show."),

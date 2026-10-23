@@ -106,6 +106,22 @@ class TokenRejected(Exception):
     pass
 
 
+def merge_ids(*lists: str) -> str:
+    """`merge_ids("1,2", "2,3")` → `"1,2,3"`: order kept, duplicates dropped."""
+    out: list[str] = []
+    for raw in lists:
+        for part in raw.replace(" ", "").split(","):
+            if part and part not in out:
+                out.append(part)
+    return ",".join(out)
+
+
+def valid_ids(raw: str) -> bool:
+    """Comma-separated numeric Telegram ids, like `123456789,987654321`."""
+    parts = raw.replace(" ", "").split(",")
+    return bool(raw.strip()) and all(p.isdigit() and 3 <= len(p) <= 15 for p in parts)
+
+
 def bot_username(token: str, *, client: httpx.Client | None = None) -> str:
     """`@username` of the bot behind `token`; raises TokenRejected on 401/404."""
     c = client or httpx.Client(timeout=20)

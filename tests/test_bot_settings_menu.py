@@ -53,12 +53,44 @@ def test_provider_menu_marks_the_active_one(settings) -> None:
     assert active and any("✓" in t or "•" in t for t in active)
 
 
-def test_model_menu_lists_no_model_buttons(settings) -> None:
-    """Model ids are typed, not tapped: a hardcoded list goes stale fast."""
-    settings.ai.chat_provider = "openrouter"
+@pytest.mark.parametrize("provider", ["openai", "openrouter", "anthropic", "google"])
+def test_model_menu_buttons_come_from_the_price_catalog(settings, provider) -> None:
+    """Buttons track `unread.ai.models`, not a list in the menu that goes stale."""
+    from unread.ai.models import models_for_provider
+
+    settings.ai.chat_provider = provider
     _text, buttons = build_model_menu(settings=settings, panel_msg_id=1)
     values = [parse_settings_callback(b.data)[2] for row in buttons for b in row]
-    assert [v for v in values if v] == []
+    picked = [v for v in values if v]
+    catalog = {m.id for m in models_for_provider(provider)}
+    assert picked and set(picked) <= catalog
+    assert all(len(b.data) <= 64 for row in buttons for b in row)
+
+
+def test_model_menu_has_no_buttons_for_local(settings) -> None:
+    settings.ai.chat_provider = "local"
+    _text, buttons = build_model_menu(settings=settings, panel_msg_id=1)
+    assert [parse_settings_callback(b.data)[2] for row in buttons for b in row] == ["", None]
+
+
+def test_default_names_the_model_it_resolves_to(settings) -> None:
+    """ "preset default" alone left people asking which model that is."""
+    settings.ai.chat_provider = "openai"
+    settings.ai.chat_model = ""
+    text, buttons = build_model_menu(settings=settings, panel_msg_id=1)
+    assert "`gpt-5.6-luna` ($0.2/$1.2 per 1M tokens in/out), the default" in text
+    assert buttons[-1][0].text == "✓ default (gpt-5.6-luna)"
+    root, _ = build_settings_menu(chat_state={}, settings=settings, panel_msg_id=1)
+    assert "Model: `gpt-5.6-luna` (default)" in root
+
+
+def test_default_follows_the_provider(settings) -> None:
+    """Presets pin an OpenAI id; on Anthropic the default is Anthropic's own."""
+    from unread.bot.settings_menu import default_model
+
+    settings.ai.chat_provider = "anthropic"
+    settings.ai.chat_model = ""
+    assert default_model(settings).startswith("claude-")
 
 
 @pytest.mark.parametrize("provider", ["openai", "openrouter", "anthropic", "google", "local"])
@@ -78,10 +110,10 @@ def test_model_menu_shows_the_current_models_price(settings) -> None:
     assert "$0.2/$1.2" in text
 
 
-def test_model_menu_keeps_preset_default_and_back(settings) -> None:
+def test_model_menu_ends_with_default_and_back(settings) -> None:
     _text, buttons = build_model_menu(settings=settings, panel_msg_id=1)
-    actions = [parse_settings_callback(b.data)[0] for row in buttons for b in row]
-    assert actions == ["S_MODEL", "S_ROOT"]
+    last = [parse_settings_callback(b.data) for b in buttons[-1]]
+    assert last == [("S_MODEL", 1, ""), ("S_ROOT", 1, None)]
 
 
 # --- callback encoding ---------------------------------------------------------

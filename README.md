@@ -64,10 +64,11 @@ curl -fsSL https://raw.githubusercontent.com/maxbolgarin/unread/main/scripts/ins
 
 You need a bot token from [@BotFather](https://t.me/botfather), an AI
 key, and a Telegram API id + hash (free at
-[my.telegram.org](https://my.telegram.org)). You don't need to log in
-to your own Telegram account; do that later only if you want the bot to
-read `t.me/…` chat links too. Afterwards, `unread-bot status | logs | update | config`
-manages it.
+[my.telegram.org](https://my.telegram.org); the bot needs them to
+download files over 20 MB). You don't need to log in to your own
+Telegram account; do that later only if you want the bot to read
+`t.me/…` chat links too. Afterwards, `unread-bot status | logs | update | config | users`
+manages it, and `/settings` in the bot picks the AI model.
 
 Already use the CLI? Skip Docker and run the bot from it; it becomes a
 systemd service where the machine has one:

@@ -122,12 +122,44 @@ ask() {
   printf -v "$__var" '%s' "${__reply:-$__default}"
 }
 
-# ask_secret VAR "Prompt" [current] — hidden input; Enter keeps the current value.
+# read_masked VAR — read a line from the terminal, echoing one * per
+# character so typing or pasting shows something happened. Backspace and
+# Ctrl-U edit; arrow keys and other escape sequences are dropped.
+read_masked() {
+  local __out=$1 __buf="" __c="" __rest=""
+  while IFS= read -rsn1 __c </dev/tty; do
+    case $__c in
+      '' | $'\n' | $'\r') break ;;
+      $'\x7f' | $'\b')
+        if [[ -n $__buf ]]; then
+          __buf=${__buf%?}
+          printf '\b \b' >/dev/tty
+        fi
+        ;;
+      $'\x15')
+        while [[ -n $__buf ]]; do
+          __buf=${__buf%?}
+          printf '\b \b' >/dev/tty
+        done
+        ;;
+      $'\e') IFS= read -rsn2 -t 0.05 __rest </dev/tty || true ;;
+      [[:cntrl:]]) ;;
+      *)
+        __buf+=$__c
+        printf '*' >/dev/tty
+        ;;
+    esac
+  done
+  printf -v "$__out" '%s' "$__buf"
+}
+
+# ask_secret VAR "Prompt" [current] — masked input (* per character);
+# Enter keeps the current value.
 ask_secret() {
   local __var=$1 __prompt=$2 __current=${3-} __reply=""
   [[ -n $__current ]] && __prompt+=" [Enter keeps $(mask "$__current")]"
   printf '  %s: ' "$__prompt" >/dev/tty
-  IFS= read -rs __reply </dev/tty || true
+  read_masked __reply
   printf '\n' >/dev/tty
   __reply=$(trim "$__reply")
   printf -v "$__var" '%s' "${__reply:-$__current}"
@@ -669,7 +701,7 @@ collect_owner() {
       die "UNREAD_BOT_OWNER_ID must be numeric Telegram ids, like 123456789 or 111,222."
     fi
     require_tty UNREAD_BOT_OWNER_ID
-    say "The bot answers only you (add more people later in .env) and ignores everyone else."
+    say "The bot answers only the people you list here and ignores everyone else."
     if [[ -n $BOT_USERNAME && $HAVE_PYTHON == 1 ]] && detect_owner; then
       :
     else
@@ -681,9 +713,53 @@ collect_owner() {
         warn "Type digits only, like 123456789 (several: 111,222)."
       done
     fi
+    ask_more_people "$owner"
   fi
-  ok "Owner: $OWNER_ID"
+  if [[ $OWNER_ID == *,* ]]; then
+    ok "Allowed: $OWNER_ID (the first one manages AI settings)"
+  else
+    ok "Owner: $OWNER_ID"
+  fi
   env_set UNREAD_BOT_OWNER_ID "$OWNER_ID"
+}
+
+# More people besides the owner. Each gets their own chat with the bot;
+# only the first id can change the AI provider, model and key.
+# $1 is the list from before a --reconfigure: its other people are the
+# default, so re-detecting the owner doesn't silently drop them.
+ask_more_people() {
+  local more="" before="" id
+  local IFS=,
+  for id in $1; do
+    [[ -n $id && $id != "$OWNER_ID" ]] && before+=${before:+,}$id
+  done
+  unset IFS
+  say "Anyone else? Their numeric ids (they can message @userinfobot to get theirs)."
+  hint "Change this any time with: $HELPER users add ID / $HELPER users remove ID"
+  while :; do
+    if [[ -n $before ]]; then
+      ask more "Other people's ids, comma-separated (\"none\" removes them)" "$before"
+    else
+      ask more "Other people's ids, comma-separated (Enter to skip)"
+    fi
+    more=${more// /}
+    [[ -z $more || $more == none ]] && return 0
+    if valid_ids "$more"; then
+      OWNER_ID=$(merge_ids "$OWNER_ID" "$more")
+      return 0
+    fi
+    warn "Type digits only, like 123456789 (several: 111,222)."
+  done
+}
+
+# merge_ids "1,2" "2,3" → "1,2,3": order kept, duplicates dropped.
+merge_ids() {
+  local out="" id
+  local IFS=,
+  for id in $1 $2; do
+    [[ -n $id && ,$out, != *,"$id",* ]] && out+=${out:+,}$id
+  done
+  printf '%s' "$out"
 }
 
 collect_ai() {
@@ -773,7 +849,10 @@ collect_telegram_api() {
     ok "Using API id $api_id."
   else
     require_tty "TELEGRAM_API_ID / TELEGRAM_API_HASH"
-    say "Telegram asks every app for these — bots too. They're free:"
+    say "The bot connects to Telegram the way apps do (MTProto), not via the plain"
+    say "Bot API, which can't download files over 20 MB. That connection needs"
+    say "an app id and hash, even though you never log in to your own account."
+    say "They're free:"
     say "  1. Open https://my.telegram.org and log in with your phone number."
     say "  2. Open \"API development tools\" and create an app (any name will do)."
     say "  3. Copy \"App api_id\" and \"App api_hash\" here."
@@ -892,6 +971,58 @@ confirm() {
 
 container() { dc ps -a -q "$SERVICE" 2>/dev/null | head -n1 || true; }
 
+# The allowlist in .env, as "111,222" (quotes and spaces stripped).
+owner_ids() {
+  sed -n "s/^UNREAD_BOT_OWNER_ID=//p" "$DIR/.env" | tail -n1 | tr -d "'\" "
+}
+
+set_owner_ids() {
+  local tmp
+  tmp=$(mktemp "$DIR/.env.XXXXXX")
+  awk -v v="UNREAD_BOT_OWNER_ID='$1'" '
+    /^UNREAD_BOT_OWNER_ID=/ { if (!done) print v; done = 1; next }
+    { print }
+    END { if (!done) print v }
+  ' "$DIR/.env" >"$tmp"
+  chmod 600 "$tmp"
+  mv "$tmp" "$DIR/.env"
+}
+
+users() {
+  local action=${1:-list} ids out="" id
+  ids=$(owner_ids)
+  if [[ $action == list ]]; then
+    printf 'People who may use the bot (the first one manages AI settings):\n'
+    tr ',' '\n' <<<"$ids" | sed 's/^/  /'
+    printf '%sAdd or remove with: unread-bot users add ID / unread-bot users remove ID%s\n' "$D" "$N"
+    return 0
+  fi
+  [[ $action == add || $action == remove ]] || die "Use: unread-bot users [list | add ID… | remove ID…]"
+  shift
+  [[ $# -gt 0 ]] || die "Which id? e.g. unread-bot users $action 123456789 (people get theirs from @userinfobot)"
+  local args=" ${*//,/ } "
+  for id in $args; do
+    [[ $id =~ ^[0-9]{3,15}$ ]] || die "$id isn't a Telegram id — those are digits only, like 123456789."
+  done
+  if [[ $action == add ]]; then
+    for id in ${ids//,/ } $args; do
+      [[ ,$out, == *,"$id",* ]] || out+=${out:+,}$id
+    done
+  else
+    for id in ${ids//,/ }; do
+      [[ $args == *" $id "* ]] || out+=${out:+,}$id
+    done
+    [[ -n $out ]] || die "That would leave nobody who can use the bot."
+  fi
+  if [[ $out == "$ids" ]]; then
+    printf 'Nothing to change: %s\n' "$ids"
+    return 0
+  fi
+  set_owner_ids "$out"
+  printf '%s✓%s Allowed now: %s\n' "$G" "$N" "$out"
+  dc up -d --force-recreate "$SERVICE" && wait_ready
+}
+
 version() { dc exec -T "$SERVICE" unread --version 2>/dev/null | head -n1 | sed 's/^\[\*\] //' || true; }
 
 wait_ready() {
@@ -948,6 +1079,7 @@ ${B}unread-bot${N} — manage your unread Telegram bot (files in $DIR)
   restart     restart it — also applies edits to .env
   update      download the latest version and restart
   config      edit the settings (.env), then apply them
+  users       who may use the bot: users add ID / users remove ID
   stop        stop the bot
   start       start it again
   doctor      check the bot's setup from inside the container
@@ -1004,6 +1136,7 @@ case $cmd in
     dc up -d "$SERVICE" && wait_ready
     ;;
   doctor) dc exec "$SERVICE" unread doctor ;;
+  users) users "$@" ;;
   uninstall)
     confirm "Stop and remove the unread bot?" N || exit 0
     if confirm "Also delete its data — reports, settings, Telegram session? This can't be undone." N; then
@@ -1055,12 +1188,13 @@ summary() {
     if [[ -n $BOT_USERNAME ]]; then printf ' Your bot: %shttps://t.me/%s%s' "$C_BOLD" "$BOT_USERNAME" "$C_RST"; fi
     printf '\n'
     say "Send it a voice message, a PDF, a web link or a YouTube link."
-    say "In the bot, /help lists everything; /settings changes language, format and AI model."
+    say "In the bot, /help lists everything; /settings changes language and format,"
+    say "and /settings → 🧠 Model picks the AI model."
   else
     printf '%s✓ Installed.%s Still starting — check on it with: %s status\n' "$C_GREEN" "$C_RST" "$HELPER"
   fi
   printf '\n'
-  say "Manage it:  $HELPER status | logs | restart | update | config | stop"
+  say "Manage it:  $HELPER status | logs | restart | update | config | users | stop"
   say "Settings:   $ENV_FILE"
   say "Optional:   to analyze t.me chat links too, send the bot /upload_session"
   if [[ $DOCKER_SUDO == 1 ]]; then

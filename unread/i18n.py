@@ -257,6 +257,10 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "Is the bot running, and is it connected to Telegram?",
         "ru": "Работает ли бот и подключён ли он к Telegram.",
     },
+    "cmd_bot_users": {
+        "en": "Who may use the bot: `users`, `users add ID…`, `users remove ID…`.",
+        "ru": "Кто может пользоваться ботом: `users`, `users add ID…`, `users remove ID…`.",
+    },
     "cmd_bot_logs": {
         "en": "Show the background bot's log.",
         "ru": "Показать лог фонового бота.",

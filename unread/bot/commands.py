@@ -168,7 +168,9 @@ def cmd_bot_setup() -> None:
     # 1. Telegram API id + hash — every MTProto app needs them, bots too.
     if not _telegram_credentials_present():
         console.print(
-            "Telegram asks every app for an API id and hash, bots included. They're free:\n"
+            "The bot connects to Telegram the way apps do (MTProto), not via the plain Bot API,\n"
+            "which can't download files over 20 MB. That connection needs an app id and hash,\n"
+            "even though you never log in to your own account. They're free:\n"
             "  1. Open https://my.telegram.org and log in with your phone number.\n"
             '  2. Open "API development tools" and create an app (any name).\n'
         )
@@ -234,6 +236,7 @@ def cmd_bot_setup() -> None:
             if raw and all(part.isdigit() for part in raw.split(",")):
                 owner = raw
         console.print(f"[green]✓[/] Owner: {owner}\n")
+        owner = _ask_more_people(owner, previous=",".join(str(i) for i in s.bot.owner_ids))
 
     values = {"UNREAD_BOT_TOKEN": token}
     if owner:
@@ -250,6 +253,83 @@ def cmd_bot_setup() -> None:
         cmd_bot_start()
     else:
         console.print("Start it any time with [bold]unread bot start[/].")
+
+
+def _ask_more_people(owner: str, *, previous: str = "") -> str:
+    """Offer to allow more people besides `owner`; returns the merged list.
+
+    `previous` is the list before this setup: its other people are the
+    default, so re-detecting the owner doesn't drop them.
+    """
+    from unread.bot import service
+    from unread.util.prompt import ask_text
+
+    first = owner.split(",", maxsplit=1)[0]
+    before = ",".join(i for i in previous.split(",") if i and i != first)
+    console.print(
+        "Anyone else? Their numeric ids (they can message @userinfobot to get theirs). "
+        "[grey70]Change it later with `unread bot users add ID`.[/]"
+    )
+    while True:
+        hint = '"none" removes them' if before else "Enter to skip"
+        raw = ask_text(f"Other people's ids, comma-separated ({hint})", default=before).replace(" ", "")
+        if not raw or raw == "none":
+            return owner
+        if service.valid_ids(raw):
+            merged = service.merge_ids(owner, raw)
+            console.print(f"[green]✓[/] Allowed: {merged} (the first one manages AI settings)\n")
+            return merged
+        console.print("[yellow]Type digits only, like 123456789 (several: 111,222).[/]")
+
+
+def cmd_bot_users(action: str = "list", ids: list[str] | None = None) -> None:
+    """List, add or remove the people allowed to use the bot."""
+    from unread.bot import service
+
+    reset_settings()
+    current = ",".join(str(i) for i in get_settings().bot.owner_ids)
+    raw = ",".join(ids or []).replace(" ", "")
+    if action == "list":
+        if not current:
+            console.print("Nobody is listed yet. Run [bold]unread bot setup[/].")
+            return
+        console.print("People who may use the bot (the first one manages AI settings):")
+        for i in current.split(","):
+            console.print(f"  {i}")
+        console.print("[grey70]Add or remove with: unread bot users add ID / unread bot users remove ID[/]")
+        return
+    if action not in ("add", "remove"):
+        console.print("[red]Use: unread bot users \\[list | add ID… | remove ID…][/]")
+        raise typer.Exit(2)
+    if not raw or not service.valid_ids(raw):
+        console.print(
+            f"[red]Which id?[/] e.g. unread bot users {action} 123456789 — Telegram ids are digits "
+            "only (people get theirs from @userinfobot)."
+        )
+        raise typer.Exit(1)
+    if os.environ.get("UNREAD_BOT_OWNER_ID") is not None:
+        console.print(
+            "[red]UNREAD_BOT_OWNER_ID is set in the environment, which overrides the file.[/] "
+            "Change it there."
+        )
+        raise typer.Exit(1)
+    if action == "add":
+        new = service.merge_ids(current, raw)
+    else:
+        drop = set(raw.split(","))
+        new = ",".join(i for i in current.split(",") if i and i not in drop)
+        if not new:
+            console.print("[red]That would leave nobody who can use the bot.[/]")
+            raise typer.Exit(1)
+    if new == current:
+        console.print(f"Nothing to change: {current}")
+        return
+    service.update_env_file(service.bot_env_path(), {"UNREAD_BOT_OWNER_ID": new})
+    console.print(f"[green]✓[/] Allowed now: {new} (the first one, {new.split(',')[0]}, manages AI settings)")
+    if _service_backend():
+        cmd_bot_restart()
+    else:
+        console.print("It applies the next time the bot starts.")
 
 
 def _service_backend() -> str | None:
