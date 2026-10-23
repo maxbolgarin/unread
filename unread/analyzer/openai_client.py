@@ -14,7 +14,8 @@ module owns the policy that's identical across providers:
 
 `make_client()` returns the active provider (an alias preserved for
 back-compat — call sites pass it to `chat_complete` exactly as they
-did when it was an `AsyncOpenAI` instance).
+did when it was an `AsyncOpenAI` instance). `make_filter_client()` is
+its counterpart for the cheap passes, which run on the filter slot.
 """
 
 from __future__ import annotations
@@ -32,12 +33,21 @@ log = get_logger(__name__)
 
 # Re-export so legacy `from unread.analyzer.openai_client import ChatResult`
 # imports keep working without churn.
-__all__ = ["ChatResult", "build_messages", "chat_complete", "make_client"]
+__all__ = ["ChatResult", "build_messages", "chat_complete", "make_client", "make_filter_client"]
 
 
 def make_client() -> ChatProvider:
     """Construct the active chat provider for the current settings."""
     return make_chat_provider(get_settings())
+
+
+def make_filter_client() -> ChatProvider:
+    """Construct the filter slot's provider: the one cheap passes call.
+
+    Send it `resolve_filter(settings)[1]` (or an explicit override), not
+    a chat-slot model — the slots can route to different providers.
+    """
+    return make_chat_provider(get_settings(), slot="filter")
 
 
 def build_messages(system: str, static_context: str, dynamic: str) -> list[dict[str, str]]:

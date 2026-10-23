@@ -148,17 +148,20 @@ def _resolve_provider_name(settings, slot: str) -> str:  # type: ignore[no-untyp
     return name
 
 
-def make_chat_provider(settings) -> ChatProvider:  # type: ignore[no-untyped-def]
-    """Construct the adapter for the chat slot.
+def make_chat_provider(settings, slot: str = "chat") -> ChatProvider:  # type: ignore[no-untyped-def]
+    """Construct the adapter for a chat-completion slot (`chat` or `filter`).
 
-    Reads `settings.ai.chat_provider` (the new per-slot key); falls
-    back to the deprecated `ai.provider` for one cycle. Raises
+    Reads `settings.ai.<slot>_provider` (the new per-slot key); falls
+    back to the deprecated `ai.provider` for one cycle. Pair the adapter
+    with the same slot's model (`resolve_chat` / `resolve_filter`): the
+    two slots can route to different providers, and a model id from one
+    is rejected by the other. Raises
     :class:`ProviderUnavailableError` when the picked provider is
     missing its credentials or its SDK can't be imported. The error
     message names the missing key/dependency so the caller can
     surface a useful banner instead of a stack trace.
     """
-    name = _resolve_provider_name(settings, "chat")
+    name = _resolve_provider_name(settings, slot)
     if name == "openai":
         from unread.ai.openai_provider import OpenAIProvider
 

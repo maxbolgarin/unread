@@ -23,6 +23,7 @@ from pathlib import Path
 import typer
 from rich.console import Console
 
+from unread.ai.providers import resolve_chat, resolve_filter
 from unread.analyzer.formatter import build_link_template, format_messages
 from unread.analyzer.openai_client import chat_complete, make_client
 from unread.ask.retrieval import retrieve_messages, tokenize_question
@@ -570,7 +571,7 @@ async def cmd_ask(
         # Rerank composes with semantic (semantic produces the pool, rerank
         # prunes it). For pure semantic without rerank, skip rerank.
         oai = make_client()
-        used_model = model or settings.openai.chat_model_default
+        used_model = model or resolve_chat(settings)[1]
         # Conversation history for --interactive mode. Each turn appends
         # (question, answer) so follow-ups have prior context.
         history: list[tuple[str, str]] = []
@@ -841,7 +842,8 @@ async def _run_single_turn(
         from unread.ask.rerank import rerank as _rerank_fn
 
         keep_n = min(limit, ask_cfg.rerank_keep)
-        rerank_model = ask_cfg.rerank_model or settings.openai.filter_model_default
+        # The filter slot's model — `rerank` sends it to that slot's provider.
+        rerank_model = ask_cfg.rerank_model or resolve_filter(settings)[1]
         console.print(
             f"[grey70]→ Reranking {len(scored)} candidates with[/] [bold]{rerank_model}[/]"
             f"[grey70] → keep top-{keep_n}...[/]"

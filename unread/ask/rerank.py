@@ -19,8 +19,9 @@ import json
 import re
 from typing import Any
 
+from unread.ai.providers import ProviderUnavailableError
 from unread.analyzer.formatter import format_messages
-from unread.analyzer.openai_client import build_messages, chat_complete, make_client
+from unread.analyzer.openai_client import build_messages, chat_complete, make_filter_client
 from unread.db.repo import Repo
 from unread.models import Message
 from unread.util.logging import get_logger
@@ -56,11 +57,24 @@ async def rerank(
     return_scores=True)`. Returns the top-`keep` by rerank score, with the
     rerank score replacing the keyword score in the tuple. Falls back to
     the input pool (truncated to `keep`) on any rerank failure.
+
+    Runs on the filter slot's provider; `model` must be that slot's model
+    (`ask.rerank_model` or `resolve_filter`), not the chat slot's.
     """
     if not pool or len(pool) <= keep:
         return pool[:keep]
 
-    oai = make_client()
+    try:
+        oai = make_filter_client()
+    except ProviderUnavailableError as e:
+        # No key for the filter slot: keep the keyword order rather than
+        # fail the whole `ask` over a best-effort step.
+        log.warning(
+            "rerank.skipped_no_key",
+            err=str(e),
+            hint="run `unread settings` and set the filter slot's API key",
+        )
+        return sorted(pool, key=lambda p: -p[1])[:keep]
     rerank_scores: dict[int, int] = {}  # msg_id → rerank score
 
     for batch_start in range(0, len(pool), batch_size):
