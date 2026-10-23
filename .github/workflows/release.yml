@@ -100,7 +100,12 @@ jobs:
           # main. Capture the version semantic-release computed for the
           # publish + verify steps below.
           npx semantic-release
-          VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          # A release leaves HEAD on its own tagged `chore(release)` commit.
+          # `git describe` is no test for that: with nothing to release
+          # (or "local branch is behind the remote") it still finds the
+          # PREVIOUS tag, and the job then re-uploads that version to PyPI
+          # and fails with "File already exists".
+          VERSION=$(git tag --points-at HEAD --list 'v*' | head -n1)
           if [ -n "$VERSION" ]; then
             echo "new_release_published=true" >> "$GITHUB_OUTPUT"
             echo "new_release_version=${VERSION#v}" >> "$GITHUB_OUTPUT"
