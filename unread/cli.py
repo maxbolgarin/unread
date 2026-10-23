@@ -5495,6 +5495,55 @@ def bot_run_cmd() -> None:
     _run(cmd_bot_run())
 
 
+@bot_app.command(name="setup", help=_t("cmd_bot_setup"))
+def bot_setup_cmd() -> None:
+    from unread.bot.commands import cmd_bot_setup
+
+    cmd_bot_setup()
+
+
+@bot_app.command(name="start", help=_t("cmd_bot_start"))
+def bot_start_cmd(
+    no_service: bool = typer.Option(
+        False, "--no-service", help="Run as a plain background process even where systemd is available."
+    ),
+) -> None:
+    from unread.bot.commands import cmd_bot_start
+
+    cmd_bot_start(no_service=no_service)
+
+
+@bot_app.command(name="stop", help=_t("cmd_bot_stop"))
+def bot_stop_cmd() -> None:
+    from unread.bot.commands import cmd_bot_stop
+
+    cmd_bot_stop()
+
+
+@bot_app.command(name="restart", help=_t("cmd_bot_restart"))
+def bot_restart_cmd() -> None:
+    from unread.bot.commands import cmd_bot_restart
+
+    cmd_bot_restart()
+
+
+@bot_app.command(name="status", help=_t("cmd_bot_status"))
+def bot_status_cmd() -> None:
+    from unread.bot.commands import cmd_bot_status
+
+    cmd_bot_status()
+
+
+@bot_app.command(name="logs", help=_t("cmd_bot_logs"))
+def bot_logs_cmd(
+    lines: int = typer.Option(100, "--lines", "-n", help="How many recent lines to show."),
+    follow: bool = typer.Option(False, "--follow", "-f", help="Keep printing new lines (Ctrl-C to stop)."),
+) -> None:
+    from unread.bot.commands import cmd_bot_logs
+
+    cmd_bot_logs(lines=lines, follow=follow)
+
+
 @tg_app.command(
     name="login",
     help="Telegram log-in (and re-link with `--force`). Skips the AI-provider step.",

@@ -237,6 +237,30 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "Run the Telegram bot in long-polling mode (foreground).",
         "ru": "Запустить Telegram-бот в режиме long-polling (foreground).",
     },
+    "cmd_bot_setup": {
+        "en": "Set the bot up: token from @BotFather, who may use it, Telegram API id if missing.",
+        "ru": "Настроить бота: токен от @BotFather, кто может им пользоваться, Telegram API id, если его нет.",
+    },
+    "cmd_bot_start": {
+        "en": "Start the bot in the background (a systemd user service where available).",
+        "ru": "Запустить бота в фоне (как пользовательский сервис systemd, если он есть).",
+    },
+    "cmd_bot_stop": {
+        "en": "Stop the background bot.",
+        "ru": "Остановить фонового бота.",
+    },
+    "cmd_bot_restart": {
+        "en": "Restart the background bot (picks up changed settings and upgrades).",
+        "ru": "Перезапустить фонового бота (подхватывает новые настройки и обновления).",
+    },
+    "cmd_bot_status": {
+        "en": "Is the bot running, and is it connected to Telegram?",
+        "ru": "Работает ли бот и подключён ли он к Telegram.",
+    },
+    "cmd_bot_logs": {
+        "en": "Show the background bot's log.",
+        "ru": "Показать лог фонового бота.",
+    },
     "bot_missing_tg_creds": {
         "en": "Telegram API credentials missing.",
         "ru": "Не заданы Telegram API-креды.",
