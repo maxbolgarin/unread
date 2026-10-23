@@ -137,11 +137,11 @@ re-runs Telethon auth without touching keys.
 Everything lives under `~/.unread/`:
 
 ```
-~/.unread/.env                          ← credentials (filled in by you)
-~/.unread/config.toml                   ← models, pricing, tuning
-~/.unread/storage/session.sqlite        ← Telegram session
-~/.unread/storage/data.sqlite           ← chats, messages, cache, embeddings
-~/.unread/storage/backups/              ← snapshots from `unread backup`
+~/.unread/.env                            ← credentials (filled in by you)
+~/.unread/config.toml                     ← models, pricing, tuning
+~/.unread/storage/session.sqlite.session  ← Telegram session
+~/.unread/storage/data.sqlite             ← chats, messages, cache, embeddings
+~/.unread/storage/backups/                ← snapshots from `unread backup`
 ~/.unread/reports/{chat}[/{topic}]/analyze/{preset}-{stamp}.md   ← default report path
 ~/.unread/reports/{chat}/dump/dump-{stamp}.md                    ← default dump path
 ```
@@ -149,3 +149,16 @@ Everything lives under `~/.unread/`:
 You can run `unread` from any directory — paths don't depend on cwd.
 Override the install root for tests / multi-profile setups via the
 `UNREAD_HOME` env var (e.g. `UNREAD_HOME=/srv/unread-shared`).
+
+## Running the Telegram bot
+
+The bot is a separate install, meant for a server. One command sets it
+up with Docker:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/maxbolgarin/unread/main/scripts/install-bot-docker.sh | bash
+```
+
+Other ways (Compose by hand, systemd, your own computer) are in
+[`bot-vm-deploy.md`](bot-vm-deploy.md); what the bot does is in
+[`bot.md`](bot.md).

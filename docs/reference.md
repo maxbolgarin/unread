@@ -50,9 +50,9 @@
 
 | Command | Purpose |
 |---|---|
-| `unread bot run` | Start the self-hosted Telegram bot (long-polling, single-user). Reads `UNREAD_BOT_TOKEN` from the environment and uses the Telegram user session at `~/.unread/storage/session.sqlite` for `t.me/…` reads. |
+| `unread bot run` | Start the self-hosted Telegram bot (long-polling; answers only the ids in `UNREAD_BOT_OWNER_ID`). Reads `UNREAD_BOT_TOKEN` from the environment. An optional Telegram user session (`~/.unread/storage/session.sqlite.session`) adds `t.me/…` reads. |
 
-Full user-facing reference (what you can send, slash commands, confirm panel, `/upload_session` flow) lives in [bot.md](bot.md). End-to-end VM deployment via GHCR + docker-compose is in [bot-vm-deploy.md](bot-vm-deploy.md).
+Full user-facing reference (what you can send, slash commands, confirm panel, `/upload_session` flow) lives in [bot.md](bot.md). Deploying it (one-command Docker install, Compose, systemd) is in [bot-vm-deploy.md](bot-vm-deploy.md).
 
 ## Hidden (still callable, not in `--help`)
 

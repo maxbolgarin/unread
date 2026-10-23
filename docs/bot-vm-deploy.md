@@ -1,329 +1,294 @@
-# Installing `unread` and deploying the bot
+# Deploying the bot
 
-Three supported install paths. All three share the same `unread` PyPI
-package — only the runtime differs.
+← Back to [README](../README.md) · What the bot does: [bot.md](bot.md)
 
-| # | Path | Best for | One-line install |
-|---|---|---|---|
-| **1** | **Local (uv)** | Laptop / dev / running the bot manually for testing | `uv tool install unread` |
-| **2** | **Native VM (script + systemd)** | Always-on bot on a Linux VM, no Docker | `curl -fsSL https://raw.githubusercontent.com/maxbolgarin/unread/main/scripts/install-bot.sh \| bash` |
-| **3** | **Docker** | Containerized bot OR ad-hoc CLI in a container | `docker compose -f docker-compose.bot.yml up -d` |
+The bot runs on any always-on Linux machine; a small VM is plenty. Pick
+one way to run it:
 
-`unread` is a single PyPI package. Weasyprint (PDF report rendering)
-is part of the base install since v1.x — no `[bot]` extras dance.
-Reports default to PDF; set `UNREAD_BOT_REPORT_FORMAT=md` to skip the
-render entirely.
+| Way | Best for |
+|---|---|
+| **[1. One-command Docker install](#1-one-command-docker-install)** (recommended) | A fresh server. It asks a few questions and does the rest. |
+| **[2. Docker Compose by hand](#2-docker-compose-by-hand)** | You already run Compose stacks, or want every knob. |
+| **[3. Native install (systemd)](#3-native-install-systemd)** | No Docker, or an ARM server. |
+| **[4. On your own computer](#4-on-your-own-computer)** | Trying it out. |
 
----
+## What you need
 
-## 1. Local install (uv)
+- **A bot token.** In Telegram, message [@BotFather](https://t.me/botfather) → `/newbot`.
+- **Your Telegram user id.** The bot answers only the ids you list and
+  silently ignores everyone else. The installer reads it off the first
+  message you send your bot; otherwise [@userinfobot](https://t.me/userinfobot) tells you.
+- **An AI key**: OpenAI (the default, and the one that transcribes voice
+  and video), Anthropic, Google Gemini or OpenRouter.
+- **A Telegram API id + hash.** Free at <https://my.telegram.org> →
+  *API development tools* → create an app (any name). Telegram asks
+  every app that connects to it for these, bots included.
 
-For local development, your laptop, or running the bot in the
-foreground for testing.
+**Not needed: a Telegram user session.** Without one the bot handles
+files, voice and video messages, web links, YouTube and forwarded
+messages. Add a session later only if you also want it to read
+`t.me/…` chat links and channels; see
+[Reading your Telegram chats](#reading-your-telegram-chats-optional).
 
-```bash
-# One-time: install uv if you don't have it
-curl -LsSf https://astral.sh/uv/install.sh | sh
+## 1. One-command Docker install
 
-# Install unread itself
-uv tool install unread
-
-# First-time setup wizard: AI key + Telegram creds + user session
-unread init
-
-# Run the bot in the foreground (Ctrl-C to stop)
-export UNREAD_BOT_TOKEN=123:abc...       # from @BotFather
-unread bot run
-```
-
-**Optional system deps** (CLI works without them, bot degrades
-gracefully):
-
-- `ffmpeg` — Whisper voice/video transcription. Without it, voice
-  uploads / YouTube audio fallbacks fail at request time.
-- `libpango` (Linux) or `pango` (macOS) — runtime dep for weasyprint
-  PDF rendering. Without it, bot uploads `.md` instead of PDF.
+On the server:
 
 ```bash
-# Linux (Debian/Ubuntu)
-sudo apt-get install -y ffmpeg libpango-1.0-0 libpangoft2-1.0-0
-# macOS
-brew install ffmpeg pango
+curl -fsSL https://raw.githubusercontent.com/maxbolgarin/unread/main/scripts/install-bot-docker.sh | bash
 ```
 
-This path is also the right one for using the bare CLI (`unread analyze`,
-`unread ask`, `unread dump`) — same install, no extra steps.
+It walks you through:
 
----
+1. **Docker**: installed with Docker's official script if it's missing (it asks first).
+2. **Bot token**: checked with Telegram right away.
+3. **Owner**: open your new bot and press *Start*; the installer picks
+   up your id from that message and asks you to confirm. You can also
+   type the id.
+4. **AI**: pick a provider and paste its key. With anything but OpenAI
+   it offers to add an OpenAI key for voice transcription; Enter skips.
+5. **Telegram API id + hash.**
 
-## 2. Native VM (script + systemd)
+Then it writes `~/unread-bot/docker-compose.yml` and `~/unread-bot/.env`
+(readable only by you), starts the bot, waits until it's connected, and
+the bot says hello in Telegram.
 
-For a long-running bot on a Linux VM without Docker. The one-line
-installer is idempotent and handles everything:
+**Re-running is safe.** It keeps your answers and updates the image. To
+answer everything again (Enter keeps a value):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/maxbolgarin/unread/main/scripts/install-bot-docker.sh | bash -s -- --reconfigure
+```
+
+Other options: `--dir PATH` (default `~/unread-bot`) and `--image REF`
+to pin a version, e.g. `--image ghcr.io/maxbolgarin/unread:1.10.0`.
+
+**Unattended** (cloud-init, CI): export `UNREAD_BOT_TOKEN`,
+`UNREAD_BOT_OWNER_ID`, `TELEGRAM_API_ID`, `TELEGRAM_API_HASH` and an AI
+key (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY` or
+`OPENROUTER_API_KEY`) before running it, and nothing is asked.
+
+### Managing it
+
+The installer adds an `unread-bot` command:
+
+| Command | What it does |
+|---|---|
+| `unread-bot status` | Running or not, version, whether it's connected |
+| `unread-bot logs` | Follow the log (Ctrl-C stops watching, not the bot) |
+| `unread-bot update` | Download the latest release and restart |
+| `unread-bot restart` | Restart; also applies edits to `.env` |
+| `unread-bot config` | Open `.env` in an editor, then apply it |
+| `unread-bot stop` / `start` | Stop or start the bot |
+| `unread-bot doctor` | Check the setup from inside the container |
+| `unread-bot uninstall` | Remove the bot; asks before deleting any data |
+
+It's a thin wrapper around Docker Compose, so `cd ~/unread-bot && docker compose logs -f`
+works just as well.
+
+Day-to-day settings live in the bot itself: send `/settings` to change
+the language, report format, preset, AI provider, model and key.
+
+## 2. Docker Compose by hand
+
+```bash
+mkdir ~/unread-bot && cd ~/unread-bot
+curl -fsSLo docker-compose.yml https://raw.githubusercontent.com/maxbolgarin/unread/main/docker-compose.bot.yml
+curl -fsSLo .env https://raw.githubusercontent.com/maxbolgarin/unread/main/.env.bot.example
+chmod 600 .env
+nano .env                  # fill in the required values
+docker compose up -d
+docker compose logs -f     # wait for "✓ bot ready"
+```
+
+Compose reads `.env` from the same directory, so plain `docker compose …`
+works with no `-f` or `--env-file`. [`.env.bot.example`](../.env.bot.example)
+explains every variable.
+
+**Update:** `docker compose pull && docker compose up -d`.
+
+**A started container is not a working bot.** With
+`restart: unless-stopped`, a misconfigured bot restarts in a loop while
+`up -d` still prints "Started". Look for this line in the log:
+
+```
+✓ bot ready · owner=123456789 · session=missing …
+```
+
+`No owner allowlist` means `UNREAD_BOT_OWNER_ID` is missing.
+
+**Another AI provider:** add its key and name it as the provider:
+
+```
+ANTHROPIC_API_KEY=sk-ant-…
+UNREAD_AI_CHAT_PROVIDER=anthropic
+UNREAD_AI_FILTER_PROVIDER=anthropic
+UNREAD_AI_VISION_PROVIDER=anthropic
+```
+
+Models default to that provider's own; change them from `/settings` in
+the bot. A provider or model set in `.env` outranks `/settings`. Voice
+and video transcription needs an OpenAI key.
+
+**Customizing the compose file:** put your changes in
+`docker-compose.override.yml` next to it. Compose merges that file in,
+and the installer never touches it.
+
+**From a repo checkout**, with the repo's file names:
+
+```bash
+cp .env.bot.example .env.bot && $EDITOR .env.bot
+docker compose -f docker-compose.bot.yml --env-file .env.bot up -d
+```
+
+Here every compose command needs `-f docker-compose.bot.yml --env-file .env.bot`,
+including `logs` and `ps`, because the required variables are checked on
+each one.
+
+**From your laptop:** `scripts/deploy-bot.sh user@host` copies the
+compose file and your `.env.bot` to the server over SSH and restarts the
+container there. The server needs only Docker and SSH.
+
+**Without Compose:**
+
+```bash
+docker run -d --name unread-bot --restart unless-stopped --init \
+  -e UNREAD_BOT_TOKEN=… -e UNREAD_BOT_OWNER_ID=… \
+  -e TELEGRAM_API_ID=… -e TELEGRAM_API_HASH=… -e OPENAI_API_KEY=… \
+  -v unread_state:/root/.unread \
+  ghcr.io/maxbolgarin/unread:latest unread bot run
+```
+
+### The image
+
+`ghcr.io/maxbolgarin/unread` is a general `unread` runtime with no
+entrypoint; the compose file runs `unread bot run` in it. It ships
+ffmpeg, PDF fonts and Deno (which yt-dlp needs for YouTube audio). It's
+built for x86_64 (amd64); on an ARM server use the
+[native install](#3-native-install-systemd).
+
+| Tag | Moves when |
+|---|---|
+| `:latest` | a release is published |
+| `:1.10.0`, `:1.10` | never / on patch releases |
+| `:main` | anything lands on `main` (ahead of releases) |
+
+Reports, settings, keys and the Telegram session live in the
+`unread_state` volume and survive updates.
+
+The same image runs one-off CLI commands too:
+
+```bash
+docker run --rm -v unread_state:/root/.unread ghcr.io/maxbolgarin/unread:latest unread doctor
+```
+
+**`docker compose pull` says "denied"?** The package is public, but if
+this machine is logged in to `ghcr.io` with an account that can't read
+it, GHCR refuses the login rather than falling back to anonymous. Pull
+with an empty Docker config instead (the installer and
+`unread-bot update` do this automatically):
+
+```bash
+mkdir -p ~/.docker-anon && echo '{}' > ~/.docker-anon/config.json
+DOCKER_CONFIG=~/.docker-anon docker compose pull
+```
+
+## 3. Native install (systemd)
+
+No Docker; works on x86_64 and ARM. On the server:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/maxbolgarin/unread/main/scripts/install-bot.sh | bash
 ```
 
-What it does:
+It installs uv, ffmpeg and the PDF libraries (apt, dnf, pacman or
+Homebrew), installs `unread`, runs `unread init` (AI key, Telegram API
+id/hash and, optionally, your Telegram login), asks for the bot token,
+and installs a `systemd --user` service that restarts on crashes and
+keeps running after you log out.
 
-1. **uv** — installs the single-binary uv (manages its own Python 3.11+).
-2. **System deps** — `ffmpeg` + libpango via apt / dnf / pacman / brew.
-3. **`uv tool install unread`** — isolated tool venv; `unread` on PATH.
-4. **`unread init`** — interactive wizard for AI provider + Telegram
-   credentials + user-session login (you'll get a phone code from
-   Telegram). Stdin is reassigned to `/dev/tty` at the top of the
-   script so this works under `curl | bash`.
-5. **Bot token prompt** — paste the token from
-   [@BotFather](https://t.me/botfather); appended to `~/.unread/.env`
-   with mode `0600`.
-6. **`systemd --user` service** — written to
-   `~/.config/systemd/user/unread-bot.service`, enabled + started.
-   Also runs `loginctl enable-linger $USER` so the service survives
-   SSH disconnect (and auto-restarts on crash in 5s).
+Re-running is safe: it skips what's done. Flags: `--reset` wipes
+`~/.unread/` first (deletes the session, reports and cache);
+`--skip-init` skips the wizard when `~/.unread/.env` is already filled in.
 
-Re-run anytime — idempotent: skips uv/ffmpeg if present, keeps existing
-`~/.unread/` config, only re-prompts for the bot token when missing.
-
-**If `unread init` exits non-zero** (older PyPI releases had a wizard
-that bailed in some env states), the script prints a clear hint and
-exits. Run `unread init` directly in your terminal — that always works
-— then re-run the installer to pick up at the bot-token step.
-
-### Flags
-
-```bash
-# Wipe ~/.unread/ first (deletes session + reports + cache)
-bash install-bot.sh --reset
-
-# Skip the wizard (assume ~/.unread/.env is pre-provisioned via Ansible / SCP)
-bash install-bot.sh --skip-init
-```
-
-### Day-to-day
+The service reads `~/.unread/.env`. If you skipped the Telegram login
+in `unread init`, make sure that file also has `TELEGRAM_API_ID`,
+`TELEGRAM_API_HASH` and your `UNREAD_BOT_OWNER_ID`, then restart the
+service.
 
 ```bash
 systemctl --user status unread-bot
-journalctl --user -u unread-bot -f      # tail logs
-systemctl --user restart unread-bot     # after a config change
-uv tool upgrade unread                  # pull the latest PyPI release
-systemctl --user restart unread-bot     # ...and reload
+journalctl --user -u unread-bot -f        # follow the log
+systemctl --user restart unread-bot       # after a config change
+uv tool upgrade unread && systemctl --user restart unread-bot   # update
 ```
 
-The bot's data — reports, cache, secrets DB, Telegram session — lives
-in `~/.unread/`. Back that directory up, you've backed up everything.
+Everything the bot keeps (reports, cache, secrets, session) is in
+`~/.unread/`; back that directory up and you've backed up the bot.
 
-### Troubleshooting
+**Troubleshooting:**
 
-**"Couldn't enable linger"** — the script needed sudo for the
-`loginctl enable-linger $USER` step. Run it manually:
-```bash
-sudo loginctl enable-linger $USER
-```
-Without linger, the systemd service stops when you log out.
+- *"Couldn't enable linger"*: run `sudo loginctl enable-linger $USER`,
+  or the service stops when you log out.
+- *Voice / video fails*: ffmpeg is missing. Install it and restart.
+- *Reports arrive as `.md` instead of PDF*: libpango is missing
+  (`sudo apt-get install libpango-1.0-0 libpangoft2-1.0-0`). The bot
+  switches back to PDF by itself once it's there.
 
-**Voice / video uploads fail** — `ffmpeg` not on PATH. The script
-installs it; if it failed silently, install manually
-(`sudo apt-get install ffmpeg` or distro equivalent), then
-`systemctl --user restart unread-bot`.
-
-**Reports come as `.md` instead of PDF** — libpango isn't installed
-(weasyprint's native dep). Install it
-(`sudo apt-get install libpango-1.0-0 libpangoft2-1.0-0` on Debian)
-and restart the service. The bot auto-detects and switches to PDF.
-
----
-
-## 3. Docker
-
-Pull a pre-built image from GHCR — no source checkout on the remote.
-The image is generic: no `ENTRYPOINT`, the `CMD` defaults to
-`unread --help`. Pass `command:` (compose) or `unread bot run`
-(`docker run`) to launch the bot. The same image works for one-off
-CLI commands too.
-
-### Bot service via compose
-
-The shipped `docker-compose.bot.yml` is what you want. From your
-laptop, the `scripts/deploy-bot.sh` helper rsyncs it + your env file
-to the VM and triggers `docker compose pull && up -d`:
+## 4. On your own computer
 
 ```bash
-cp .env.bot.example .env.bot
-$EDITOR .env.bot                       # fill in API ids / openai / bot token
-scripts/deploy-bot.sh deploy@my-vm     # ssh user@host, then docker compose up
+uv tool install unread
+unread init                                   # AI key; the Telegram step is optional
+export UNREAD_BOT_TOKEN=123456:ABC…           # from @BotFather
+export UNREAD_BOT_OWNER_ID=123456789          # skip if you logged in to Telegram in init
+export TELEGRAM_API_ID=… TELEGRAM_API_HASH=…  # skip if init saved them
+unread bot run                                # Ctrl-C to stop
 ```
 
-Or directly on the VM, no laptop helper:
+In a repo checkout, `unread bot run` also reads `./.env.bot` (it must be
+`chmod 600`).
+
+## Reading your Telegram chats (optional)
+
+To analyze `t.me/…` links, `@channel` refs and a forwarded post's source
+channel, the bot needs a Telegram *user* session: your own account, not
+the bot's. Make one on your computer with `unread init` (it logs in with
+your phone number), then hand it to the bot:
+
+**In Telegram (easiest):** send the bot `/upload_session`, then send
+`~/.unread/storage/session.sqlite.session` as a file. The bot checks it,
+installs it and from then on reads chats through that account.
+
+**Or copy it onto the server:**
 
 ```bash
-cp .env.bot.example .env.bot && $EDITOR .env.bot
-docker compose -f docker-compose.bot.yml --env-file .env.bot pull
-docker compose -f docker-compose.bot.yml --env-file .env.bot up -d
-docker compose -f docker-compose.bot.yml --env-file .env.bot logs -f
+scp ~/.unread/storage/session.sqlite.session my-server:/tmp/
+ssh my-server
+cd ~/unread-bot
+docker compose cp /tmp/session.sqlite.session unread-bot:/root/.unread/storage/session.sqlite.session
+docker compose restart && rm /tmp/session.sqlite.session
 ```
 
-The compose file specifies `command: ["unread", "bot", "run"]` since
-the image has no entrypoint.
+For the native install, copy it to `~/.unread/storage/` on the server
+and run `systemctl --user restart unread-bot`.
 
-**Pass `--env-file .env.bot` to every compose subcommand**, not just
-`up`. `UNREAD_BOT_TOKEN` uses the `:?` required-variable form, which
-compose resolves for *any* command — so a bare
-`docker compose -f docker-compose.bot.yml logs` fails with
-`required variable UNREAD_BOT_TOKEN is missing a value` before it shows
-you anything. `docker logs unread-unread-bot-1` skips compose entirely.
+The session's account becomes the bot's primary owner; ids in
+`UNREAD_BOT_OWNER_ID` stay on as extra admins. Only the primary owner
+can analyze Telegram chats, because every admin would be reading
+through that one account. See [Who can use the bot](bot.md#who-can-use-the-bot).
 
-**A started container is not a working bot.** With
-`restart: unless-stopped`, a misconfigured bot crash-loops while
-`up -d` still prints "Started". The signal to look for in the logs is:
+## Troubleshooting
 
-```
-✓ bot ready · owner=123456789 · session=ready
-```
-
-If instead you see `No owner allowlist available`, set
-`UNREAD_BOT_OWNER_ID` in `.env.bot` (your numeric id from
-[@userinfobot](https://t.me/userinfobot)) or mount an authorized
-session — the bot refuses to serve anyone until it knows who you are.
-
-### Bot service without compose
-
-```bash
-docker run -d --name unread-bot \
-  -e TELEGRAM_API_ID=... -e TELEGRAM_API_HASH=... \
-  -e OPENAI_API_KEY=... -e UNREAD_BOT_TOKEN=... \
-  -v unread_state:/root/.unread \
-  --restart unless-stopped \
-  ghcr.io/maxbolgarin/unread:latest \
-  unread bot run
-```
-
-### Ad-hoc CLI inside the container
-
-The same image is a full `unread` CLI runtime — useful when you don't
-want a local Python install but need a one-off `unread doctor` or
-`unread analyze <url>`:
-
-```bash
-docker run --rm -v unread_state:/root/.unread \
-  ghcr.io/maxbolgarin/unread:latest \
-  unread doctor
-
-docker run --rm -v unread_state:/root/.unread \
-  ghcr.io/maxbolgarin/unread:latest \
-  unread analyze https://example.com/article
-```
-
-### One-time GHCR setup
-
-GitHub publishes new packages as **private** by default. Until you
-flip this once, any `docker pull` has to authenticate.
-
-1. Go to <https://github.com/users/maxbolgarin/packages/container/unread/settings>
-   (change the username if you forked).
-2. Scroll to **Danger zone → Change package visibility → Public**.
-3. Confirm the package name.
-
-After this, `docker compose pull` works with no `docker login`.
-
-### Updating a running bot
-
-On the VM, from the directory holding `docker-compose.bot.yml` and
-`.env.bot`:
-
-```bash
-cd ~/unread
-DOCKER_CONFIG=~/.docker-anon docker compose -f docker-compose.bot.yml --env-file .env.bot pull
-DOCKER_CONFIG=~/.docker-anon docker compose -f docker-compose.bot.yml --env-file .env.bot up -d
-```
-
-`DOCKER_CONFIG=~/.docker-anon` points Docker at an empty config, so it
-pulls the public image anonymously. Without it, Docker sends whatever
-`ghcr.io` login the VM already has (for example, one used for other,
-private images), and GHCR answers `error from registry: denied` when
-that login can't read this package, even though the package is public.
-The VM's real login is left untouched. Create the empty config once:
-
-```bash
-mkdir -p ~/.docker-anon && echo '{}' > ~/.docker-anon/config.json
-```
-
-`up -d` needs it too: the compose file sets `pull_policy: always`, so
-`up` pulls again. On a VM with no `ghcr.io` login, the plain commands
-without `DOCKER_CONFIG` work just as well.
-
-Reports, secrets, the Telegram session, and the provider/model picked
-in `/settings` live in the `unread_state` volume and survive the
-update. Check the logs for `✓ bot ready` afterwards:
-
-```bash
-docker logs unread-unread-bot-1 --tail 30
-```
-
-`:latest` moves only when the Release workflow publishes a version.
-To run what's on `main` before then, set
-`UNREAD_BOT_IMAGE=ghcr.io/maxbolgarin/unread:main` in `.env.bot`.
-
-### Image tags
-
-`.github/workflows/image.yml` publishes on every tag and `main` push:
-
-| Trigger | Tags |
-|---|---|
-| `v1.4.2` tag | `:1.4.2`, `:1.4`, `:latest` |
-| push to `main` | `:main` |
-| `workflow_dispatch` from a tag | same as the tag |
-
-Pin a version in `.env.bot`:
-
-```
-UNREAD_BOT_IMAGE=ghcr.io/maxbolgarin/unread:1.4.2
-```
-
----
-
-## Bootstrapping the Telegram user session
-
-The first time a user-mode session is needed (to read `t.me/<chat>/<msg>`
-links), the bot will reply with:
-
-> I don't have your Telegram user session — send /upload_session
-
-Two ways to provide it:
-
-### Option A — `/upload_session` (no shell access required)
-
-1. In Telegram, message the bot `/upload_session`.
-2. Drag-and-drop your local `~/.unread/storage/session.sqlite` into the
-   chat as a file (NOT a photo).
-
-The bot validates the file, atomically replaces the session on the
-volume, and re-derives the owner allowlist from it.
-
-### Option B — SCP the session ahead of time
-
-If you have one already, skip the in-chat upload by dropping the file
-straight into the volume's mountpoint:
-
-```bash
-# Docker
-ssh deploy@my-vm '
-  docker compose -f docker-compose.bot.yml stop
-  VOL=$(docker volume inspect unread-bot_unread_state --format "{{.Mountpoint}}")
-  sudo mkdir -p "$VOL/storage"
-  sudo chmod 700 "$VOL/storage"
-'
-scp ~/.unread/storage/session.sqlite \
-    deploy@my-vm:/tmp/session.sqlite
-ssh deploy@my-vm '
-  VOL=$(docker volume inspect unread-bot_unread_state --format "{{.Mountpoint}}")
-  sudo mv /tmp/session.sqlite "$VOL/storage/session.sqlite"
-  sudo chmod 600 "$VOL/storage/session.sqlite"
-  docker compose -f docker-compose.bot.yml start
-'
-
-# Native (systemd)
-scp ~/.unread/storage/session.sqlite \
-    deploy@my-vm:~/.unread/storage/session.sqlite
-ssh deploy@my-vm 'systemctl --user restart unread-bot'
-```
+- **The bot doesn't answer.** Check `unread-bot status` (or the log) for
+  `✓ bot ready`, and that your id is in `UNREAD_BOT_OWNER_ID`. Messages
+  from anyone else are dropped without a reply.
+- **Every message gets two answers.** Two copies of the bot are running
+  with one token, e.g. the native service and the Docker one. Stop one:
+  `systemctl --user disable --now unread-bot`.
+- **"Telegram is rate-limiting this bot token"** right after start.
+  Leave it running; it waits the time out by itself. Restarting only
+  starts the wait over.
+- **The AI says the key is wrong.** Set a new one with `/settings` → 🔑,
+  or in `.env` and `unread-bot restart`. A key in `.env` wins over one
+  set in the bot.
