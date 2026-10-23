@@ -49,14 +49,17 @@ const { lang = 'bash', filename, copyText } = Astro.props;
     border-radius: 6px;
     font-size: 0.75rem;
     cursor: pointer;
-    opacity: 0.85;
-    transition: opacity 0.15s, color 0.15s, border-color 0.15s;
+    /* Opaque and on top: a long command scrolls underneath it. */
+    z-index: 1;
+    transition: color 0.15s, border-color 0.15s;
   }
-  .copy-btn:hover { opacity: 1; color: var(--accent); border-color: var(--accent); }
+  .copy-btn:hover { color: var(--accent); border-color: var(--accent); }
   .copy-btn.copied { color: var(--success); border-color: var(--success); }
   pre {
     margin: 0;
-    padding: 1rem 1.1rem;
+    /* Right padding clears the Copy button, so a long command scrolls
+       instead of running underneath it. */
+    padding: 1rem 5.6rem 1rem 1.1rem;
     overflow-x: auto;
     font-family: var(--font-mono);
     font-size: 0.86rem;

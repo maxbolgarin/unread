@@ -344,7 +344,7 @@ keyed by Telegram's stable `document_id` / `photo_id`
 once enrichments are cached.
 
 **Costs at a glance**:
-- Voice / videonote / video → Whisper (~$0.006/min).
+- Voice / videonote / video → transcription (~$0.003/min with the default `gpt-4o-mini-transcribe`).
 - Image → one vision call per unique photo.
 - Doc → free (local extraction).
 - Link → one `filter_model` call per unique URL (cheap, `nano`-class).

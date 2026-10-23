@@ -14,7 +14,7 @@ npm run preview  # serve the production build
 
 ## How docs work
 
-The five guides under `../docs/*.md` are imported at build time via `import.meta.glob` from inside `src/pages/docs/*.astro` — single source of truth, no duplication. A small rehype plugin in `astro.config.mjs` rewrites `*.md` cross-links to the site routes.
+The guides under `../docs/*.md` are imported at build time via `import.meta.glob` from inside `src/pages/docs/*.astro` — single source of truth, no duplication. A small rehype plugin in `astro.config.mjs` rewrites `*.md` cross-links to the site routes.
 
 ## Deploy
 

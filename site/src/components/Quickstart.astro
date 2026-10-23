@@ -4,21 +4,17 @@ import CodeBlock from './CodeBlock.astro';
 
 const steps = [
   {
-    label: '1. Install uv',
-    note: 'one line, all platforms',
-    cmd: 'curl -LsSf https://astral.sh/uv/install.sh | sh',
+    label: '1. Install',
+    note: 'macOS / Linux; sets up uv for you. Windows: uv tool install unread',
+    cmd: 'curl -fsSL https://raw.githubusercontent.com/maxbolgarin/unread/main/scripts/install.sh | bash',
   },
   {
-    label: '2. Install unread',
-    cmd: 'uv tool install unread',
-  },
-  {
-    label: '3. Set up',
+    label: '2. Set up',
     note: 'pick your AI provider, paste your key, optionally connect Telegram',
     cmd: 'unread init',
   },
   {
-    label: '4. Run something',
+    label: '3. Run something',
     note: 'any URL, file path, or Telegram ref',
     cmd: 'unread "https://paulgraham.com/greatwork.html"',
   },
@@ -27,10 +23,11 @@ const steps = [
 <section id="quickstart" class="quickstart">
   <div class="container">
     <header class="section-head">
-      <h2>Install in four steps.</h2>
+      <h2>Install in three steps.</h2>
       <p class="sub">
-        <code>uv</code> installs the binary in an isolated env. No virtualenv to activate, no <code>pip</code>
-        conflicts, no global Python pollution. Works on macOS, Linux, and Windows.
+        The installer puts <code>unread</code> in its own isolated environment with <code>uv</code>. No virtualenv
+        to activate, no <code>pip</code> conflicts, no global Python pollution. Update later with
+        <code>unread update</code>.
       </p>
     </header>
 
@@ -48,6 +45,7 @@ const steps = [
 
     <p class="hint">
       Need more detail? See the <a href={`${BASE}/docs/install/`}>full install guide</a>.
+      Want the Telegram bot on a server instead? <a href="#bot">It has its own one-liner</a>.
     </p>
   </div>
 </section>
@@ -82,7 +80,9 @@ const steps = [
     display: grid;
     gap: 1.1rem;
   }
-  .step { margin: 0; }
+  /* min-width: 0 lets a long command scroll inside its block instead of
+     widening the page on phones. */
+  .step { margin: 0; min-width: 0; }
   .step-head {
     display: flex;
     flex-wrap: wrap;

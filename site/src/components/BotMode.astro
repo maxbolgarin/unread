@@ -1,42 +1,55 @@
 ---
-import { BASE, GH_URL } from '../consts';
+import { BASE } from '../consts';
+import CodeBlock from './CodeBlock.astro';
+
+const install =
+  'curl -fsSL https://raw.githubusercontent.com/maxbolgarin/unread/main/scripts/install-bot-docker.sh | bash';
 ---
-<section class="bot">
+<section id="bot" class="bot">
   <div class="container bot-inner">
     <div class="bot-text">
       <header>
         <h2>There's a bot, too.</h2>
         <p class="lead">
-          Run the same pipeline as a self-hosted Telegram bot.
-          Forward a voice message, a PDF, a YouTube link, a stranger's
-          <code>t.me/</code> post, or that suspicious file someone
-          just sent you — get a Markdown summary back as a document,
-          with cost and timing in the caption.
+          Run the same pipeline as your own Telegram bot. Forward it a voice message, a PDF,
+          a YouTube link, a channel post, or that link a stranger just sent you — it replies
+          with the gist and a full report as a PDF, with time and cost in the caption.
         </p>
       </header>
 
       <ul class="points">
         <li>
-          <strong>Voice & video.</strong>
-          Drop a 12-minute voice or a 45-minute recorded meeting — get a TL;DR in roughly the time it takes to put your phone down.
+          <strong>Voice &amp; video.</strong>
+          A TL;DR of that 12-minute voice message, or tap <em>As text</em> to read it instead of listening.
         </li>
         <li>
-          <strong>Anything weird.</strong>
-          Forward suspicious links, long PDFs, or channel posts you'd rather not read. The bot reads them for you and replies with the gist.
+          <strong>YouTube, four ways.</strong>
+          Summary, analysis of the argument, the transcript, or a fact-check against the web.
         </li>
         <li>
-          <strong>Single-user, your hardware.</strong>
-          Allowlisted to one Telegram ID (yours). Runs on your laptop or a $5 VM via docker-compose.
+          <strong>Settings in the chat.</strong>
+          <code>/settings</code> changes the language, the report format (PDF, Markdown, or right in the chat)
+          and the AI provider and model.
+        </li>
+        <li>
+          <strong>Yours only.</strong>
+          It answers just the Telegram accounts you allow and runs on your own server — a $5 VM is plenty.
         </li>
       </ul>
+
+      <p class="install-note">
+        One command on a fresh Linux server installs Docker if needed, asks for a bot token,
+        an AI key and a Telegram API id, and starts the bot:
+      </p>
+      <CodeBlock lang="bash" copyText={install}>{install}</CodeBlock>
 
       <div class="ctas">
         <a href={`${BASE}/docs/bot/`} class="btn btn-primary">
           Bot guide
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
         </a>
-        <a href={`${GH_URL}/blob/main/docs/bot-vm-deploy.md`} class="btn btn-ghost" rel="noopener" target="_blank">
-          Deploy on a VM
+        <a href={`${BASE}/docs/bot-vm-deploy/`} class="btn btn-ghost">
+          Other ways to deploy
         </a>
       </div>
     </div>
@@ -44,7 +57,7 @@ import { BASE, GH_URL } from '../consts';
     <div class="bot-frame">
       <img
         src={`${BASE}/bot.jpg`}
-        alt="The unread Telegram bot replying to a forwarded voice message with a TL;DR and attaching a Markdown report as a document."
+        alt="The unread Telegram bot replying to a forwarded voice message with a TL;DR and a PDF report."
         loading="lazy"
         width="603"
         height="1228"
@@ -67,6 +80,9 @@ import { BASE, GH_URL } from '../consts';
   @media (max-width: 960px) {
     .bot-inner { grid-template-columns: 1fr; gap: 2.5rem; }
   }
+  /* Let the long install command scroll inside its block instead of
+     widening the page on phones. */
+  .bot-text, .bot-frame { min-width: 0; }
 
   header { margin-bottom: 1.4rem; }
   h2 {
@@ -115,6 +131,22 @@ import { BASE, GH_URL } from '../consts';
     font-weight: 700;
   }
   .points strong { color: var(--fg); font-weight: 700; }
+  .points code {
+    background: var(--bg-code);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 0.1em 0.4em;
+    font-size: 0.88em;
+    color: var(--fg);
+  }
+  .install-note {
+    color: var(--fg-muted);
+    font-size: 0.95rem;
+    line-height: 1.6;
+    margin: 0;
+    max-width: 60ch;
+  }
+  .bot-text :global(.code-wrap) { margin: 0.6rem 0 1.4rem; }
 
   .ctas {
     display: flex;
