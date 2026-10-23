@@ -30,6 +30,14 @@
 
 set -euo pipefail
 
+# Everything below runs inside main(), which bash starts only after it has
+# read the whole file. Under `curl … | bash` the script itself arrives on
+# stdin, so a top-level `exec </dev/tty` made bash read the REST OF THE
+# SCRIPT from the keyboard: the install stalled, and whatever you typed
+# ran as shell commands. `main "$@"; exit $?` at the bottom is one line on
+# purpose — bash has parsed the `exit` before main swaps stdin.
+main() {
+
 # ---------------------------------------------------------------------------
 # Reassign stdin to the user's terminal.
 #
@@ -165,14 +173,20 @@ export NEEDRESTART_MODE=a
 export NEEDRESTART_SUSPEND=1
 export APT_LISTCHANGES_FRONTEND=none
 
+# Run as root, keeping the exports above. A bare `$SUDO -E cmd` broke for
+# root, where SUDO is empty and bash tried to run a command named `-E`.
+as_root() {
+  if [[ -n "$SUDO" ]]; then sudo -E "$@"; else "$@"; fi
+}
+
 pkg_install() {
   case "$PKG" in
     apt)
       # `-o Dpkg::Options::=--force-confnew` — keep the package's new
       # config without prompting on conffile conflicts. Combined with
       # the env vars above, every interactive dialog is suppressed.
-      $SUDO -E apt-get update -y -qq \
-        && $SUDO -E apt-get install -y -qq \
+      as_root apt-get update -y -qq \
+        && as_root apt-get install -y -qq \
              -o Dpkg::Options::="--force-confnew" \
              -o Dpkg::Options::="--force-confdef" \
              "$@"
@@ -456,3 +470,6 @@ Useful commands:
 Open Telegram and message your bot — it should reply.
 ${C_GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RST}
 EOF
+}
+
+main "$@"; exit $?
