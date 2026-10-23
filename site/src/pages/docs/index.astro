@@ -4,7 +4,7 @@ import { BASE, SITE_URL } from '../../consts';
 
 const title = 'Documentation · unread';
 const description =
-  'Install, configure, and run unread — the local-first CLI for summarizing Telegram chats, YouTube videos, web pages, and files with any LLM.';
+  'Install, configure, and run unread — the local-first CLI and Telegram bot for summarizing Telegram chats, YouTube videos, web pages, voice messages, and files with any LLM.';
 
 const cards = [
   {
@@ -30,7 +30,12 @@ const cards = [
   {
     href: `${BASE}/docs/bot/`,
     title: 'Telegram bot',
-    body: 'Run unread as a self-hosted Telegram bot. Forward files, URLs, voice messages — get summaries back.',
+    body: 'Run unread as your own Telegram bot. Forward files, links, voice messages — get summaries back.',
+  },
+  {
+    href: `${BASE}/docs/bot-vm-deploy/`,
+    title: 'Deploy the bot',
+    body: 'One-command Docker install on a server, Compose by hand, systemd, and the optional Telegram session.',
   },
   {
     href: `${BASE}/docs/security/`,
@@ -57,7 +62,7 @@ const breadcrumb = {
   <div class="container docs-index">
     <header>
       <h1>Documentation</h1>
-      <p class="lead">Six short guides. Start with <a href={`${BASE}/docs/install/`}>Install</a>, run <code>unread doctor</code>, then explore the rest.</p>
+      <p class="lead">Seven short guides. Start with <a href={`${BASE}/docs/install/`}>Install</a>, run <code>unread doctor</code>, then explore the rest — or go straight to <a href={`${BASE}/docs/bot-vm-deploy/`}>deploying the bot</a>.</p>
     </header>
     <div class="grid">
       {cards.map((c) => (

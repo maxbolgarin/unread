@@ -3,7 +3,7 @@ export const BASE = '/unread';
 export const SITE_NAME = 'unread';
 export const SITE_TITLE = 'unread — your unread is now read.';
 export const SITE_DESCRIPTION =
-  'Open-source local CLI that turns Telegram chats, YouTube videos, web pages, and files into Markdown reports with citations. OpenAI, Anthropic, Gemini, OpenRouter, or local LLMs.';
+  'Open-source tool that turns Telegram chats, YouTube videos, web pages, voice messages, and files into reports with citations — from the command line or your own Telegram bot. OpenAI, Anthropic, Gemini, OpenRouter, or local LLMs.';
 export const SITE_TAGLINE = 'Your unread is now read.';
 export const AUTHOR = 'Max Bolgarin';
 export const AUTHOR_URL = 'https://github.com/maxbolgarin';
@@ -16,7 +16,6 @@ export const GH_CONTRIBUTING_URL = 'https://github.com/maxbolgarin/unread/blob/m
 export const GH_SECURITY_URL = 'https://github.com/maxbolgarin/unread/blob/main/SECURITY.md';
 export const PYPI_URL = 'https://pypi.org/project/unread/';
 export const LICENSE_URL = 'https://github.com/maxbolgarin/unread/blob/main/LICENSE';
-export const VERSION = '0.1.1';
 
 // Formspree form ID for the hosted-version waitlist.
 // Create a form at https://formspree.io/forms and paste the ID
@@ -27,6 +26,7 @@ export const HOSTED_WAITLIST_FORMSPREE_ID = 'mzdwalqv';
 export const NAV: { label: string; href: string }[] = [
   { label: 'Docs', href: `${BASE}/docs/` },
   { label: 'Install', href: `${BASE}/docs/install/` },
+  { label: 'Bot', href: `${BASE}/docs/bot/` },
   { label: 'GitHub', href: GH_URL },
 ];
 
@@ -37,5 +37,6 @@ export const DOCS_NAV: { label: string; href: string; slug: string }[] = [
   { label: 'CLI reference', href: `${BASE}/docs/reference/`, slug: 'reference' },
   { label: 'Configuration', href: `${BASE}/docs/configuration/`, slug: 'configuration' },
   { label: 'Telegram bot', href: `${BASE}/docs/bot/`, slug: 'bot' },
+  { label: 'Deploy the bot', href: `${BASE}/docs/bot-vm-deploy/`, slug: 'bot-vm-deploy' },
   { label: 'Security', href: `${BASE}/docs/security/`, slug: 'security' },
 ];

@@ -4,6 +4,7 @@ import sitemap from '@astrojs/sitemap';
 import { visit } from 'unist-util-visit';
 
 const BASE = '/unread';
+const GH_BLOB = 'https://github.com/maxbolgarin/unread/blob/main';
 
 function rewriteDocLinks() {
   return (/** @type {any} */ tree) => {
@@ -27,6 +28,12 @@ function rewriteDocLinks() {
       if (m2) {
         node.properties.href = `${BASE}/docs/${m2[1]}/${m2[2] ?? ''}`;
         return;
+      }
+
+      // Anything else relative points into the repo (an example file, the
+      // presets folder) — files the site doesn't serve. Send it to GitHub.
+      if (href.startsWith('../')) {
+        node.properties.href = `${GH_BLOB}${new URL(href, 'https://repo/docs/').pathname}`;
       }
     });
   };

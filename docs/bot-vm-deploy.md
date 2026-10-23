@@ -18,7 +18,7 @@ one way to run it:
 - **Your Telegram user id.** The bot answers only the ids you list and
   silently ignores everyone else. The installer reads it off the first
   message you send your bot; otherwise [@userinfobot](https://t.me/userinfobot) tells you.
-- **An AI key**: OpenAI (the default, and the one that transcribes voice
+- **An AI key.** OpenAI (the default, and the one that transcribes voice
   and video), Anthropic, Google Gemini or OpenRouter.
 - **A Telegram API id + hash.** Free at <https://my.telegram.org> →
   *API development tools* → create an app (any name). Telegram asks

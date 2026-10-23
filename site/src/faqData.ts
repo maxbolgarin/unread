@@ -31,9 +31,9 @@ export const faqItems: FaqItem[] = [
   {
     q: 'Will it cost me money?',
     aText:
-      'Yes — every LLM call costs something. unread keeps it small: --max-cost aborts before overspend, --dry-run estimates without calling, and unread stats shows lifetime spend by chat, preset, and day. A week of group chat is typically pennies on gpt-5.4-mini.',
+      'Yes — every LLM call costs something. unread keeps it small: --max-cost aborts before overspend, --dry-run estimates without calling, and unread stats shows lifetime spend by chat, preset, and day. A week of group chat is typically pennies on gpt-5.6-luna.',
     aHtml:
-      'Yes — every LLM call costs something. <code>unread</code> keeps it small: <code>--max-cost</code> aborts before overspend, <code>--dry-run</code> estimates without calling, and <code>unread stats</code> shows lifetime spend by chat, preset, and day. A week of group chat is typically pennies on <code>gpt-5.4-mini</code>.',
+      'Yes — every LLM call costs something. <code>unread</code> keeps it small: <code>--max-cost</code> aborts before overspend, <code>--dry-run</code> estimates without calling, and <code>unread stats</code> shows lifetime spend by chat, preset, and day. A week of group chat is typically pennies on <code>gpt-5.6-luna</code>.',
   },
   {
     q: 'Is it actually fast?',
@@ -59,15 +59,22 @@ export const faqItems: FaqItem[] = [
   {
     q: 'Can I run this as a Telegram bot?',
     aText:
-      'Yes. unread bot run turns the CLI inside out — message your own @BotFather bot with a file, web URL, YouTube link, forwarded message, or a t.me/ link and get a Markdown summary back as a document with a cost-and-timing caption. It is single-user by design: allowlisted to one Telegram ID (yours), everyone else is silently dropped. Run it locally or deploy on a VM with docker-compose; see the bot guide for details.',
+      'Yes. Send your own bot a file, a voice message, a web link, a YouTube link or a forwarded post and it replies with the gist plus a full report (PDF by default, Markdown, or right in the chat), with time and cost in the caption. It answers only the Telegram accounts you allow; everyone else is silently ignored. On a Linux server one command installs it with Docker: curl -fsSL https://raw.githubusercontent.com/maxbolgarin/unread/main/scripts/install-bot-docker.sh | bash. The bot guide covers the rest.',
     aHtml:
-      'Yes. <code>unread bot run</code> turns the CLI inside out — message your own <code>@BotFather</code> bot with a file, web URL, YouTube link, forwarded message, or a <code>t.me/</code> link and get a Markdown summary back as a document with a cost-and-timing caption. It is single-user by design: allowlisted to one Telegram ID (yours), everyone else is silently dropped. Run it locally or deploy on a VM with docker-compose — see the <a href="/unread/docs/bot/">bot guide</a> for details.',
+      'Yes. Send your own bot a file, a voice message, a web link, a YouTube link or a forwarded post and it replies with the gist plus a full report (PDF by default, Markdown, or right in the chat), with time and cost in the caption. It answers only the Telegram accounts you allow; everyone else is silently ignored. On a Linux server one command installs it with Docker — see <a href="/unread/docs/bot-vm-deploy/">Deploy the bot</a> and the <a href="/unread/docs/bot/">bot guide</a>.',
+  },
+  {
+    q: 'Does the bot need my Telegram account?',
+    aText:
+      'No. It needs a bot token from @BotFather, an AI key, and a Telegram API id and hash (free at my.telegram.org — Telegram asks every app for them, bots included). Files, voice and video, web links and YouTube all work without your account. Only reading t.me chat links and channels needs your Telegram session, which you can hand to the bot later with /upload_session.',
+    aHtml:
+      'No. It needs a bot token from <code>@BotFather</code>, an AI key, and a Telegram API id and hash (free at <a href="https://my.telegram.org" rel="noopener" target="_blank">my.telegram.org</a> — Telegram asks every app for them, bots included). Files, voice and video, web links and YouTube all work without your account. Only reading <code>t.me/</code> chat links and channels needs your Telegram session, which you can hand to the bot later with <code>/upload_session</code>.',
   },
   {
     q: 'Can it transcribe voice messages and videos?',
     aText:
-      'Yes — both standalone files (unread ./voice.ogg, unread ./meeting.mp4) and voice notes / video circles inside Telegram chats. Speech-to-text runs through OpenAI Whisper at roughly $0.006 per minute. Video files have their audio track extracted by ffmpeg first. Forwarded voice messages dedupe across chats — Whisper runs once and the result is cached by Telegram document_id.',
+      'Yes — both standalone files (unread ./voice.ogg, unread ./meeting.mp4) and voice notes / video circles inside Telegram chats. Speech-to-text runs through OpenAI (gpt-4o-mini-transcribe by default) at roughly $0.003 per minute. Video files have their audio track extracted by ffmpeg first. Forwarded voice messages dedupe across chats — each is transcribed once and cached by Telegram document_id.',
     aHtml:
-      'Yes — both standalone files (<code>unread ./voice.ogg</code>, <code>unread ./meeting.mp4</code>) and voice notes / video circles inside Telegram chats. Speech-to-text runs through OpenAI <strong>Whisper</strong> at roughly <strong>$0.006 per minute</strong>. Video files have their audio track extracted by <code>ffmpeg</code> first. Forwarded voice messages dedupe across chats — Whisper runs once and the result is cached by Telegram <code>document_id</code>.',
+      'Yes — both standalone files (<code>unread ./voice.ogg</code>, <code>unread ./meeting.mp4</code>) and voice notes / video circles inside Telegram chats. Speech-to-text runs through OpenAI (<code>gpt-4o-mini-transcribe</code> by default) at roughly <strong>$0.003 per minute</strong>. Video files have their audio track extracted by <code>ffmpeg</code> first. Forwarded voice messages dedupe across chats — each is transcribed once and cached by Telegram <code>document_id</code>.',
   },
 ];

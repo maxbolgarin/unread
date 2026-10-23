@@ -18,13 +18,13 @@ import {
   GH_URL,
   PYPI_URL,
   LICENSE_URL,
-  VERSION,
 } from '../consts';
+import { VERSION } from '../version';
 import { faqItems } from '../faqData';
 
-const title = 'unread — Telegram, YouTube and web summarizer CLI';
+const title = 'unread — summarize Telegram, YouTube, the web and voice messages';
 const description =
-  'A local CLI that turns Telegram chats, YouTube videos, web pages, and files into Markdown reports with citations. Use OpenAI, Anthropic, Gemini, OpenRouter, or a local model.';
+  'Turn Telegram chats, YouTube videos, web pages, voice messages, and files into reports with citations — from the command line or your own Telegram bot. Use OpenAI, Anthropic, Gemini, OpenRouter, or a local model.';
 
 const homeUrl = new URL(`${BASE}/`, SITE_URL).toString();
 
