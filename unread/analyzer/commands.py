@@ -1661,7 +1661,6 @@ async def _run_single(
             # LLM-facing → report_language. The heading below is user-facing
             # → language.
             report_language=report_language,
-            source_language=source_language,
         )
         heading = _t("verification_heading", language)
         if verification:
