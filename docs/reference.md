@@ -50,7 +50,12 @@
 
 | Command | Purpose |
 |---|---|
-| `unread bot run` | Start the self-hosted Telegram bot (long-polling; answers only the ids in `UNREAD_BOT_OWNER_ID`). Reads `UNREAD_BOT_TOKEN` from the environment. An optional Telegram user session (`~/.unread/storage/session.sqlite.session`) adds `t.me/…` reads. |
+| `unread bot setup` | Interactive: the @BotFather token (checked with Telegram), who may use the bot (read off the `/start` you send it, or typed), and the Telegram API id/hash if `init` didn't save them. Writes `~/.unread/.env.bot`. |
+| `unread bot start [--no-service]` | Run the bot in the background: a `systemd --user` service (`unread-bot.service`) where available, a detached process otherwise (or with `--no-service`). Waits until it's connected and reports. |
+| `unread bot status` | Running or not, how, and whether it's connected. Exits 1 when it isn't running. |
+| `unread bot logs [-n N] [-f]` | The background bot's log (the journal under systemd, `storage/bot.log` otherwise). |
+| `unread bot restart` / `unread bot stop` | Restart (picks up settings and upgrades) / stop; `stop` also disables the service so it doesn't come back at boot. |
+| `unread bot run` | Run the bot in the foreground (long-polling; answers only the ids in `UNREAD_BOT_OWNER_ID`). Refuses to start while another copy runs for the same install. An optional Telegram user session (`~/.unread/storage/session.sqlite.session`) adds `t.me/…` reads. |
 
 Full user-facing reference (what you can send, slash commands, confirm panel, `/upload_session` flow) lives in [bot.md](bot.md). Deploying it (one-command Docker install, Compose, systemd) is in [bot-vm-deploy.md](bot-vm-deploy.md).
 

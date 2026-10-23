@@ -152,13 +152,20 @@ Override the install root for tests / multi-profile setups via the
 
 ## Running the Telegram bot
 
-The bot is a separate install, meant for a server. One command sets it
+The bot is meant for an always-on machine. On a server, one command sets it
 up with Docker:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/maxbolgarin/unread/main/scripts/install-bot-docker.sh | bash
 ```
 
-Other ways (Compose by hand, systemd, your own computer) are in
-[`bot-vm-deploy.md`](bot-vm-deploy.md); what the bot does is in
+Or, with `unread` already installed, without Docker (a systemd user
+service where available, a background process otherwise):
+
+```bash
+unread bot setup && unread bot start
+```
+
+Everything else (Compose by hand, the other `unread bot` commands) is
+in [`bot-vm-deploy.md`](bot-vm-deploy.md); what the bot does is in
 [`bot.md`](bot.md).

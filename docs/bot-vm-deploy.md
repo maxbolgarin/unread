@@ -9,8 +9,7 @@ one way to run it:
 |---|---|
 | **[1. One-command Docker install](#1-one-command-docker-install)** (recommended) | A fresh server. It asks a few questions and does the rest. |
 | **[2. Docker Compose by hand](#2-docker-compose-by-hand)** | You already run Compose stacks, or want every knob. |
-| **[3. Native install (systemd)](#3-native-install-systemd)** | No Docker, or an ARM server. |
-| **[4. On your own computer](#4-on-your-own-computer)** | Trying it out. |
+| **[3. From the installed `unread`](#3-from-the-installed-unread)** | You already use the CLI; no Docker; ARM servers; your own computer. |
 
 ## What you need
 
@@ -165,7 +164,7 @@ docker run -d --name unread-bot --restart unless-stopped --init \
 entrypoint; the compose file runs `unread bot run` in it. It ships
 ffmpeg, PDF fonts and Deno (which yt-dlp needs for YouTube audio). It's
 built for x86_64 (amd64); on an ARM server use the
-[native install](#3-native-install-systemd).
+[installed `unread`](#3-from-the-installed-unread).
 
 | Tag | Moves when |
 |---|---|
@@ -193,61 +192,72 @@ mkdir -p ~/.docker-anon && echo '{}' > ~/.docker-anon/config.json
 DOCKER_CONFIG=~/.docker-anon docker compose pull
 ```
 
-## 3. Native install (systemd)
+## 3. From the installed `unread`
 
-No Docker; works on x86_64 and ARM. On the server:
+No Docker: the bot runs from the same `unread` you use on the command
+line, on x86_64 or ARM, Linux or macOS.
+
+```bash
+unread bot setup     # bot token (checked), your Telegram id (press Start in the bot), API id if missing
+unread bot start     # runs it in the background
+```
+
+`setup` saves the token and your id to `~/.unread/.env.bot`. The AI key
+and Telegram API id/hash come from `unread init`; `setup` asks for the
+API id/hash only if `init` didn't save them. If you logged in to
+Telegram in `init`, the bot already knows who its owner is, and it can
+read `t.me/…` links right away.
+
+`start` picks the best way this machine has to keep it running:
+
+- **systemd** (most Linux servers): a user service,
+  `~/.config/systemd/user/unread-bot.service`. It restarts after a
+  crash and, once you run `sudo loginctl enable-linger $USER`, keeps
+  running after you log out and starts at boot. `start` tells you if
+  that step is missing.
+- **Background process** (macOS, or no systemd): it runs until the
+  computer sleeps or restarts and isn't restarted after a crash. Fine
+  on your own computer; for always-on, use a server.
+  `--no-service` forces this mode on a systemd machine too.
+
+| Command | What it does |
+|---|---|
+| `unread bot status` | Running or not, whether it's connected |
+| `unread bot logs` | Recent log lines; `-f` to follow, `-n 200` for more |
+| `unread bot restart` | Restart; picks up changed settings and upgrades |
+| `unread bot stop` | Stop it (the service won't come back at boot) |
+| `unread bot run` | Run in the foreground instead, for debugging |
+
+Only one copy runs per install: `unread bot run` refuses to start next
+to the background one. To update: `unread update`, then `unread bot restart`.
+
+Voice and video need ffmpeg, and YouTube videos without captions need
+[Deno](https://deno.com) — see [Install](install.md). The Docker image
+ships both.
+
+**A fresh server without `unread` yet?** One command installs it, its
+system packages (uv, ffmpeg, PDF libraries) and a systemd service:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/maxbolgarin/unread/main/scripts/install-bot.sh | bash
 ```
 
-It installs uv, ffmpeg and the PDF libraries (apt, dnf, pacman or
-Homebrew), installs `unread`, runs `unread init` (AI key, Telegram API
-id/hash and, optionally, your Telegram login), asks for the bot token,
-and installs a `systemd --user` service that restarts on crashes and
-keeps running after you log out.
-
-Re-running is safe: it skips what's done. Flags: `--reset` wipes
-`~/.unread/` first (deletes the session, reports and cache);
+It runs `unread init`, asks for the bot token and sets up the same
+`unread-bot` service, so `unread bot status | logs | restart | stop`
+manage it afterwards. Flags: `--reset` wipes `~/.unread/` first;
 `--skip-init` skips the wizard when `~/.unread/.env` is already filled in.
-
-The service reads `~/.unread/.env`. If you skipped the Telegram login
-in `unread init`, make sure that file also has `TELEGRAM_API_ID`,
-`TELEGRAM_API_HASH` and your `UNREAD_BOT_OWNER_ID`, then restart the
-service.
-
-```bash
-systemctl --user status unread-bot
-journalctl --user -u unread-bot -f        # follow the log
-systemctl --user restart unread-bot       # after a config change
-uv tool upgrade unread && systemctl --user restart unread-bot   # update
-```
+Without a Telegram login in `init`, run `unread bot setup` afterwards
+to add your id.
 
 Everything the bot keeps (reports, cache, secrets, session) is in
 `~/.unread/`; back that directory up and you've backed up the bot.
 
 **Troubleshooting:**
 
-- *"Couldn't enable linger"*: run `sudo loginctl enable-linger $USER`,
-  or the service stops when you log out.
-- *Voice / video fails*: ffmpeg is missing. Install it and restart.
+- *Voice / video fails*: ffmpeg is missing. Install it and `unread bot restart`.
 - *Reports arrive as `.md` instead of PDF*: libpango is missing
   (`sudo apt-get install libpango-1.0-0 libpangoft2-1.0-0`). The bot
   switches back to PDF by itself once it's there.
-
-## 4. On your own computer
-
-```bash
-uv tool install unread
-unread init                                   # AI key; the Telegram step is optional
-export UNREAD_BOT_TOKEN=123456:ABC…           # from @BotFather
-export UNREAD_BOT_OWNER_ID=123456789          # skip if you logged in to Telegram in init
-export TELEGRAM_API_ID=… TELEGRAM_API_HASH=…  # skip if init saved them
-unread bot run                                # Ctrl-C to stop
-```
-
-In a repo checkout, `unread bot run` also reads `./.env.bot` (it must be
-`chmod 600`).
 
 ## Reading your Telegram chats (optional)
 
@@ -270,8 +280,8 @@ docker compose cp /tmp/session.sqlite.session unread-bot:/root/.unread/storage/s
 docker compose restart && rm /tmp/session.sqlite.session
 ```
 
-For the native install, copy it to `~/.unread/storage/` on the server
-and run `systemctl --user restart unread-bot`.
+Without Docker, copy it to `~/.unread/storage/` instead and run
+`unread bot restart`.
 
 The session's account becomes the bot's primary owner; ids in
 `UNREAD_BOT_OWNER_ID` stay on as extra admins. Only the primary owner
@@ -284,8 +294,8 @@ through that one account. See [Who can use the bot](bot.md#who-can-use-the-bot).
   `✓ bot ready`, and that your id is in `UNREAD_BOT_OWNER_ID`. Messages
   from anyone else are dropped without a reply.
 - **Every message gets two answers.** Two copies of the bot are running
-  with one token, e.g. the native service and the Docker one. Stop one:
-  `systemctl --user disable --now unread-bot`.
+  with one token, e.g. `unread bot start` and the Docker one. Stop one
+  (`unread bot stop`, or `unread-bot stop` for Docker).
 - **"Telegram is rate-limiting this bot token"** right after start.
   Leave it running; it waits the time out by itself. Restarting only
   starts the wait over.

@@ -42,6 +42,10 @@ const install =
         an AI key and a Telegram API id, and starts the bot:
       </p>
       <CodeBlock lang="bash" copyText={install}>{install}</CodeBlock>
+      <p class="install-note cli-note">
+        Already use the CLI? Skip Docker: <code>unread bot setup &amp;&amp; unread bot start</code>
+        runs it in the background, as a systemd service where the machine has one.
+      </p>
 
       <div class="ctas">
         <a href={`${BASE}/docs/bot/`} class="btn btn-primary">
@@ -146,7 +150,17 @@ const install =
     margin: 0;
     max-width: 60ch;
   }
-  .bot-text :global(.code-wrap) { margin: 0.6rem 0 1.4rem; }
+  .bot-text :global(.code-wrap) { margin: 0.6rem 0 0.8rem; }
+  .cli-note { margin-bottom: 1.4rem; }
+  .install-note code {
+    background: var(--bg-code);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 0.1em 0.4em;
+    font-size: 0.88em;
+    color: var(--fg);
+    white-space: nowrap;
+  }
 
   .ctas {
     display: flex;
