@@ -20,7 +20,24 @@ jobs:
         # for Telegram refs with voice/video enrichment (the default), so
         # the release gate needs a real ffmpeg on PATH to mirror the
         # documented user install shape.
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+        # A static build from GitHub Releases, not apt: the runners' Ubuntu
+        # mirror (azure.archive.ubuntu.com) has taken 30+ minutes to serve
+        # ffmpeg's ~90 dependencies, stalling this step. apt stays as the
+        # fallback if the download fails.
+        run: |
+          set -euo pipefail
+          url=https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz
+          dir="$RUNNER_TEMP/ffmpeg"
+          mkdir -p "$dir"
+          if curl -fsSL --retry 3 --retry-all-errors --connect-timeout 20 --max-time 300 -o "$dir/ffmpeg.tar.xz" "$url"; then
+            tar -xJf "$dir/ffmpeg.tar.xz" -C "$dir" --strip-components=1
+            rm "$dir/ffmpeg.tar.xz"
+            echo "$dir/bin" >> "$GITHUB_PATH"
+            "$dir/bin/ffmpeg" -hide_banner -version | sed -n 1p
+          else
+            echo "::warning::Static ffmpeg download failed; falling back to apt"
+            sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+          fi
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
