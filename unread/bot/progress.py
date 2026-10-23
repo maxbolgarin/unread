@@ -51,13 +51,19 @@ def run_status_line(*, preset: str, settings: Any, source: str, kind: str = "") 
     verb = "🔎 Fact-checking" if searching else "⏳ Analyzing"
 
     # Mirror `run_analysis`'s precedence (`pipeline.effective_models`):
-    #   override or ai.chat_model or preset.final_model or config default
+    #   override or ai.chat_model or preset pin (if the provider can serve
+    #   it) or the provider's default
     # The bot passes `ai.chat_model` as the override, so it comes FIRST —
     # a progress line naming a different model than the run actually
     # sends is worse than one naming none.
     model = getattr(settings.ai, "chat_model", "") or ""
-    if not model:
-        model = getattr(preset_obj, "final_model", "") or ""
+    if not model and preset_obj is not None:
+        from unread.analyzer.pipeline import effective_models
+
+        try:
+            model = effective_models(preset_obj, settings)[0]
+        except Exception:  # unconfigured provider
+            model = ""
     if not model:
         try:
             model = resolve_chat_model(settings)
