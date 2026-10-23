@@ -395,8 +395,18 @@ def build_provider_menu(*, settings: Any, panel_msg_id: int) -> tuple[str, list]
 # Where to look up model ids for each provider. Linked from the model
 # prompt instead of listing models as buttons: a hardcoded list goes stale
 # within weeks, and OpenRouter alone has hundreds of models.
-# Catalog models offered as buttons; the rest are a typed id away.
+# Popular models offered as buttons; the rest are a typed id away.
 _MAX_MODEL_BUTTONS = 8
+# Models listed (with prices) in the panel text.
+_MAX_LISTED = 15
+
+# Where to check current prices.
+PRICING_URL: dict[str, str] = {
+    "openai": "https://openai.com/api/pricing",
+    "openrouter": "https://openrouter.ai/models",
+    "anthropic": "https://www.anthropic.com/pricing#api",
+    "google": "https://ai.google.dev/gemini-api/docs/pricing",
+}
 
 MODEL_LIST_URL: dict[str, str] = {
     "openai": "https://platform.openai.com/docs/models",
@@ -417,22 +427,48 @@ _MODEL_ID_EXAMPLE: dict[str, str] = {
 }
 
 
-def build_model_menu(*, settings: Any, panel_msg_id: int) -> tuple[str, list]:
-    """Model picker: the catalog's models for this provider as buttons,
-    plus a typed id for anything else.
+def _served(model_id: str, live: set[str]) -> bool:
+    """Whether the provider's live list has `model_id`. Providers list
+    dated snapshots too (`claude-sonnet-5-5-20260514`), which count."""
+    import re
 
-    The caller arms the prompt, so the next message is taken as the id.
-    The buttons come from the price catalog (`unread.ai.models`), which
-    ships with every release, so they don't go stale the way a list in
-    this file did. "default" clears the override.
-    """
+    snapshot = re.compile(rf"{re.escape(model_id)}-\d[\d-]*")
+    return model_id in live or any(snapshot.fullmatch(m) for m in live)
+
+
+def popular_models(provider: str, live_ids: list[str] | None = None) -> list[Any]:
+    """The catalog's chat models for `provider`, flagship → cheap: the
+    popular picks, with prices. With the provider's live list, only the
+    ones this key can actually use."""
     from unread.ai.models import models_for_provider
 
+    picks = models_for_provider(provider, role="chat")
+    if live_ids:
+        live = set(live_ids)
+        picks = [m for m in picks if _served(m.id, live)]
+    return picks
+
+
+def build_model_menu(
+    *, settings: Any, panel_msg_id: int, live_ids: list[str] | None = None
+) -> tuple[str, list]:
+    """Model picker: popular models as buttons, the same models listed
+    with prices in the text, and links to check the rest.
+
+    `live_ids` is the provider's own model list (`model_listing.fetch_models`,
+    fetched by the caller with the configured key); None when it couldn't
+    be loaded. Popular = the price catalog (`unread.ai.models`), which
+    refreshes itself daily, narrowed to what the key can use. A local
+    server has no catalog, so its own models are the buttons.
+
+    The caller arms the prompt, so the next message is taken as the id.
+    "default" clears the override.
+    """
     provider = _active_provider(settings)
     active_model = _active_model(settings)
     fallback = default_model(settings)
+    current_id = active_model or fallback
     example = _MODEL_ID_EXAMPLE.get(provider, "model-name")
-    url = MODEL_LIST_URL.get(provider, "")
 
     def priced(model_id: str) -> str:
         price = _price(model_id)
@@ -444,22 +480,42 @@ def build_model_menu(*, settings: Any, panel_msg_id: int) -> tuple[str, list]:
         current = f"Current model: {priced(fallback)}, the default."
     lines = [f"🧠 **Model for `{provider}`**", "", current, ""]
 
-    picks = [] if provider == "local" else list(models_for_provider(provider))[:_MAX_MODEL_BUTTONS]
-    picks += [m for m in models_for_provider(provider) if m.id == fallback and m not in picks]
-    buttons = []
-    for m in picks:
-        data = encode_settings_callback("S_MODEL", panel_msg_id, m.id)
-        if len(data) > 64:  # Telegram's callback-data limit
-            continue
-        label = f"{m.id} · ${m.input_price:g}/${m.output_price:g}" if m.output_price else m.id
-        buttons.append(Button.inline(_mark(label, m.id == active_model), data))
-    if buttons:
-        lines.append("Tap a model (prices per 1M tokens in/out), or send any other id as your next message")
+    choices: list[tuple[str, str]] = []  # (model id, button label)
+    if provider == "local":
+        for mid in (live_ids or [])[:_MAX_MODEL_BUTTONS]:
+            choices.append((mid, mid))
+        if live_ids:
+            lines.append(f"Your server has {len(live_ids)} model(s):")
+            lines += [f"{'✓' if mid == current_id else '•'} `{mid}`" for mid in live_ids[:_MAX_LISTED]]
+        else:
+            lines.append("Couldn't load the model list from your server.")
     else:
-        lines.append("Send the model id as your next message")
-    lines[-1] += f", e.g. `{example}`."
-    if url:
-        lines.append(f"All models: {url}")
+        picks = popular_models(provider, live_ids)
+        if live_ids is None:
+            lines.append(f"Couldn't load the model list from {provider}; these are the usual ones.")
+        elif live_ids:
+            lines.append(f"Your key can use {len(live_ids)} models. Popular ones:")
+        else:
+            lines.append("Popular models:")
+        lines.append("__price per 1M tokens, input / output__")
+        for m in picks[:_MAX_LISTED]:
+            price = f"${m.input_price:g} / ${m.output_price:g}" if m.output_price else "price unknown"
+            lines.append(f"{'✓' if m.id == current_id else '•'} `{m.id}` — {price}")
+            if len(choices) < _MAX_MODEL_BUTTONS:
+                label = f"{m.id} · ${m.input_price:g}/${m.output_price:g}" if m.output_price else m.id
+                choices.append((m.id, label))
+        if fallback not in {c[0] for c in choices} and any(m.id == fallback for m in picks):
+            choices.append((fallback, fallback))
+
+    lines.append("")
+    lines.append(
+        ("Tap one, or send any other model id as your next message" if choices else "Send the model id")
+        + f", e.g. `{example}`."
+    )
+    if PRICING_URL.get(provider):
+        lines.append(f"Prices: {PRICING_URL[provider]}")
+    if MODEL_LIST_URL.get(provider):
+        lines.append(f"All models: {MODEL_LIST_URL[provider]}")
     lines += [
         "",
         "A typed id is used exactly as typed. Models I don't have prices for still work, "
@@ -467,6 +523,13 @@ def build_model_menu(*, settings: Any, panel_msg_id: int) -> tuple[str, list]:
         "",
         "`/cancel` aborts.",
     ]
+
+    buttons = []
+    for mid, label in choices:
+        data = encode_settings_callback("S_MODEL", panel_msg_id, mid)
+        if len(data) > 64:  # Telegram's callback-data limit
+            continue
+        buttons.append(Button.inline(_mark(label, mid == active_model), data))
     rows = _grid(buttons, per_row=1)
     rows.append(
         [
@@ -474,9 +537,10 @@ def build_model_menu(*, settings: Any, panel_msg_id: int) -> tuple[str, list]:
                 _mark(f"default ({fallback})", not active_model),
                 encode_settings_callback("S_MODEL", panel_msg_id, ""),
             ),
-            Button.inline("⬅ Back", encode_settings_callback("S_ROOT", panel_msg_id)),
+            Button.inline("🔄 Reload", encode_settings_callback("S_MODELS", panel_msg_id, "reload")),
         ]
     )
+    rows.append([Button.inline("⬅ Back", encode_settings_callback("S_ROOT", panel_msg_id))])
     return "\n".join(lines), rows
 
 

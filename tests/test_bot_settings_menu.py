@@ -60,17 +60,57 @@ def test_model_menu_buttons_come_from_the_price_catalog(settings, provider) -> N
 
     settings.ai.chat_provider = provider
     _text, buttons = build_model_menu(settings=settings, panel_msg_id=1)
-    values = [parse_settings_callback(b.data)[2] for row in buttons for b in row]
-    picked = [v for v in values if v]
+    picked = [
+        value
+        for row in buttons
+        for b in row
+        for action, _, value in [parse_settings_callback(b.data)]
+        if action == "S_MODEL" and value
+    ]
     catalog = {m.id for m in models_for_provider(provider)}
     assert picked and set(picked) <= catalog
     assert all(len(b.data) <= 64 for row in buttons for b in row)
 
 
-def test_model_menu_has_no_buttons_for_local(settings) -> None:
+def test_model_menu_local_buttons_are_the_servers_models(settings) -> None:
     settings.ai.chat_provider = "local"
     _text, buttons = build_model_menu(settings=settings, panel_msg_id=1)
-    assert [parse_settings_callback(b.data)[2] for row in buttons for b in row] == ["", None]
+    assert [parse_settings_callback(b.data)[2] for row in buttons for b in row] == ["", "reload", None]
+    text, buttons = build_model_menu(settings=settings, panel_msg_id=1, live_ids=["llama3.1", "qwen2.5:14b"])
+    assert [parse_settings_callback(b.data)[2] for b in buttons[0] + buttons[1]] == [
+        "llama3.1",
+        "qwen2.5:14b",
+    ]
+    assert "Your server has 2 model(s)" in text
+
+
+def test_model_menu_lists_popular_models_with_prices_and_links(settings) -> None:
+    from unread.bot.settings_menu import MODEL_LIST_URL, PRICING_URL
+
+    settings.ai.chat_provider = "openai"
+    settings.ai.chat_model = "gpt-6-luna"
+    text, _buttons = build_model_menu(settings=settings, panel_msg_id=1)
+    assert "✓ `gpt-6-luna` — $0.1 / $0.5" in text
+    assert "• `gpt-5.6-luna` — $0.2 / $1.2" in text
+    assert PRICING_URL["openai"] in text and MODEL_LIST_URL["openai"] in text
+
+
+def test_model_menu_keeps_only_models_the_key_can_use(settings) -> None:
+    """With the provider's live list, popular = catalog ∩ what the key serves."""
+    settings.ai.chat_provider = "anthropic"
+    live = ["claude-sonnet-5-5-20260514", "claude-haiku-5-5", "claude-opus-5-5-preview"]
+    text, buttons = build_model_menu(settings=settings, panel_msg_id=1, live_ids=live)
+    picked = [parse_settings_callback(b.data)[2] for row in buttons[:-2] for b in row]
+    assert picked == ["claude-sonnet-5-5", "claude-haiku-5-5"]
+    assert "Your key can use 3 models" in text
+    assert "claude-opus-5-5" not in text.split("Popular ones:")[1].split("Tap one")[0]
+
+
+def test_model_menu_says_when_the_list_couldnt_load(settings) -> None:
+    settings.ai.chat_provider = "google"
+    text, buttons = build_model_menu(settings=settings, panel_msg_id=1, live_ids=None)
+    assert "Couldn't load the model list from google" in text
+    assert len(buttons) > 2  # still offers the catalog
 
 
 def test_default_names_the_model_it_resolves_to(settings) -> None:
@@ -79,7 +119,7 @@ def test_default_names_the_model_it_resolves_to(settings) -> None:
     settings.ai.chat_model = ""
     text, buttons = build_model_menu(settings=settings, panel_msg_id=1)
     assert "`gpt-5.6-luna` ($0.2/$1.2 per 1M tokens in/out), the default" in text
-    assert buttons[-1][0].text == "✓ default (gpt-5.6-luna)"
+    assert buttons[-2][0].text == "✓ default (gpt-5.6-luna)"
     root, _ = build_settings_menu(chat_state={}, settings=settings, panel_msg_id=1)
     assert "Model: `gpt-5.6-luna` (default)" in root
 
@@ -110,10 +150,13 @@ def test_model_menu_shows_the_current_models_price(settings) -> None:
     assert "$0.2/$1.2" in text
 
 
-def test_model_menu_ends_with_default_and_back(settings) -> None:
+def test_model_menu_ends_with_default_reload_and_back(settings) -> None:
     _text, buttons = build_model_menu(settings=settings, panel_msg_id=1)
-    last = [parse_settings_callback(b.data) for b in buttons[-1]]
-    assert last == [("S_MODEL", 1, ""), ("S_ROOT", 1, None)]
+    assert [parse_settings_callback(b.data) for b in buttons[-2]] == [
+        ("S_MODEL", 1, ""),
+        ("S_MODELS", 1, "reload"),
+    ]
+    assert [parse_settings_callback(b.data) for b in buttons[-1]] == [("S_ROOT", 1, None)]
 
 
 # --- callback encoding ---------------------------------------------------------
@@ -287,3 +330,22 @@ def test_chat_setting_change_rejects_values_the_menu_never_offers(action, value)
 
     with pytest.raises(ValueError):
         chat_setting_change(action, value, {})
+
+
+async def test_live_model_ids_retries_after_a_failure(settings, monkeypatch) -> None:
+    from unread.ai import model_listing
+    from unread.bot import app
+
+    calls = []
+
+    async def fake_fetch(provider, role, _settings):
+        calls.append(provider)
+        return [] if len(calls) == 1 else ["gpt-6-luna"]
+
+    model_listing.clear_cache()
+    monkeypatch.setattr(model_listing, "fetch_models", fake_fetch)
+    settings.ai.chat_provider = "openai"
+    assert await app._live_model_ids(settings) is None  # failed: panel shows the catalog
+    assert await app._live_model_ids(settings) == ["gpt-6-luna"]  # not stuck on the failure
+    assert await app._live_model_ids(settings, reload=True) == ["gpt-6-luna"]
+    assert len(calls) == 3
