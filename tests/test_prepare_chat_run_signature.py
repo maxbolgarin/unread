@@ -1,4 +1,4 @@
-"""`prepare_chat_run` / `prepare_chat_runs_per_topic` kwarg drift guard.
+"""`prepare_chat_run` / `prepare_chat_runs_per_topic` / `_self_check` kwarg drift guard.
 
 Both functions live in `unread/core/pipeline.py` and are called from
 several command modules (`analyzer/commands.py`, `export/commands.py`,
@@ -28,6 +28,7 @@ from pathlib import Path
 
 import pytest
 
+from unread.analyzer.commands import _self_check
 from unread.core.pipeline import prepare_chat_run, prepare_chat_runs_per_topic
 
 # Modules that contain calls to the prep functions. We keep this list
@@ -98,4 +99,31 @@ def test_call_sites_only_pass_supported_kwargs(func, func_name):
             extra = kw_names - accepted
             if extra:
                 failures.append(f"{rel}:{lineno} passes unsupported {sorted(extra)}")
+    assert not failures, "kwarg drift:\n  " + "\n  ".join(failures)
+
+
+# `_self_check` (the `--self-check` audit) drifted the same way: the
+# Telegram path passed it `source_language`, so `unread analyze <chat>
+# --self-check` raised TypeError after the analysis was paid for and
+# before the report was written.
+_SELF_CHECK_CALLERS = [
+    "unread/analyzer/commands.py",
+    "unread/files/commands.py",
+    "unread/youtube/commands.py",
+    "unread/website/commands.py",
+]
+
+
+def test_self_check_call_sites_only_pass_supported_kwargs():
+    accepted = set(inspect.signature(_self_check).parameters)
+    calls = 0
+    failures: list[str] = []
+    for rel in _SELF_CHECK_CALLERS:
+        source = (_REPO_ROOT / rel).read_text()
+        for lineno, kw_names in _collect_call_kwargs(source, "_self_check"):
+            calls += 1
+            extra = kw_names - accepted
+            if extra:
+                failures.append(f"{rel}:{lineno} passes unsupported {sorted(extra)}")
+    assert calls >= len(_SELF_CHECK_CALLERS), "a `_self_check` caller moved; update the list"
     assert not failures, "kwarg drift:\n  " + "\n  ".join(failures)
