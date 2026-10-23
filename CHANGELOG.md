@@ -1,3 +1,32 @@
+## [1.11.0](https://github.com/maxbolgarin/unread/compare/v1.10.0...v1.11.0) (2026-10-23)
+
+### 🚀 Features
+
+* **bot:** one-command Docker install with an unread-bot manager ([df9cb65](https://github.com/maxbolgarin/unread/commit/df9cb652ceacf60df638bbc39f72d5517b96743f))
+* **bot:** run the bot from the installed CLI — bot setup/start/stop/status/logs ([021d5b0](https://github.com/maxbolgarin/unread/commit/021d5b0796b23d45c808c0e0a4fd9c6c2a9750cd))
+
+### 🐛 Bug Fixes
+
+* **scripts:** make install-bot.sh work under curl | bash and as root ([1e79b9a](https://github.com/maxbolgarin/unread/commit/1e79b9ae87a3b9c86c3e9375751f54b9d049c95d))
+* **ai:** send the self-check, link summaries and ask a model their provider serves ([91c6bf4](https://github.com/maxbolgarin/unread/commit/91c6bf427dc37e1c3bbbef3215306815b1d12add))
+* **analyze:** stop --self-check crashing on Telegram chats ([abbb3e3](https://github.com/maxbolgarin/unread/commit/abbb3e3d4fcfa01bc6f225516c2f1181798f950d))
+* **ai:** stop sending a preset's OpenAI model pin to other providers ([3a4dced](https://github.com/maxbolgarin/unread/commit/3a4dced11450e99e8fdd21a0f64347eacc53d8d9))
+
+### 📚 Documentation
+
+* **site:** bring the website up to date with the product ([47c7f7c](https://github.com/maxbolgarin/unread/commit/47c7f7c34776614c9558f97338df2cdc73004947))
+* run the bot from the installed CLI ([d9debd8](https://github.com/maxbolgarin/unread/commit/d9debd88583369ed1748595aa731c21441cd36a6))
+* short README, deploy guide around the one-command installer ([a9cd4d5](https://github.com/maxbolgarin/unread/commit/a9cd4d56f12c33e90e8d4b81e1b8e5b24d9d9068))
+* stop pointing contributors at the unpublished CLAUDE.md ([510c512](https://github.com/maxbolgarin/unread/commit/510c512ad2c7d93af5fb2c2b2077ba9dbb33f682))
+
+### ⚙️ Continuous Integration
+
+* **release:** don't re-publish the previous version when nothing was released ([0f132ae](https://github.com/maxbolgarin/unread/commit/0f132ae3ae749eb143956d9cd9b227906f5f1136))
+
+### 🔧 Chores
+
+* **ai:** sync model prices from OpenRouter ([ae8d2b4](https://github.com/maxbolgarin/unread/commit/ae8d2b49f439df2dce67ade583744fa3bb5eeba4))
+
 ## [1.10.0](https://github.com/maxbolgarin/unread/compare/v1.9.0...v1.10.0) (2026-10-10)
 
 ### 🚀 Features
