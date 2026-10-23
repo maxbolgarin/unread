@@ -189,8 +189,11 @@ The AI rows are bot-wide:
 
 - **🔀 Provider** — openai / openrouter / anthropic / google / local. Applies
   immediately, no restart, and is persisted so it survives one.
-- **🧠 Model** — the provider's models from the price catalog as buttons,
-  with prices per 1M tokens in/out; send any other id as a message.
+- **🧠 Model** — loads the provider's own model list with your key (any
+  provider, including a local server) and shows the popular ones your key
+  can use: listed with prices per 1M tokens in/out, as buttons, and with
+  links to the provider's price and model pages. 🔄 Reload fetches the
+  list again; send any other id as a message.
   **default** (shown with the model it means, e.g. `gpt-5.6-luna` on
   OpenAI) clears your pick: runs use the model the presets pin, or the
   provider's own default where the pin is another provider's model.

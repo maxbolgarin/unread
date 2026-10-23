@@ -56,6 +56,34 @@ def _default_model_for(provider: str) -> str:
     return chat or ""
 
 
+# How long the model panel waits for the provider's model list.
+_MODEL_LIST_TIMEOUT_SEC = 10.0
+
+
+async def _live_model_ids(settings, *, reload: bool = False) -> list[str] | None:  # type: ignore[no-untyped-def]
+    """The active provider's own model list, for the model panel.
+
+    Cached per process by `model_listing`; `reload` (the panel's 🔄
+    button) refetches. None when it couldn't be loaded (no key, network,
+    timeout): the panel then shows the catalog unfiltered. An empty
+    result is a failure too, and isn't kept, so the next open retries.
+    """
+    from unread.ai.model_listing import clear_cache, fetch_models
+
+    provider = _active_provider_name(settings)
+    if reload:
+        clear_cache(provider, "chat")
+    try:
+        ids = await asyncio.wait_for(fetch_models(provider, "chat", settings), _MODEL_LIST_TIMEOUT_SEC)
+    except Exception as e:
+        log.debug("bot.model_list_failed", provider=provider, err=f"{type(e).__name__}: {e}"[:200])
+        ids = []
+    if not ids:
+        clear_cache(provider, "chat")
+        return None
+    return ids
+
+
 def _active_provider_name(settings) -> str:  # type: ignore[no-untyped-def]
     return (
         getattr(settings.ai, "chat_provider", "") or getattr(settings.ai, "provider", "") or "openai"
@@ -886,7 +914,10 @@ class BotApp:
             chat_state.pop("pending_api_key_at", None)
             chat_state["pending_model"] = _active_provider_name(settings)
             chat_state["pending_model_at"] = time.time()
-            text, buttons = build_model_menu(settings=settings, panel_msg_id=panel_id)
+            with contextlib.suppress(Exception):
+                await event.answer("Loading models…")
+            live = await _live_model_ids(settings, reload=value == "reload")
+            text, buttons = build_model_menu(settings=settings, panel_msg_id=panel_id, live_ids=live)
         elif action == "S_PROV":
             await self._apply_ai_setting("ai.chat_provider", value or "")
             await self._apply_ai_setting("ai.filter_provider", value or "")

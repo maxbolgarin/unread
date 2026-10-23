@@ -92,8 +92,9 @@ works just as well.
 
 Day-to-day settings live in the bot itself: send `/settings` to change
 the language, report format, preset, AI provider and key. **🧠 Model**
-there picks the AI model: tap one of the listed models (prices shown) or
-send any model id. Until you pick one, runs use the default it names
+there picks the AI model: it loads the models your key can use, lists the
+popular ones with prices and a link to the price page; tap one or send
+any model id. Until you pick one, runs use the default it names
 (`gpt-5.6-luna` on OpenAI).
 
 ## 2. Docker Compose by hand
