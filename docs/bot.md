@@ -4,12 +4,17 @@
 
 `unread bot run` is the same analysis pipeline as the CLI, exposed as
 a self-hosted Telegram bot. You message your bot with something; the
-bot replies with a Markdown report. The bot is **single-user** — only
-one Telegram ID (yours) gets answered, everyone else is silently
-dropped.
+bot replies with a report. It answers only the Telegram ids you allow
+(by default just yours); everyone else is silently dropped.
 
-This page covers the user-facing surface. For end-to-end VM
-deployment (GHCR image, docker-compose, session bootstrapping) see
+This page covers what the bot does. To get one running, one command on
+a server does it:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/maxbolgarin/unread/main/scripts/install-bot-docker.sh | bash
+```
+
+Every other way to run it (Compose by hand, systemd, your laptop) is in
 [`bot-vm-deploy.md`](bot-vm-deploy.md).
 
 ## What you can send
@@ -39,7 +44,7 @@ A few of the moments where forwarding to the bot beats anything else:
 For each input, the bot:
 
 1. Sends an inline **TL;DR** as a text message (the report's first section, lifted out for at-a-glance reading).
-2. Attaches the **full Markdown report** as a `.md` document with a one-line caption:
+2. Attaches the **full report**: a PDF by default (`/format md` sends the Markdown file, `/format rich` puts the report in the chat itself), with a one-line caption:
    ```
    ✓ 23.4s | 1842↓ + 612↑ tok (1280 cached) | $0.0041
    ```
@@ -112,7 +117,7 @@ Fact-check isn't YouTube-only — `/preset factcheck` makes it the default for e
 | `/format <pdf\|md\|rich>` | How reports come back. `pdf` — rendered document, best on phones (default). `md` — the raw Markdown file. `rich` — the report in the chat itself, nothing to download. Telegram renders the Markdown natively (tables, headings, lists) in one message of up to 32768 characters, using the rich messages added in Bot API 10.1. Where that isn't available — an older server, or a client that can't draw it — the report is flattened to the bold/italic/link subset Telethon can send and split at the server's message limit, never mid-heading. Bare `/format` restores the default. |
 | `/stop` | Cancel the run in progress in this chat. Only yours — another admin's run is untouched. |
 | `/confirm on\|off` | Toggle the pre-run confirm panel (default: on). |
-| `/upload_session` | Install your Telegram user session (one-time). The bot waits for you to send `~/.unread/storage/session.sqlite` as a Telegram document. |
+| `/upload_session` | Install your Telegram user session (one-time). The bot waits for you to send `~/.unread/storage/session.sqlite.session` as a Telegram document. |
 | `/cancel` | Abort a pending prompt: `/upload_session`, or a model id / API key the bot is waiting for. |
 
 Sticky settings are **per chat and persistent** — stored in `data.sqlite::bot_chat_settings` and restored at startup, so a `docker compose up` doesn't reset them. Each admin has their own 1:1 chat with the bot, so each admin has their own settings.
@@ -141,7 +146,7 @@ UNREAD_BOT_OWNER_ID=111222333              # solo
 UNREAD_BOT_OWNER_ID=111222333,444555666    # you + one more admin
 ```
 
-- **At startup**, the bot probes `~/.unread/storage/session.sqlite` (the user session). If an authorized session is there, its account becomes the **primary owner**. Any ids from `UNREAD_BOT_OWNER_ID` stay on as extra admins.
+- **At startup**, the bot probes `~/.unread/storage/session.sqlite.session` (the user session). If an authorized session is there, its account becomes the **primary owner**. Any ids from `UNREAD_BOT_OWNER_ID` stay on as extra admins.
 - If there's no session AND no `UNREAD_BOT_OWNER_ID`, the bot refuses to start handling events — there's no safe allowlist.
 - After a successful `/upload_session`, the primary owner is re-derived from the just-installed session; the previous primary stays on as an admin.
 - Every event is filtered by Telethon's `from_users=` AND a defense-in-depth `sender_id` check inside the handler. Anything else is silently dropped — no acknowledgement, no log noise to the sender.
@@ -182,8 +187,9 @@ The AI rows are bot-wide:
 
 On the key: deleting the message removes it from the chat history, but it
 still travelled through Telegram's servers to get there. If that's not
-acceptable for your threat model, set the key in `.env.bot` on the host
-instead — the bot never asks for one you've already provided that way.
+acceptable for your threat model, set the key in the server's `.env`
+(`unread-bot config`) instead — the bot never asks for one you've
+already provided that way.
 Only the **primary owner** can rotate keys; credentials are bot-wide, so a
 second admin changing them would silently change everyone's runs.
 
@@ -215,24 +221,15 @@ all work for the bot.
 
 ## Running it
 
-**Locally** (foreground, useful for first-time setup and testing):
+One command on a fresh server installs Docker if needed, asks for the
+bot token, your AI key and Telegram API id/hash, finds your Telegram id
+and starts the bot:
 
 ```bash
-cp .env.bot.example .env.bot
-# Edit .env.bot — at minimum:
-#   UNREAD_BOT_TOKEN=...            (from @BotFather)
-#   UNREAD_BOT_OWNER_ID=...         (your Telegram numeric ID, or a comma-separated list; optional if a session is already mounted)
-#   OPENAI_API_KEY=...              (or whichever provider you configured)
-unread bot run
+curl -fsSL https://raw.githubusercontent.com/maxbolgarin/unread/main/scripts/install-bot-docker.sh | bash
 ```
 
-**On a server with docker-compose:**
-
-```bash
-docker compose -f docker-compose.bot.yml --env-file .env.bot up -d --build
-```
-
-**On a Linux VM, pulling a prebuilt image from GHCR** — the
-zero-source-checkout flow with `scripts/deploy-bot.sh` and
-`docker-compose.bot.prod.yml` — see
-[`bot-vm-deploy.md`](bot-vm-deploy.md) for the full recipe.
+Then `unread-bot status | logs | update | config` manages it. For
+Compose by hand, the native systemd install, running it on your own
+computer, and adding a Telegram session, see
+[`bot-vm-deploy.md`](bot-vm-deploy.md).

@@ -270,7 +270,9 @@ context_window = 1000000                 # optional; unknown models chunk at 128
 Or, on a server or Docker container: `UNREAD_AI_CHAT_MODEL` /
 `UNREAD_AI_FILTER_MODEL`. Model precedence for analysis is `--model` /
 `--filter-model` → `ai.chat_model` / `ai.filter_model` → the preset's
-pin → `[openai] *_model_default`.
+pin, when the provider serves it (every shipped preset pins an OpenAI
+model) → the provider's own default (`[openai] *_model_default` on
+OpenAI). So naming a provider without a model is enough.
 
 ### Model catalog updates
 
