@@ -146,6 +146,17 @@ UNREAD_BOT_OWNER_ID=111222333              # solo
 UNREAD_BOT_OWNER_ID=111222333,444555666    # you + one more admin
 ```
 
+You don't have to edit it by hand: the installers ask "Anyone else?"
+after your own id, and later
+
+```bash
+unread-bot users add 444555666       # Docker install; restarts the bot
+unread-bot users remove 444555666
+unread bot users add 444555666       # `unread bot` install
+```
+
+People find their id by messaging [@userinfobot](https://t.me/userinfobot).
+
 - **At startup**, the bot probes `~/.unread/storage/session.sqlite.session` (the user session). If an authorized session is there, its account becomes the **primary owner**. Any ids from `UNREAD_BOT_OWNER_ID` stay on as extra admins.
 - If there's no session AND no `UNREAD_BOT_OWNER_ID`, the bot refuses to start handling events — there's no safe allowlist.
 - After a successful `/upload_session`, the primary owner is re-derived from the just-installed session; the previous primary stays on as an admin.
@@ -178,9 +189,11 @@ The AI rows are bot-wide:
 
 - **🔀 Provider** — openai / openrouter / anthropic / google / local. Applies
   immediately, no restart, and is persisted so it survives one.
-- **🧠 Model** — the chat-capable models for that provider, with prices per
-  1M tokens. **preset default** hands control back to each preset's pin,
-  which is the right choice unless you have a reason.
+- **🧠 Model** — the provider's models from the price catalog as buttons,
+  with prices per 1M tokens in/out; send any other id as a message.
+  **default** (shown with the model it means, e.g. `gpt-5.6-luna` on
+  OpenAI) clears your pick: runs use the model the presets pin, or the
+  provider's own default where the pin is another provider's model.
 - **🔑 API key** — the bot asks for the key as your next message, stores it
   in the secrets DB, and **deletes your message**. The confirmation shows
   only a masked tail.
@@ -229,7 +242,7 @@ and starts the bot:
 curl -fsSL https://raw.githubusercontent.com/maxbolgarin/unread/main/scripts/install-bot-docker.sh | bash
 ```
 
-Then `unread-bot status | logs | update | config` manages it.
+Then `unread-bot status | logs | update | config | users` manages it.
 
 Already use the CLI? Run the bot from it, no Docker needed — it becomes
 a systemd user service where the machine has one, a background process

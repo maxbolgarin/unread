@@ -263,3 +263,61 @@ def test_wait_ready_outcomes():
 
 def test_log_path_is_under_storage(home):
     assert service.log_path() == Path(home) / "storage" / "bot.log"
+
+
+# ---------------------------------------------------------------------------
+# Allowed people
+# ---------------------------------------------------------------------------
+
+
+def test_merge_and_validate_ids():
+    assert service.merge_ids("1,2", "2, 3", "") == "1,2,3"
+    assert service.valid_ids("123456789,987654321")
+    assert not service.valid_ids("")
+    assert not service.valid_ids("12")  # too short to be a Telegram id
+    assert not service.valid_ids("123,abc")
+
+
+def test_users_add_and_remove(home, monkeypatch, capsys):
+    from unread.bot import commands
+    from unread.config import load_settings
+
+    monkeypatch.delenv("UNREAD_BOT_OWNER_ID", raising=False)
+    monkeypatch.setattr(commands, "_service_backend", lambda: None)
+    service.update_env_file(service.bot_env_path(), {"UNREAD_BOT_OWNER_ID": "4242"})
+
+    commands.cmd_bot_users("add", ["5555,4242", "6666"])
+    assert "Allowed now: 4242,5555,6666" in capsys.readouterr().out
+    assert load_settings().bot.owner_ids == [4242, 5555, 6666]
+
+    commands.cmd_bot_users("remove", ["5555"])
+    assert load_settings().bot.owner_ids == [4242, 6666]
+
+    commands.cmd_bot_users("list")
+    assert "4242" in capsys.readouterr().out
+
+    with pytest.raises(typer.Exit):
+        commands.cmd_bot_users("remove", ["4242,6666"])
+    assert "nobody" in capsys.readouterr().out
+    with pytest.raises(typer.Exit):
+        commands.cmd_bot_users("add", ["12ab"])
+
+
+def test_users_refuses_when_env_overrides_the_file(home, monkeypatch, capsys):
+    from unread.bot import commands
+
+    monkeypatch.setenv("UNREAD_BOT_OWNER_ID", "4242")
+    with pytest.raises(typer.Exit):
+        commands.cmd_bot_users("add", ["5555"])
+    assert "set in the environment" in capsys.readouterr().out
+
+
+def test_setup_keeps_earlier_extra_people(monkeypatch):
+    """Re-detecting the owner must not silently drop people added before."""
+    from unread.bot import commands
+    from unread.util import prompt
+
+    monkeypatch.setattr(prompt, "ask_text", lambda msg, default="", **kw: default)
+    assert commands._ask_more_people("4242", previous="4242,5555") == "4242,5555"
+    monkeypatch.setattr(prompt, "ask_text", lambda msg, default="", **kw: "none")
+    assert commands._ask_more_people("4242", previous="4242,5555") == "4242"

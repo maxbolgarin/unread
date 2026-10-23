@@ -66,9 +66,9 @@ export const faqItems: FaqItem[] = [
   {
     q: 'Does the bot need my Telegram account?',
     aText:
-      'No. It needs a bot token from @BotFather, an AI key, and a Telegram API id and hash (free at my.telegram.org — Telegram asks every app for them, bots included). Files, voice and video, web links and YouTube all work without your account. Only reading t.me chat links and channels needs your Telegram session, which you can hand to the bot later with /upload_session.',
+      'No. It needs a bot token from @BotFather, an AI key, and a Telegram API id and hash (free at my.telegram.org — the bot connects the way the Telegram apps do, which lets it download files over the 20 MB limit of the plain Bot API; that connection needs an app id and hash, not your account). Files, voice and video, web links and YouTube all work without your account. Only reading t.me chat links and channels needs your Telegram session, which you can hand to the bot later with /upload_session.',
     aHtml:
-      'No. It needs a bot token from <code>@BotFather</code>, an AI key, and a Telegram API id and hash (free at <a href="https://my.telegram.org" rel="noopener" target="_blank">my.telegram.org</a> — Telegram asks every app for them, bots included). Files, voice and video, web links and YouTube all work without your account. Only reading <code>t.me/</code> chat links and channels needs your Telegram session, which you can hand to the bot later with <code>/upload_session</code>.',
+      'No. It needs a bot token from <code>@BotFather</code>, an AI key, and a Telegram API id and hash (free at <a href="https://my.telegram.org" rel="noopener" target="_blank">my.telegram.org</a> — the bot connects the way the Telegram apps do, which lets it download files over the 20 MB limit of the plain Bot API; that connection needs an app id and hash, not your account). Files, voice and video, web links and YouTube all work without your account. Only reading <code>t.me/</code> chat links and channels needs your Telegram session, which you can hand to the bot later with <code>/upload_session</code>.',
   },
   {
     q: 'Can it transcribe voice messages and videos?',

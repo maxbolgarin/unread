@@ -124,6 +124,33 @@ def _active_model(settings: Any) -> str:
     return getattr(settings.ai, "chat_model", "") or ""
 
 
+def default_model(settings: Any) -> str:
+    """The model runs use when no override is set: the shipped presets'
+    pin when this provider serves it, else the provider's own default.
+    Same chain as `effective_models`, so "preset default" names a model."""
+    from unread.analyzer.pipeline import _preset_pin, _slot_default
+
+    try:
+        from unread.analyzer.prompts import get_presets
+
+        pin = getattr(get_presets("en").get("summary"), "final_model", "") or ""
+    except Exception:
+        pin = ""
+    try:
+        return _preset_pin(pin, settings, "chat") or _slot_default(settings, "chat")
+    except Exception:
+        return pin
+
+
+def _price(model_id: str) -> str:
+    from unread.ai.models import find_model
+
+    info = find_model(model_id)
+    if not (info and info.output_price):
+        return ""
+    return f"${info.input_price:g}/${info.output_price:g}"
+
+
 def _btn(label: str, action: str, panel_msg_id: int, value: str | None = None) -> Any:
     return Button.inline(label, encode_settings_callback(action, panel_msg_id, value))
 
@@ -145,7 +172,8 @@ def build_settings_menu(*, chat_state: dict, settings: Any, panel_msg_id: int) -
     from unread.bot.runtime import STICKY_CONFIRM_DISABLED, render_settings_overview
 
     provider = _active_provider(settings)
-    model = _active_model(settings) or "preset default"
+    active = _active_model(settings)
+    model = f"`{active}`" if active else f"`{default_model(settings)}` (default)"
     key_field = _KEY_FIELD.get(provider, "")
     key_value = ""
     if key_field:
@@ -156,7 +184,7 @@ def build_settings_menu(*, chat_state: dict, settings: Any, panel_msg_id: int) -
     text += (
         "\n\n🤖 **AI** __(whole bot)__\n"
         f"• Provider: `{provider}`\n"
-        f"• Model: `{model}`\n"
+        f"• Model: {model}\n"
         f"• API key: {mask_secret(key_value) if key_field else 'not needed'}"
         "\n\nTap a button to change a setting."
     )
@@ -367,6 +395,9 @@ def build_provider_menu(*, settings: Any, panel_msg_id: int) -> tuple[str, list]
 # Where to look up model ids for each provider. Linked from the model
 # prompt instead of listing models as buttons: a hardcoded list goes stale
 # within weeks, and OpenRouter alone has hundreds of models.
+# Catalog models offered as buttons; the rest are a typed id away.
+_MAX_MODEL_BUTTONS = 8
+
 MODEL_LIST_URL: dict[str, str] = {
     "openai": "https://platform.openai.com/docs/models",
     "openrouter": "https://openrouter.ai/models",
@@ -387,53 +418,65 @@ _MODEL_ID_EXAMPLE: dict[str, str] = {
 
 
 def build_model_menu(*, settings: Any, panel_msg_id: int) -> tuple[str, list]:
-    """Prompt for a typed model id, with a link to the provider's list.
+    """Model picker: the catalog's models for this provider as buttons,
+    plus a typed id for anything else.
 
     The caller arms the prompt, so the next message is taken as the id.
-    The only buttons are "preset default" (clears the override) and Back.
+    The buttons come from the price catalog (`unread.ai.models`), which
+    ships with every release, so they don't go stale the way a list in
+    this file did. "default" clears the override.
     """
-    from unread.ai.models import find_model
+    from unread.ai.models import models_for_provider
 
     provider = _active_provider(settings)
     active_model = _active_model(settings)
+    fallback = default_model(settings)
     example = _MODEL_ID_EXAMPLE.get(provider, "model-name")
     url = MODEL_LIST_URL.get(provider, "")
 
+    def priced(model_id: str) -> str:
+        price = _price(model_id)
+        return f"`{model_id}` ({price} per 1M tokens in/out)" if price else f"`{model_id}`"
+
     if active_model:
-        info = find_model(active_model)
-        price = (
-            f" (${info.input_price:g}/${info.output_price:g} per 1M in/out)"
-            if info and info.output_price
-            else ""
-        )
-        current = f"Current model: `{active_model}`{price}."
+        current = f"Current model: {priced(active_model)}."
     else:
-        current = "Current model: **preset default**: each preset uses the model it pins."
-    lines = [
-        f"🧠 **Model for `{provider}`**",
-        "",
-        current,
-        "",
-        f"Send the model id as your next message, e.g. `{example}`.",
-    ]
+        current = f"Current model: {priced(fallback)}, the default."
+    lines = [f"🧠 **Model for `{provider}`**", "", current, ""]
+
+    picks = [] if provider == "local" else list(models_for_provider(provider))[:_MAX_MODEL_BUTTONS]
+    picks += [m for m in models_for_provider(provider) if m.id == fallback and m not in picks]
+    buttons = []
+    for m in picks:
+        data = encode_settings_callback("S_MODEL", panel_msg_id, m.id)
+        if len(data) > 64:  # Telegram's callback-data limit
+            continue
+        label = f"{m.id} · ${m.input_price:g}/${m.output_price:g}" if m.output_price else m.id
+        buttons.append(Button.inline(_mark(label, m.id == active_model), data))
+    if buttons:
+        lines.append("Tap a model (prices per 1M tokens in/out), or send any other id as your next message")
+    else:
+        lines.append("Send the model id as your next message")
+    lines[-1] += f", e.g. `{example}`."
     if url:
-        lines.append(f"Available models: {url}")
+        lines.append(f"All models: {url}")
     lines += [
         "",
-        "The id is used exactly as typed. Models I don't have prices for still work, "
+        "A typed id is used exactly as typed. Models I don't have prices for still work, "
         "but their runs show as $0 in cost reports.",
         "",
         "`/cancel` aborts.",
     ]
-    rows = [
+    rows = _grid(buttons, per_row=1)
+    rows.append(
         [
             Button.inline(
-                f"{'✓ ' if not active_model else ''}preset default",
+                _mark(f"default ({fallback})", not active_model),
                 encode_settings_callback("S_MODEL", panel_msg_id, ""),
             ),
             Button.inline("⬅ Back", encode_settings_callback("S_ROOT", panel_msg_id)),
         ]
-    ]
+    )
     return "\n".join(lines), rows
 
 
