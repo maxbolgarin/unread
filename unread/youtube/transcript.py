@@ -19,6 +19,7 @@ record which path actually ran.
 from __future__ import annotations
 
 import asyncio
+import html
 import random
 import re
 import tempfile
@@ -96,6 +97,46 @@ _VTT_TAG = re.compile(r"<[^>]+>")
 _ROLLING_WINDOW_LINES = 4
 
 
+def _clean_caption_line(line: str) -> str:
+    """Strip cue tags, decode HTML entities, collapse whitespace.
+
+    WebVTT payloads are HTML-escaped — YouTube's tracks carry `&nbsp;`,
+    `&amp;`, `&#39;` — which leaked verbatim into transcripts. NBSP is
+    folded to a plain space so it doesn't survive as an invisible
+    non-breaking gap.
+    """
+    text = html.unescape(_VTT_TAG.sub("", line)).replace("\xa0", " ")
+    return " ".join(text.split())
+
+
+# Plain-text reflow: cues are fragments of ~5-10 words, so one cue per
+# line reads as random line breaks. Cues are joined into paragraphs that
+# break at a sentence end once long enough, or anywhere once far too long
+# (auto-captions often have no punctuation at all).
+_PARAGRAPH_SOFT_CHARS = 600
+_PARAGRAPH_HARD_CHARS = 1500
+_SENTENCE_END = re.compile(r"[.!?…]['\"»”)\]]*$")
+
+
+def cues_to_text(cues: list[tuple[int, str]]) -> str:
+    """Join caption cues into readable paragraphs (timestamps dropped)."""
+    paragraphs: list[str] = []
+    cur: list[str] = []
+    size = 0
+    for _, raw in cues:
+        body = raw.strip()
+        if not body:
+            continue
+        cur.append(body)
+        size += len(body) + 1
+        if (size >= _PARAGRAPH_SOFT_CHARS and _SENTENCE_END.search(body)) or size >= _PARAGRAPH_HARD_CHARS:
+            paragraphs.append(" ".join(cur))
+            cur, size = [], 0
+    if cur:
+        paragraphs.append(" ".join(cur))
+    return "\n\n".join(paragraphs)
+
+
 def _norm_caption_line(line: str) -> str:
     """Comparison form for caption dedup: case- and spacing-insensitive."""
     return " ".join(line.split()).casefold()
@@ -164,7 +205,7 @@ def _parse_vtt_timed(text: str) -> list[tuple[int, str]]:
             continue
         if cur_start is None:
             continue  # body line outside any cue — ignore
-        cleaned = _VTT_TAG.sub("", line).strip()
+        cleaned = _clean_caption_line(line)
         if cleaned:
             cur_lines.append(cleaned)
     _flush()
@@ -173,7 +214,7 @@ def _parse_vtt_timed(text: str) -> list[tuple[int, str]]:
 
 def _parse_vtt(text: str) -> str:
     """Return plain cue text (timestamps stripped). Back-compat shim."""
-    return "\n".join(t for _, t in _parse_vtt_timed(text))
+    return cues_to_text(_parse_vtt_timed(text))
 
 
 def _lang_base(code: str) -> str:
@@ -778,7 +819,7 @@ async def get_transcript(
         captions = await _fetch_captions(metadata, preferred_langs=preferred)
         if captions is not None:
             cues, lang, is_auto = captions
-            text = "\n".join(c[1] for c in cues)
+            text = cues_to_text(cues)
             return TranscriptResult(
                 text=text,
                 source="captions",

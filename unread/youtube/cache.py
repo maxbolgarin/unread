@@ -31,7 +31,9 @@ from typing import Any
 from unread.youtube.metadata import YoutubeMetadata
 from unread.youtube.transcript import (
     TranscriptResult,
+    _clean_caption_line,
     _lang_base,
+    cues_to_text,
     list_caption_tracks,
 )
 
@@ -79,6 +81,13 @@ def _row_to_result(row: dict[str, Any], *, duration_sec: int | None) -> Transcri
             timed = [(int(s), str(t)) for s, t in json.loads(raw)]
         except (TypeError, ValueError):
             timed = None
+    text = row.get("transcript") or ""
+    source = row.get("transcript_source") or "captions"
+    if timed and source == "captions":
+        # Rows cached before entity decoding / paragraph reflow carry
+        # `&nbsp;` and one-cue-per-line text; rebuild both from the cues.
+        timed = [(s, c) for s, t in timed if (c := _clean_caption_line(t))]
+        text = cues_to_text(timed)
     # Restore manual-vs-auto. Without it every cached run derived
     # `is_auto=None`, which degraded the report's `Transcript:` row to a
     # bare language code AND — because `save_transcript` recomputes the
@@ -87,8 +96,8 @@ def _row_to_result(row: dict[str, Any], *, duration_sec: int | None) -> Transcri
     kind = row.get("transcript_lang_kind")
     is_auto = True if kind == "auto" else (False if kind == "manual" else None)
     return TranscriptResult(
-        text=row.get("transcript") or "",
-        source=row.get("transcript_source") or "captions",  # type: ignore[arg-type]
+        text=text,
+        source=source,  # type: ignore[arg-type]
         language=row.get("language"),
         duration_sec=duration_sec,
         cost_usd=float(row.get("transcript_cost_usd") or 0.0),
