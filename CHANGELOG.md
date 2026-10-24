@@ -1,3 +1,18 @@
+## [1.13.0](https://github.com/maxbolgarin/unread/compare/v1.12.0...v1.13.0) (2026-10-24)
+
+### 🚀 Features
+
+* **video:** comment on each claim's argument, drop the unchecked numbers list ([72cec77](https://github.com/maxbolgarin/unread/commit/72cec7710955d0acdd1be5f77755009fc4b96318))
+
+### 🐛 Bug Fixes
+
+* **youtube:** decode caption HTML entities and reflow transcript into paragraphs ([4a9fc7e](https://github.com/maxbolgarin/unread/commit/4a9fc7ee33155ac314570996fc6aedfa741cec3b))
+* **bot:** draw coloured circle/square emoji as plain shapes in PDFs ([b231dd1](https://github.com/maxbolgarin/unread/commit/b231dd1e588ae91af299c960c42e8d02483d99d5))
+
+### ⚙️ Continuous Integration
+
+* bump GitHub Actions to Node 24 majors ([e2042d6](https://github.com/maxbolgarin/unread/commit/e2042d6acc3e819f29f2dcdb526fbc5152127f8f))
+
 ## [1.12.0](https://github.com/maxbolgarin/unread/compare/v1.11.0...v1.12.0) (2026-10-23)
 
 ### 🚀 Features
