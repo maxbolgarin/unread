@@ -50,6 +50,30 @@ _EMOJI_TONE = {
     "\u2753": "unk",  # ❓ Unverifiable
 }
 
+# Coloured circles and squares (U+1F7E0-1F7EB, Unicode 12) — the 🟢/🟡/🔴
+# overall verdict uses them — are newer than the Symbola release Debian
+# ships, so they rendered as tofu. Draw them as a plain ● / ■ (in Symbola
+# and DejaVu alike) and let the colour class supply the colour. 🔴 and 🔵
+# are older and do exist, but are swapped too so the three verdict dots
+# look like one set.
+_SHAPE_SUBST = {
+    "\U0001f534": ("\u25cf", "red"),  # 🔴
+    "\U0001f535": ("\u25cf", "blue"),  # 🔵
+    "\U0001f7e0": ("\u25cf", "orange"),  # 🟠
+    "\U0001f7e1": ("\u25cf", "yellow"),  # 🟡
+    "\U0001f7e2": ("\u25cf", "green"),  # 🟢
+    "\U0001f7e3": ("\u25cf", "purple"),  # 🟣
+    "\U0001f7e4": ("\u25cf", "brown"),  # 🟤
+    "\U0001f7e5": ("\u25a0", "red"),  # 🟥
+    "\U0001f7e6": ("\u25a0", "blue"),  # 🟦
+    "\U0001f7e7": ("\u25a0", "orange"),  # 🟧
+    "\U0001f7e8": ("\u25a0", "yellow"),  # 🟨
+    "\U0001f7e9": ("\u25a0", "green"),  # 🟩
+    "\U0001f7ea": ("\u25a0", "purple"),  # 🟪
+    "\U0001f7eb": ("\u25a0", "brown"),  # 🟫
+}
+_SELECTORS = frozenset("\ufe0e\ufe0f")
+
 _TAG_RE = re.compile(r"<[^>]*>")
 
 # Rewriting inside these would corrupt the code the user asked to see.
@@ -72,12 +96,16 @@ def wrap_emoji_spans(html: str) -> str:
     contents of `<pre>` / `<code>` are passed through untouched.
     """
 
-    def _classes(run: str) -> str:
+    def _span(run: str) -> str:
         tone = _EMOJI_TONE.get(run[0], "")
-        return f"{EMOJI_CLASS} {EMOJI_CLASS}-{tone}" if tone else EMOJI_CLASS
+        if run[0] in _SHAPE_SUBST:
+            tone = _SHAPE_SUBST[run[0]][1]
+            run = "".join(_SHAPE_SUBST.get(ch, (ch,))[0] for ch in run if ch not in _SELECTORS)
+        classes = f"{EMOJI_CLASS} {EMOJI_CLASS}-{tone}" if tone else EMOJI_CLASS
+        return f'<span class="{classes}">{run}</span>'
 
     def _wrap(text: str) -> str:
-        return _EMOJI_RE.sub(lambda m: f'<span class="{_classes(m.group(0))}">{m.group(0)}</span>', text)
+        return _EMOJI_RE.sub(lambda m: _span(m.group(0)), text)
 
     out: list[str] = []
     pos = 0
