@@ -74,6 +74,14 @@ body {
 .emoji-warn { color: #b26a00; }
 .emoji-spin { color: #7048a8; }
 .emoji-unk  { color: #6b6b6b; }
+/* Coloured circles / squares, redrawn as ● / ■ by the worker. */
+.emoji-red    { color: #c0362c; }
+.emoji-orange { color: #e07b00; }
+.emoji-yellow { color: #e0b000; }
+.emoji-green  { color: #1a7f37; }
+.emoji-blue   { color: #1f6fd1; }
+.emoji-purple { color: #7048a8; }
+.emoji-brown  { color: #7a4e2d; }
 h1, h2, h3, h4 { color: #111; page-break-after: avoid; break-after: avoid; }
 h1 { font-size: 1.5em; margin-top: 0.2em; }
 h2 { font-size: 1.25em; margin-top: 1.4em; border-bottom: 1px solid #ddd; padding-bottom: 0.2em; }

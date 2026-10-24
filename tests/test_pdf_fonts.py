@@ -258,3 +258,27 @@ def test_a_plain_emoji_gets_no_colour_class() -> None:
     from unread.bot._pdf_worker import EMOJI_CLASS, wrap_emoji_spans
 
     assert f'<span class="{EMOJI_CLASS}">🚀</span>' in wrap_emoji_spans("<p>🚀</p>")
+
+
+def test_coloured_circles_are_redrawn_as_plain_shapes() -> None:
+    """🟢/🟡 (U+1F7E0-1F7EB, Unicode 12) are missing from the Symbola
+    Debian ships, so the fact-check "Overall" verdict came out as tofu.
+    They're drawn as ● / ■ — present in Symbola and DejaVu — coloured by
+    class instead."""
+    from unread.bot._pdf_worker import wrap_emoji_spans
+
+    html = wrap_emoji_spans("<p>🟢 ok / 🟡 meh / 🔴 bad / 🟩</p>")
+    for ch in ("\U0001f7e2", "\U0001f7e1", "\U0001f534", "\U0001f7e9"):
+        assert ch not in html
+    assert '<span class="emoji emoji-green">●</span> ok' in html
+    assert '<span class="emoji emoji-yellow">●</span> meh' in html
+    assert '<span class="emoji emoji-red">●</span> bad' in html
+    assert '<span class="emoji emoji-green">■</span>' in html
+
+
+def test_every_shape_colour_class_is_styled() -> None:
+    from unread.bot._pdf_worker import _SHAPE_SUBST, EMOJI_CLASS
+    from unread.bot.pdf import _PDF_CSS
+
+    for _, tone in _SHAPE_SUBST.values():
+        assert f".{EMOJI_CLASS}-{tone}" in _PDF_CSS, tone
