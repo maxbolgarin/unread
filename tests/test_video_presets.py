@@ -128,3 +128,13 @@ async def test_cli_picker_summary_row_switches_the_preset() -> None:
             yes=False,
         )
     assert seen == ["video_summary"]
+
+
+@pytest.mark.parametrize("language", ["en", "ru"])
+def test_analysis_comments_on_claims_without_a_bare_numbers_list(language) -> None:
+    """Each claim may carry the model's own comment on whether the argument
+    holds; the unchecked "Numbers and facts" list is gone — fact-checking
+    is the `factcheck` preset's job, which has web search."""
+    tpl = get_presets(language)["video"].user_template
+    assert ("**Comment:**" if language == "en" else "**Комментарий:**") in tpl
+    assert ("## Numbers and facts" if language == "en" else "## Цифры и факты") not in tpl

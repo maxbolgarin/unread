@@ -1,6 +1,6 @@
 ---
 name: video
-prompt_version: v3
+prompt_version: v4
 description: Video analysis — topic, the speaker's position, claims and arguments with timestamps, verdict
 needs_reduce: true
 filter_model: gpt-5.6-luna
@@ -81,6 +81,17 @@ conclusion depends on them (or in their order, for a step-by-step case):
 - **Arguments:** what the speaker backs it with — facts, numbers,
   examples, authorities, personal experience — with timestamps.
 - **Said:** `[HH:MM:SS](link)` — where the claim is made.
+- **Comment:** optional, one or two sentences of your own — does the
+  argument actually carry the claim? Name the weak spot: evidence that
+  shows something narrower, a correlation sold as cause, one example
+  stretched into a rule, a counterexample the speaker skips, or a figure
+  that conflicts with well-established knowledge. If the argument holds,
+  say so in a few words or drop the line — don't comment for the sake of
+  it.
+
+Put the concrete figures, dates, names and studies the speaker leans on
+inside **Arguments**, with their timestamps — there is no separate list
+of numbers.
 
 ## How the argument works
 3-5 points of your own analysis, not summary:
@@ -91,10 +102,6 @@ conclusion depends on them (or in their order, for a step-by-step case):
   and which they skip.
 Don't check facts — that's what the fact-check is for. If the argument
 is even-handed, say so briefly.
-
-## Numbers and facts
-The concrete figures, dates, names and studies the speaker leans on,
-with timestamps. Skip the section if there are none.
 
 ## Quotes
 1-3 short verbatim quotes that best carry the speaker's position. Skip
