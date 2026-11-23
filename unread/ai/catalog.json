@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "updated": "2026-10-19",
+  "updated": "2026-11-23",
   "providers": {
     "openai": [
       {
@@ -46,9 +46,9 @@
         "id": "gpt-5.6-sol",
         "label": "GPT-5.6 Sol — flagship",
         "role": "chat",
-        "input": 5.0,
-        "cached": 0.5,
-        "output": 30.0,
+        "input": 4.0,
+        "cached": 0.4,
+        "output": 20.0,
         "context_window": 1050000,
         "max_output_tokens": 128000,
         "reasoning": true,
@@ -368,9 +368,9 @@
         "id": "openai/gpt-5.6-sol",
         "label": "OpenRouter → GPT-5.6 Sol (flagship)",
         "role": "chat",
-        "input": 5.0,
-        "cached": 0.5,
-        "output": 30.0,
+        "input": 4.0,
+        "cached": 0.4,
+        "output": 20.0,
         "context_window": 1050000,
         "max_output_tokens": 128000,
         "reasoning": true,
